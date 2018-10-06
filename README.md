@@ -2,10 +2,10 @@
 
 Mock creates a HTTP server with *mocked* routes specified from a local file.  It allows for
 rapid development and testing of an (REST) API clients.  The routes are dynamically configured from
-an watched file.
+a watched file.
 
-No lie - this project is inspired from [localroast](https://github.com/caalberts/localroast).  Thought
-it would be fun to recreate something similar with a less verbose syntax API syntax
+No lie - this project is inspired by [localroast](https://github.com/caalberts/localroast).  Thought
+it would be fun to recreate something similar with a less verbose API syntax.
 
 ## Build/Install
 
@@ -58,7 +58,7 @@ Or include a large response with a local file:
 ### File Notes
 
 1. The content-type of included files will be guessed based on the file's extension.
-2. Files are assumed to be rooted in the same directory as the included API file
+2. Files are assumed to be relative to the API file (see [examples/](examples/).
 
 
 
