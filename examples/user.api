@@ -1,0 +1,24 @@
+GET 200 / @index.html
+
+GET 200 /users @users.json
+
+POST 201 /users
+{
+    "success": true,
+    "id": 4
+}
+
+GET 200 /users/:id
+{
+    "success": true,
+    "id": 5,
+    "name": "John Dough",
+    "email": "john@dough.com"
+}
+
+GET 401 /admin
+{
+    "success": false,
+    "message": "unauthorized"
+}
+

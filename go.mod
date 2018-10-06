@@ -1,0 +1,8 @@
+module github.com/sspencer/mock
+
+require (
+	github.com/fsnotify/fsnotify v1.4.7
+	github.com/julienschmidt/httprouter v0.0.0-20180715161854-348b672cd90d
+	github.com/mattn/go-isatty v0.0.4
+	golang.org/x/sys v0.0.0-20181005133103-4497e2df6f9e // indirect
+)
