@@ -58,7 +58,7 @@ Or include a large response with a local file:
 ### File Notes
 
 1. The content-type of included files will be guessed based on the file's extension.
-2. Files are assumed to be relative to the API file (see [examples/](examples/).
+2. Files are assumed to be relative to the API file (see [examples/](examples/)).
 
 
 
