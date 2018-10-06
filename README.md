@@ -46,12 +46,12 @@ For example:
         "email": "john@dough.com"
     }
 
-You may serve a non-json type like so:
+You may serve a non-json content-type like by marking it with double quotes:
 
     GET 200 /hello "text/plain"
     Hello World
 
-Or include a large response with a local file:
+Or include a large response with a local file by prepending it with an @ symbol:
 
     GET 200 /users @users.json
 
