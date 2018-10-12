@@ -1,7 +1,7 @@
 # mock
 
 Mock creates a HTTP server with *mocked* routes specified from a local file.  It allows for
-rapid development and testing of an (REST) API clients.  The routes are dynamically configured from
+rapid development and testing of (REST) API clients.  The routes are dynamically configured from
 a watched file.
 
 No lie - this project is inspired by [localroast](https://github.com/caalberts/localroast).  Thought
