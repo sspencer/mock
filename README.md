@@ -4,7 +4,7 @@ Mock creates a HTTP server with *mocked* routes specified from a local file.  It
 rapid development and testing of (REST) API clients.  The routes are dynamically configured from
 a watched file.
 
-No lie - this project is inspired by [localroast](https://github.com/caalberts/localroast).  Thought
+This project is inspired by [localroast](https://github.com/caalberts/localroast).  Thought
 it would be fun to recreate something similar with a less verbose API syntax.
 
 ## Build/Install
@@ -19,7 +19,7 @@ it would be fun to recreate something similar with a less verbose API syntax.
 
 If you're interested in developing, simply run it with:
 
-    go run cmd/main.go examples/user.api
+this    go run cmd/main.go examples/user.api
 
 ## API File
 
