@@ -41,7 +41,7 @@ For example:
 
     GET 200 /users/:id
     {
-        "ids": 5
+        "id": 5
         "name": "John Dough",
         "email": "john@dough.com"
     }
