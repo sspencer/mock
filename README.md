@@ -46,6 +46,8 @@ For example:
         "email": "john@dough.com"
     }
 
+### Optional Parameters
+
 You may serve a non-json content-type like by marking it with double quotes:
 
     GET 200 /hello "text/plain"
@@ -54,8 +56,6 @@ You may serve a non-json content-type like by marking it with double quotes:
 Or include a large response with a local file by prepending it with an @ symbol:
 
     GET 200 /users @users.json
-
-### File Notes
 
 1. The content-type of included files will be guessed based on the file's extension.
 2. Files are assumed to be relative to the API file (see [examples/](examples/)).
