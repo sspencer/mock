@@ -4,9 +4,11 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/sspencer/mock"
@@ -30,13 +32,33 @@ func main() {
 		os.Exit(1)
 	}
 
-	fn = path.Clean(fn)
+	fn = filepath.Clean(fn)
 
-	//log.SetFlags(log.Ltime)
-	log.Printf("Serving MOCK API on localhost:%d\n", *portPtr)
-	//panic(http.ListenAndServe(port, http.FileServer(http.Dir(dir))))
+	fi, err := os.Stat(fn)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 
-	server := mock.NewServer(*portPtr, *reqPtr)
+	switch mode := fi.Mode(); {
+	case mode.IsDir():
+		serveDirectory(fn, *portPtr)
+	case mode.IsRegular():
+		mockAPI(fn, *portPtr, *reqPtr)
+	}
+}
+
+func serveDirectory(fn string, port int) {
+	fn = strings.Replace(fn, " ", "\\ ", -1)
+
+	fmt.Printf("Serving %q on localhost:%d\n", fn, port)
+	panic(http.ListenAndServe(fmt.Sprintf(":%d", port), http.FileServer(http.Dir(fn))))
+}
+
+func mockAPI(fn string, port int, dbg bool) {
+	log.Printf("Serving MOCK API on localhost:%d\n", port)
+
+	server := mock.NewServer(port, dbg)
 	schemaChannel := make(chan []*mock.Schema)
 	server.Watch(schemaChannel)
 

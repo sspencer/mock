@@ -4,6 +4,8 @@ Mock creates a HTTP server with *mocked* routes specified from a local file.  It
 rapid development and testing of (REST) API clients.  The routes are dynamically configured from
 a watched file.
 
+For added flexibility, Mock optionally just serves the specified directory.
+
 This project is inspired by [localroast](https://github.com/caalberts/localroast).  Thought
 it would be fun to recreate something similar with a less verbose API syntax.
 
@@ -13,13 +15,16 @@ it would be fun to recreate something similar with a less verbose API syntax.
 
 ## Run / Develop
 
-    mock [-p PORT] [-r] examples/user.api
+    mock [-p PORT] [-r] FILE
         -p INT   port to run server on (default 8080)
         -r       enable request logging
 
+1. Mock API: `mock examples/user.api`
+2. Serve Directory: `mock .`
+
 If you're interested in developing, simply run it with:
 
-this    go run cmd/main.go examples/user.api
+    go run cmd/main.go examples/user.api
 
 ## API File
 
