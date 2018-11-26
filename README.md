@@ -15,14 +15,17 @@ it would be fun to recreate something similar with a less verbose API syntax.
 
 ## Run / Develop
 
-    mock [-p PORT] [-r] FILE
-        -p INT   port to run server on (default 8080)
-        -r       enable request logging
+    mock [flags] <schema.api> OR <directory>
+      -d string
+            delay server responses (default "0ms")
+      -p int
+            port to run server on (default 8080)
+      -r    log the request
 
 1. Mock API: `mock examples/user.api`
 2. Serve Directory: `mock .`
 
-If you're interested in developing, simply run it with:
+If you're interested in developing `mock` *itself*, simply start `mock` with:
 
     go run cmd/main.go examples/user.api
 
@@ -31,7 +34,7 @@ If you're interested in developing, simply run it with:
 Routes are mocked in a text file.  The HTTP Method, Status Code and Path are specified
 on the first line.  All remaining text until the next empty line will be treated as a
 JSON response. Parameters in the path may be specified by preceding the parameter with
-a COLON.  
+a COLON.
 
 There is an optional fourth parameter that specifies either the
 non-default (`application/json`) content-type, or a file to be served as the response body.

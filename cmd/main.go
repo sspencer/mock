@@ -9,18 +9,20 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/sspencer/mock"
 )
 
 func main() {
-
+	var err error
 	portPtr := flag.Int("p", 8080, "port to run server on")
 	reqPtr := flag.Bool("r", false, "log the request")
+	delayPtr := flag.String("d", "0ms", "delay server responses")
 
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Create a mock HTTP server.\nmock [flags] schema.api")
+		fmt.Fprintln(os.Stderr, "Create a mock HTTP or local file server.\nmock [flags] <schema.api> OR <directory>")
 		flag.PrintDefaults()
 	}
 
@@ -28,8 +30,16 @@ func main() {
 
 	fn := flag.Arg(0)
 	if fn == "" {
-		fmt.Fprintln(os.Stderr, "Schema file must be specified.")
+		fmt.Fprintln(os.Stderr, "Schema file or local directory must be specified.")
 		os.Exit(1)
+	}
+
+	delay := time.Duration(0)
+	if *delayPtr != "" {
+		if delay, err = time.ParseDuration(*delayPtr); err != nil {
+			fmt.Fprintln(os.Stderr, "Deplay format error (expecting something like '500ms').")
+			os.Exit(1)
+		}
 	}
 
 	fn = filepath.Clean(fn)
@@ -42,23 +52,32 @@ func main() {
 
 	switch mode := fi.Mode(); {
 	case mode.IsDir():
-		serveDirectory(fn, *portPtr)
+		serveDirectory(fn, *portPtr, delay)
 	case mode.IsRegular():
-		mockAPI(fn, *portPtr, *reqPtr)
+		mockAPI(fn, *portPtr, *reqPtr, delay)
 	}
 }
 
-func serveDirectory(fn string, port int) {
+func serveDirectory(fn string, port int, delay time.Duration) {
 	fn = strings.Replace(fn, " ", "\\ ", -1)
 
 	fmt.Printf("Serving %q on localhost:%d\n", fn, port)
-	panic(http.ListenAndServe(fmt.Sprintf(":%d", port), http.FileServer(http.Dir(fn))))
+	panic(http.ListenAndServe(fmt.Sprintf(":%d", port), delayer(delay, http.FileServer(http.Dir(fn)))))
 }
 
-func mockAPI(fn string, port int, dbg bool) {
+func delayer(delay time.Duration, h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if delay > 0 {
+			time.Sleep(delay)
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+func mockAPI(fn string, port int, dbg bool, delay time.Duration) {
 	log.Printf("Serving MOCK API on localhost:%d\n", port)
 
-	server := mock.NewServer(port, dbg)
+	server := mock.NewServer(port, dbg, delay)
 	schemaChannel := make(chan []*mock.Schema)
 	server.Watch(schemaChannel)
 
