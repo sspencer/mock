@@ -20,7 +20,8 @@ it would be fun to recreate something similar with a less verbose API syntax.
             delay server responses (default "0ms")
       -p int
             port to run server on (default 8080)
-      -r    log the request
+      -r    
+            log the request
 
 1. Mock API: `mock examples/user.api`
 2. Serve Directory: `mock .`
@@ -34,7 +35,8 @@ If you're interested in developing `mock` *itself*, simply start `mock` with:
 Routes are mocked in a text file.  The HTTP Method, Status Code and Path are specified
 on the first line.  All remaining text until the next empty line will be treated as a
 JSON response. Parameters in the path may be specified by preceding the parameter with
-a COLON.
+a COLON.  To substitute this parameter in the response, surround the name with double
+curly brackets.  See example below.
 
 There is an optional fourth parameter that specifies either the
 non-default (`application/json`) content-type, or a file to be served as the response body.
@@ -49,7 +51,7 @@ For example:
 
     GET 200 /users/:id
     {
-        "id": 5
+        "id": "{{id}}"
         "name": "John Dough",
         "email": "john@dough.com"
     }
@@ -67,7 +69,6 @@ Or include a large response with a local file by prepending it with an @ symbol:
 
 1. The content-type of included files will be guessed based on the file's extension.
 2. Files are assumed to be relative to the API file (see [examples/](examples/)).
-
 
 
 

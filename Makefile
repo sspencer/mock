@@ -9,7 +9,7 @@ APP_NAME=mock
 APP_MAIN=cmd/main.go
 BINARY=${GOPATH}/bin/${APP_NAME}
 
-all: $(BINARY) fmt vet lint
+all: $(BINARY) fmt vet
 
 $(BINARY): $(SRC)
 	CGO_ENABLED=0 go build -o ${BINARY} ${APP_MAIN}
@@ -19,12 +19,6 @@ fmt:
 
 vet:
 	go vet $(PKG)
-
-lint:
-	@for p in $(PKG); do \
-		echo "==> Linting $$p"; \
-		golint $$p | { grep -vwE "exported (var|function|method|type|const) \S+ should have comment" || true; } \
-	done
 
 clean:
 	rm -f ${BINARY}

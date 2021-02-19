@@ -11,7 +11,7 @@ POST 201 /users
 GET 200 /users/:id
 {
     "success": true,
-    "id": 5,
+    "id": "{{id}}",
     "name": "John Dough",
     "email": "john@dough.com"
 }

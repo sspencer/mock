@@ -1,5 +1,7 @@
 module github.com/sspencer/mock
 
+go 1.15
+
 require (
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/julienschmidt/httprouter v0.0.0-20180715161854-348b672cd90d
