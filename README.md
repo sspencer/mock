@@ -70,11 +70,11 @@ Or include a large response with a local file by prepending it with an @ symbol:
 1. The content-type of included files will be guessed based on the file's extension.
 2. Files are assumed to be relative to the API file (see [examples/](examples/)).
 
-### Update for 2021
+### New for 2021 -- Multiple Responses
 
 The same Method and Path may now be specified.  Each duplicate Method / Path adds
-a new response to the entry.  As you request the same API, the different responses
-will be returned in a cyclical fashion.
+a new response to the entry.  As you request the same API, different responses
+are returned in a round robin fashion.
 
 For example:
 
