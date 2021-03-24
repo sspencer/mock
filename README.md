@@ -36,7 +36,7 @@ Routes are mocked in a text file.  The HTTP Method, Status Code and Path are spe
 on the first line.  All remaining text until the next empty line will be treated as a
 JSON response. Parameters in the path may be specified by preceding the parameter with
 a COLON.  To substitute this parameter in the response, surround the name with double
-curly brackets.  See example below.
+curly brackets.  See example below (or [examples/user.api](examples/user.api)).
 
 There is an optional fourth parameter that specifies either the
 non-default (`application/json`) content-type, or a file to be served as the response body.
@@ -55,6 +55,20 @@ For example:
         "name": "John Dough",
         "email": "john@dough.com"
     }
+
+### Optional Parameters
+
+You may serve a non-json content-type like by marking it with double quotes:
+
+    GET 200 /hello "text/plain"
+    Hello World
+
+Or include a large response with a local file by prepending it with an @ symbol:
+
+    GET 200 /users @users.json
+
+1. The content-type of included files will be guessed based on the file's extension.
+2. Files are assumed to be relative to the API file (see [examples/](examples/)).
 
 ### Update for 2021
 
@@ -77,20 +91,11 @@ Will return the status codes `201`, `201`, `400` and responses `{ "id": 5 }`,
 `{ "id": 6 }`, `{ "id": 0 }` in order as you issue
 `curl -XPOST http://localhost:8080/users` commands.
 
-### Optional Parameters
 
-You may serve a non-json content-type like by marking it with double quotes:
+## Features
 
-    GET 200 /hello "text/plain"
-    Hello World
-
-Or include a large response with a local file by prepending it with an @ symbol:
-
-    GET 200 /users @users.json
-
-1. The content-type of included files will be guessed based on the file's extension.
-2. Files are assumed to be relative to the API file (see [examples/](examples/)).
-
-
-
-
+- [x] easy api specification
+- [x] include external files
+- [x] path variables
+- [x] autoload file changes
+- [x] multiple responses per Method / Path
