@@ -56,6 +56,27 @@ For example:
         "email": "john@dough.com"
     }
 
+### Update for 2021
+
+The same Method and Path may now be specified.  Each duplicate Method / Path adds
+a new response to the entry.  As you request the same API, the different responses
+will be returned in a cyclical fashion.
+
+For example:
+
+    POST 201 /users
+    { "id": 5 }
+
+    POST 201 /users
+    { "id": 6 }
+
+    POST 400 /users
+    { "id": 0 }
+
+Will return the status codes `201`, `201`, `400` and responses `{ "id": 5 }`, 
+`{ "id": 6 }`, `{ "id": 0 }` in order as you issue
+`curl -XPOST http://localhost:8080/users` commands.
+
 ### Optional Parameters
 
 You may serve a non-json content-type like by marking it with double quotes:

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -11,25 +12,46 @@ import (
 // Schema represents the mocked endpoint.
 type Schema struct {
 	Method      string
-	Status      int
 	Path        string
+	Index       int
+	Responses   []Response
+}
+
+type Response struct {
+	Status      int
 	ContentType string
-	Response    []byte
+	Body    []byte
 }
 
 func (s *Schema) String() string {
-	return fmt.Sprintf(" %3d | %-4s %-28s | %-24s | %4d bytes", s.Status, s.Method, s.Path, s.ContentType, len(s.Response))
+	var b strings.Builder
+	nr := len(s.Responses)
+	for i, resp := range s.Responses {
+		fmt.Fprintf(&b, " %3d | %-6s %-28s | %-24s | %4d bytes", resp.Status, s.Method, s.Path, resp.ContentType, len(resp.Body))
+		if nr > 1 && i < nr-1 {
+			fmt.Fprintln(&b)
+		}
+	}
+
+	return b.String()
 }
 
 // Handler returns a HTTP handler method for the given schema.
 func (s *Schema) Handler(logger responseLogger) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-		logger(s.Status, r)
-		w.Header().Add("Content-Type", s.ContentType)
-		w.WriteHeader(s.Status)
+		if s.Index >= len(s.Responses) {
+			s.Index = 0
+		}
 
+		resp := s.Responses[s.Index]
+
+		logger(resp.Status, r)
+		w.Header().Add("Content-Type", resp.ContentType)
+		w.WriteHeader(resp.Status)
+
+		// replace {{params}} in body
 		if len(ps) > 0 {
-			r := s.Response
+			r := resp.Body
 			for i := range ps {
 				key := fmt.Sprintf("{{%s}}", ps[i].Key)
 				r = bytes.ReplaceAll(r, []byte(key), []byte(ps[i].Value))
@@ -37,7 +59,9 @@ func (s *Schema) Handler(logger responseLogger) httprouter.Handle {
 
 			w.Write(r)
 		} else {
-			w.Write(s.Response)
+			w.Write(resp.Body)
 		}
+
+		s.Index++
 	}
 }

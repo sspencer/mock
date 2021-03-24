@@ -8,12 +8,29 @@ POST 201 /users
     "id": 4
 }
 
+POST 201 /users
+{
+    "success": true,
+    "id": 5
+}
+
+POST 400 /users
+{
+    "success": false,
+    "id":0
+}
+
 GET 200 /users/:id
 {
     "success": true,
     "id": "{{id}}",
     "name": "John Dough",
     "email": "john@dough.com"
+}
+
+DELETE 200 /users/:id
+{
+    "success": true,
 }
 
 GET 401 /admin

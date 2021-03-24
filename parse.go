@@ -18,6 +18,14 @@ type schemaParser struct {
 	baseDir string
 }
 
+type tempSchema struct {
+	Method      string
+	Path        string
+	Status      int
+	ContentType string
+	Body        []byte
+}
+
 // SchemaFile parses an API schema file.
 func SchemaFile(fn string) (schemas []*Schema, err error) {
 	f, err := os.Open(fn)
@@ -29,12 +37,42 @@ func SchemaFile(fn string) (schemas []*Schema, err error) {
 
 	dir := path.Dir(fn)
 
-	return SchemaReader(f, dir)
+	temps, err := SchemaReader(f, dir)
+	if err != nil {
+		return nil, err
+	}
+
+	// Combine duplicate Method Paths into same route that has multiple responses
+	m := make(map[string]*Schema)
+	for _, t := range temps {
+		key := fmt.Sprintf("%s:%s", t.Method, t.Path)
+		resp := Response{
+			Status: t.Status,
+			ContentType: t.ContentType,
+			Body: t.Body,
+		}
+
+		if schema, ok := m[key]; ok {
+			schema.Responses = append(schema.Responses, resp)
+		} else {
+			m[key] = &Schema{
+				Method: t.Method,
+				Path: t.Path,
+				Responses: []Response{resp},
+			}
+		}
+	}
+
+	for _, s := range m {
+		schemas = append(schemas, s)
+	}
+
+	return schemas, nil
 }
 
 // SchemaReader parses an API schema.
-func SchemaReader(r io.Reader, dir string) ([]*Schema, error) {
-	var schemas []*Schema
+func SchemaReader(r io.Reader, dir string) ([]*tempSchema, error) {
+	var schemas []*tempSchema
 	sp := &schemaParser{dir}
 
 	scanner := bufio.NewScanner(r)
@@ -57,7 +95,7 @@ func SchemaReader(r io.Reader, dir string) ([]*Schema, error) {
 				return nil, err
 			}
 			schemas = append(schemas, schema)
-			if len(schema.Response) == 0 {
+			if len(schema.Body) == 0 {
 				state = stateBody
 				body = []byte{}
 			} else {
@@ -70,7 +108,7 @@ func SchemaReader(r io.Reader, dir string) ([]*Schema, error) {
 				body = append(body, line...)
 			} else {
 				if len(body) > 0 && len(schemas) > 0 {
-					schemas[len(schemas)-1].Response = body
+					schemas[len(schemas)-1].Body = body
 					body = []byte{}
 				}
 				state = stateNone
@@ -82,13 +120,13 @@ func SchemaReader(r io.Reader, dir string) ([]*Schema, error) {
 	}
 
 	if len(body) > 0 && len(schemas) > 0 {
-		schemas[len(schemas)-1].Response = body
+		schemas[len(schemas)-1].Body = body
 	}
 
 	return schemas, nil
 }
 
-func (sp *schemaParser) parse(line string, lineNum int) (*Schema, error) {
+func (sp *schemaParser) parse(line string, lineNum int) (*tempSchema, error) {
 	tokens := strings.Split(line, " ")
 	tlen := len(tokens)
 	if tlen < 3 {
@@ -135,12 +173,12 @@ func (sp *schemaParser) parse(line string, lineNum int) (*Schema, error) {
 		}
 	}
 
-	schema := &Schema{}
+	schema := &tempSchema{}
 	schema.Method = strings.ToUpper(tokens[0])
 	schema.Status, _ = strconv.Atoi(tokens[1])
 	schema.Path = sp.cleanPath(tokens[2])
 	schema.ContentType = contentType
-	schema.Response = body
+	schema.Body = body
 
 	return schema, nil
 }
