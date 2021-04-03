@@ -6,8 +6,8 @@ a watched file.
 
 For added flexibility, Mock optionally just serves the specified directory.
 
-This project is inspired by [localroast](https://github.com/caalberts/localroast).  Thought
-it would be fun to recreate something similar with a less verbose API syntax.
+This project was originally inspired by [localroast](https://github.com/caalberts/localroast).  
+Thought it would be fun to recreate something similar with a less verbose API syntax.
 
 ## Build/Install
 
@@ -70,7 +70,9 @@ Or include a large response with a local file by prepending it with an @ symbol:
 1. The content-type of included files will be guessed based on the file's extension.
 2. Files are assumed to be relative to the API file (see [examples/](examples/)).
 
-### New for 2021 -- Multiple Responses
+### New for 2021
+
+#### Multiple Responses
 
 The same Method and Path may now be specified.  Each duplicate Method / Path adds
 a new response to the entry.  As you request the same API, different responses
@@ -90,6 +92,8 @@ For example:
 Will return the status codes `201`, `201`, `400` and responses `{ "id": 5 }`, 
 `{ "id": 6 }`, `{ "id": 0 }` in order as you issue
 `curl -XPOST http://localhost:8080/users` commands.
+
+#### Multiline Responses
 
 Include longer inline responses that can include empty lines by using triple quotes:
 
