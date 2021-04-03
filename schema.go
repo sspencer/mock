@@ -11,16 +11,16 @@ import (
 
 // Schema represents the mocked endpoint.
 type Schema struct {
-	Method      string
-	Path        string
-	Index       int
-	Responses   []Response
+	Method    string
+	Path      string
+	Index     int
+	Responses []Response
 }
 
 type Response struct {
 	Status      int
 	ContentType string
-	Body    []byte
+	Body        []byte
 }
 
 func (s *Schema) String() string {

@@ -47,17 +47,17 @@ func SchemaFile(fn string) (schemas []*Schema, err error) {
 	for _, t := range temps {
 		key := fmt.Sprintf("%s:%s", t.Method, t.Path)
 		resp := Response{
-			Status: t.Status,
+			Status:      t.Status,
 			ContentType: t.ContentType,
-			Body: t.Body,
+			Body:        t.Body,
 		}
 
 		if schema, ok := m[key]; ok {
 			schema.Responses = append(schema.Responses, resp)
 		} else {
 			m[key] = &Schema{
-				Method: t.Method,
-				Path: t.Path,
+				Method:    t.Method,
+				Path:      t.Path,
 				Responses: []Response{resp},
 			}
 		}
@@ -80,12 +80,14 @@ func SchemaReader(r io.Reader, dir string) ([]*tempSchema, error) {
 
 	var body []byte
 	lineNum := 0
+	multiLine := false
 	for scanner.Scan() {
 		lineNum++
-		line := strings.TrimSpace(scanner.Text())
+		line := scanner.Text()
 
 		switch state {
 		case stateNone:
+			multiLine = false
 			if len(line) == 0 || line[0:1] == "#" {
 				continue
 			}
@@ -104,8 +106,22 @@ func SchemaReader(r io.Reader, dir string) ([]*tempSchema, error) {
 			}
 
 		case stateBody:
-			if len(line) > 0 {
-				body = append(body, line...)
+			trim := strings.TrimSpace(line)
+			if len(trim) > 0 || multiLine {
+				if trim == `"""` {
+					if multiLine == false {
+						multiLine = true
+					} else {
+						if len(schemas) > 0 {
+							schemas[len(schemas)-1].Body = body
+							body = []byte{}
+						}
+						state = stateNone
+					}
+				} else {
+					line = line + "\r\n"
+					body = append(body, line...)
+				}
 			} else {
 				if len(body) > 0 && len(schemas) > 0 {
 					schemas[len(schemas)-1].Body = body
@@ -159,7 +175,7 @@ func (sp *schemaParser) parse(line string, lineNum int) (*tempSchema, error) {
 		last := rest[rlen-1 : rlen]
 
 		if first == "\"" && last == "\"" {
-			contentType = rest[1 : rlen-2]
+			contentType = rest[1 : rlen-1]
 		}
 
 		if first == "@" {
@@ -184,7 +200,6 @@ func (sp *schemaParser) parse(line string, lineNum int) (*tempSchema, error) {
 }
 
 func (sp *schemaParser) isHTTPMethod(m string) bool {
-
 	switch strings.ToUpper(m) {
 	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch, http.MethodHead, http.MethodOptions:
 		return true

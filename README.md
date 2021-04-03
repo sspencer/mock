@@ -91,6 +91,14 @@ Will return the status codes `201`, `201`, `400` and responses `{ "id": 5 }`,
 `{ "id": 6 }`, `{ "id": 0 }` in order as you issue
 `curl -XPOST http://localhost:8080/users` commands.
 
+Include longer inline responses that can include empty lines by using triple quotes:
+
+    GET 200 /long "text/plain"
+    """
+    First line
+
+    Last line, one skipped.
+    """
 
 ## Features
 
