@@ -1,5 +1,3 @@
-github.com/caalberts/localroast v0.2.0 h1:lC3fgvVFc9842PzICL3N3nej6NEcW/P3eGL5INolMC8=
-github.com/caalberts/localroast v0.2.0/go.mod h1:AlfCZ3gyxiYHyZGPixlhb3v2SKGNBMWVzlEX+LJ5PVg=
 github.com/fsnotify/fsnotify v1.4.7 h1:IXs+QLmnXW2CcXuY+8Mzv/fWEsPGWxqefPtCP5CnV9I=
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
 github.com/julienschmidt/httprouter v0.0.0-20180715161854-348b672cd90d h1:of6+TpypLAaiv4JxgH5aplBZnt0b65B4v4c8q5oy+Sk=

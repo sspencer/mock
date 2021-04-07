@@ -22,3 +22,15 @@ vet:
 
 clean:
 	rm -f ${BINARY}
+
+mod:
+	go mod tidy
+	go mod vendor
+
+docker:
+	docker build -t test .
+
+run:
+	docker run -p 7777:8080 test
+
+dockerize: mod docker
