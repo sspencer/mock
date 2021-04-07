@@ -18,7 +18,7 @@ type schemaParser struct {
 	baseDir string
 }
 
-type tempSchema struct {
+type api struct {
 	Method      string
 	Path        string
 	Status      int
@@ -34,45 +34,22 @@ func SchemaFile(fn string) (schemas []*Schema, err error) {
 	}
 
 	defer f.Close()
-
 	dir := path.Dir(fn)
+	return readSchema(f, dir)
+}
 
-	temps, err := SchemaReader(f, dir)
+func SchemaReader(r io.Reader) (schemas []*Schema, err error) {
+	dir, err := os.Getwd()
 	if err != nil {
 		return nil, err
 	}
 
-	// Combine duplicate Method Paths into same route that has multiple responses
-	m := make(map[string]*Schema)
-	for _, t := range temps {
-		key := fmt.Sprintf("%s:%s", t.Method, t.Path)
-		resp := Response{
-			Status:      t.Status,
-			ContentType: t.ContentType,
-			Body:        t.Body,
-		}
-
-		if schema, ok := m[key]; ok {
-			schema.Responses = append(schema.Responses, resp)
-		} else {
-			m[key] = &Schema{
-				Method:    t.Method,
-				Path:      t.Path,
-				Responses: []Response{resp},
-			}
-		}
-	}
-
-	for _, s := range m {
-		schemas = append(schemas, s)
-	}
-
-	return schemas, nil
+	return readSchema(r, dir)
 }
 
 // SchemaReader parses an API schema.
-func SchemaReader(r io.Reader, dir string) ([]*tempSchema, error) {
-	var schemas []*tempSchema
+func readSchema(r io.Reader, dir string) ([]*Schema, error) {
+	var apis []*api
 	sp := &schemaParser{dir}
 
 	scanner := bufio.NewScanner(r)
@@ -92,12 +69,12 @@ func SchemaReader(r io.Reader, dir string) ([]*tempSchema, error) {
 				continue
 			}
 
-			schema, err := sp.parse(line, lineNum)
+			api, err := sp.parse(line, lineNum)
 			if err != nil {
 				return nil, err
 			}
-			schemas = append(schemas, schema)
-			if len(schema.Body) == 0 {
+			apis = append(apis, api)
+			if len(api.Body) == 0 {
 				state = stateBody
 				body = []byte{}
 			} else {
@@ -109,11 +86,11 @@ func SchemaReader(r io.Reader, dir string) ([]*tempSchema, error) {
 			trim := strings.TrimSpace(line)
 			if len(trim) > 0 || multiLine {
 				if trim == `"""` {
-					if multiLine == false {
+					if !multiLine {
 						multiLine = true
 					} else {
-						if len(schemas) > 0 {
-							schemas[len(schemas)-1].Body = body
+						if len(apis) > 0 {
+							apis[len(apis)-1].Body = body
 							body = []byte{}
 						}
 						state = stateNone
@@ -123,8 +100,8 @@ func SchemaReader(r io.Reader, dir string) ([]*tempSchema, error) {
 					body = append(body, line...)
 				}
 			} else {
-				if len(body) > 0 && len(schemas) > 0 {
-					schemas[len(schemas)-1].Body = body
+				if len(body) > 0 && len(apis) > 0 {
+					apis[len(apis)-1].Body = body
 					body = []byte{}
 				}
 				state = stateNone
@@ -135,14 +112,14 @@ func SchemaReader(r io.Reader, dir string) ([]*tempSchema, error) {
 		}
 	}
 
-	if len(body) > 0 && len(schemas) > 0 {
-		schemas[len(schemas)-1].Body = body
+	if len(body) > 0 && len(apis) > 0 {
+		apis[len(apis)-1].Body = body
 	}
 
-	return schemas, nil
+	return generateSchemas(apis), nil
 }
 
-func (sp *schemaParser) parse(line string, lineNum int) (*tempSchema, error) {
+func (sp *schemaParser) parse(line string, lineNum int) (*api, error) {
 	tokens := strings.Split(line, " ")
 	tlen := len(tokens)
 	if tlen < 3 {
@@ -189,14 +166,14 @@ func (sp *schemaParser) parse(line string, lineNum int) (*tempSchema, error) {
 		}
 	}
 
-	schema := &tempSchema{}
-	schema.Method = strings.ToUpper(tokens[0])
-	schema.Status, _ = strconv.Atoi(tokens[1])
-	schema.Path = sp.cleanPath(tokens[2])
-	schema.ContentType = contentType
-	schema.Body = body
+	api := &api{}
+	api.Method = strings.ToUpper(tokens[0])
+	api.Status, _ = strconv.Atoi(tokens[1])
+	api.Path = sp.cleanPath(tokens[2])
+	api.ContentType = contentType
+	api.Body = body
 
-	return schema, nil
+	return api, nil
 }
 
 func (sp *schemaParser) isHTTPMethod(m string) bool {
@@ -233,4 +210,34 @@ func (sp *schemaParser) cleanPath(p string) string {
 	}
 
 	return strings.Join(uri, "/")
+}
+
+// Combine duplicate Method Paths into same route that has multiple responses
+func generateSchemas(apis []*api) []*Schema {
+	var schemas []*Schema
+	m := make(map[string]*Schema)
+	for _, t := range apis {
+		key := fmt.Sprintf("%s:%s", t.Method, t.Path)
+		resp := Response{
+			Status:      t.Status,
+			ContentType: t.ContentType,
+			Body:        t.Body,
+		}
+
+		if schema, ok := m[key]; ok {
+			schema.Responses = append(schema.Responses, resp)
+		} else {
+			m[key] = &Schema{
+				Method:    t.Method,
+				Path:      t.Path,
+				Responses: []Response{resp},
+			}
+		}
+	}
+
+	for _, s := range m {
+		schemas = append(schemas, s)
+	}
+
+	return schemas
 }

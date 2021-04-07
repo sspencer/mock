@@ -25,7 +25,6 @@ type Server struct {
 func NewServer(port int, logRequests bool, delay time.Duration) *Server {
 
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("Inside new server handler")
 		w.WriteHeader(http.StatusNotImplemented)
 	})
 
@@ -57,12 +56,12 @@ func NewServer(port int, logRequests bool, delay time.Duration) *Server {
 func (s *Server) Watch(incomingSchemas chan []*Schema) {
 	go func() {
 		for {
-			s.updateSchema(<-incomingSchemas)
+			s.WatchSchema(<-incomingSchemas)
 		}
 	}()
 }
 
-func (s *Server) updateSchema(schemas []*Schema) {
+func (s *Server) WatchSchema(schemas []*Schema) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -82,7 +81,6 @@ func (s *Server) updateSchema(schemas []*Schema) {
 	}
 
 	log.Println("--------------------------------")
-
 	s.Handler = router
 }
 

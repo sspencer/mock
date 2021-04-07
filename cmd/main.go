@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -22,7 +24,7 @@ func main() {
 	delayPtr := flag.String("d", "0ms", "delay server responses")
 
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Create a mock HTTP or local file server.\nmock [flags] <schema.api> OR <directory>")
+		fmt.Fprintln(os.Stderr, "Start the mock HTTP server with the API file or <stdin>.\nmock [flags] [input_file]")
 		flag.PrintDefaults()
 	}
 
@@ -30,38 +32,49 @@ func main() {
 
 	fn := flag.Arg(0)
 	if fn == "" {
-		fmt.Fprintln(os.Stderr, "Schema file or local directory must be specified.")
-		os.Exit(1)
+		info, err := os.Stdin.Stat()
+		if err != nil {
+			panic(err)
+		}
+
+		if info.Mode()&os.ModeCharDevice != 0 || info.Size() <= 0 {
+			flag.Usage()
+			os.Exit(1)
+		}
 	}
 
 	delay := time.Duration(0)
 	if *delayPtr != "" {
 		if delay, err = time.ParseDuration(*delayPtr); err != nil {
-			fmt.Fprintln(os.Stderr, "Deplay format error (expecting something like '500ms').")
+			fmt.Fprintln(os.Stderr, "Deplay format error (e.g. '500ms').")
 			os.Exit(1)
 		}
 	}
 
-	fn = filepath.Clean(fn)
+	if fn == "" {
+		mockReaderAPI(bufio.NewReader(os.Stdin), *portPtr, *reqPtr, delay)
+	} else {
+		fn = filepath.Clean(fn)
 
-	fi, err := os.Stat(fn)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+		fi, err := os.Stat(fn)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 
-	switch mode := fi.Mode(); {
-	case mode.IsDir():
-		serveDirectory(fn, *portPtr, delay)
-	case mode.IsRegular():
-		mockAPI(fn, *portPtr, *reqPtr, delay)
+		switch mode := fi.Mode(); {
+		case mode.IsDir():
+			serveDirectory(fn, *portPtr, delay)
+		case mode.IsRegular():
+			mockFileAPI(fn, *portPtr, *reqPtr, delay)
+		}
 	}
 }
 
 func serveDirectory(fn string, port int, delay time.Duration) {
 	fn = strings.Replace(fn, " ", "\\ ", -1)
 
-	fmt.Printf("Serving %q on localhost:%d\n", fn, port)
+	log.Printf("Serving %q on localhost:%d\n", fn, port)
 	panic(http.ListenAndServe(fmt.Sprintf(":%d", port), delayer(delay, http.FileServer(http.Dir(fn)))))
 }
 
@@ -74,7 +87,21 @@ func delayer(delay time.Duration, h http.Handler) http.Handler {
 	})
 }
 
-func mockAPI(fn string, port int, dbg bool, delay time.Duration) {
+func mockReaderAPI(reader io.Reader, port int, dbg bool, delay time.Duration) {
+	log.Printf("Serving MOCK API on localhost:%d\n", port)
+
+	schemas, err := mock.SchemaReader(reader)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err.Error())
+		os.Exit(1)
+	}
+
+	server := mock.NewServer(port, dbg, delay)
+	server.WatchSchema(schemas)
+	panic(server.ListenAndServe())
+}
+
+func mockFileAPI(fn string, port int, dbg bool, delay time.Duration) {
 	log.Printf("Serving MOCK API on localhost:%d\n", port)
 
 	server := mock.NewServer(port, dbg, delay)
