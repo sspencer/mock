@@ -15,7 +15,7 @@ Thought it would be fun to recreate something similar with a less verbose API sy
 
 ## Run / Develop
 
-    mock [flags] <schema.api> OR <directory>
+    mock [flags] [input_file]
       -d string
             delay server responses (default "0ms")
       -p int
@@ -23,8 +23,12 @@ Thought it would be fun to recreate something similar with a less verbose API sy
       -r    
             log the request
 
-1. Mock API: `mock examples/user.api`
+1. Mock API: `mock examples/user.api` or `cat my.api | mock`
 2. Serve Directory: `mock .`
+3. Each flag can be specified through ENV Vars:
+   * `MOCK_PORT`:  ex/ "8080"
+   * `MOCK_LOG`:   ex/ "1" or "true" -- bool type value
+   * `MOCK_DELAY`: ex/ "1500ms"
 
 If you're interested in developing `mock` *itself*, simply start `mock` with:
 
@@ -111,3 +115,4 @@ Include longer inline responses that can include empty lines by using triple quo
 - [x] path variables
 - [x] autoload file changes
 - [x] multiple responses per Method / Path
+- [x] dockerized

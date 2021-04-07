@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,9 +20,9 @@ import (
 
 func main() {
 	var err error
-	portPtr := flag.Int("p", 8080, "port to run server on")
-	reqPtr := flag.Bool("r", false, "log the request")
-	delayPtr := flag.String("d", "0ms", "delay server responses")
+	portPtr := flag.Int("p", envInt("MOCK_PORT", 8080), "port to run server on")
+	reqPtr := flag.Bool("r", envBool("MOCK_LOG", false), "log the request")
+	delayPtr := flag.String("d", env("MOCK_DELAY", "0ms"), "delay server responses")
 
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Start the mock HTTP server with the API file or <stdin>.\nmock [flags] [input_file]")
@@ -131,7 +132,7 @@ func watch(fn string, parser func()) {
 					return
 				}
 
-				if event.Op & fsnotify.Write == fsnotify.Write && path.Base(fn) == path.Base(event.Name) {
+				if event.Op&fsnotify.Write == fsnotify.Write && path.Base(fn) == path.Base(event.Name) {
 					parser()
 				}
 			case err, ok := <-watcher.Errors:
@@ -158,4 +159,38 @@ func schemaParser(fn string, ch chan []*mock.Schema) func() {
 			ch <- schemas
 		}
 	}
+}
+
+func env(key, defaultValue string) string {
+	val, ok := os.LookupEnv(key)
+	if !ok {
+		return defaultValue
+	}
+	return val
+}
+
+func envInt(key string, defaultValue int) int {
+	val, ok := os.LookupEnv(key)
+	if !ok {
+		return defaultValue
+	}
+
+	if i, err := strconv.Atoi(val); err == nil {
+		return i
+	}
+
+	return defaultValue
+}
+
+func envBool(key string, defaultValue bool) bool {
+	val, ok := os.LookupEnv(key)
+	if !ok {
+		return defaultValue
+	}
+
+	if b, err := strconv.ParseBool(val); err == nil {
+		return b
+	}
+
+	return defaultValue
 }
