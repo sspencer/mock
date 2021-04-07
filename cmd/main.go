@@ -131,8 +131,7 @@ func watch(fn string, parser func()) {
 					return
 				}
 
-				if event.Op&fsnotify.Write == fsnotify.Write && path.Base(fn) == path.Base(event.Name) {
-					//log.Println("modified file:", event.Name)
+				if event.Op & fsnotify.Write == fsnotify.Write && path.Base(fn) == path.Base(event.Name) {
 					parser()
 				}
 			case err, ok := <-watcher.Errors:
