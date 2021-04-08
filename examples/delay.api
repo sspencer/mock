@@ -1,0 +1,17 @@
+delay: 1000ms
+GET 200 /users/1
+{ "success": true, "id": 1, name: "One Thousand Millis" }
+
+GET 200 /users/1
+{ "success": true, "id": 1, name: "One No Wait" }
+
+delay: 2sad
+GET 20a0 /users/2
+{ "success": true, "id": 2, nmae "Two Seconds" }
+
+GET 200 /users/0
+{ "success": true, "id": 2, nmae "No Delay" }
+
+delay: 500ms
+GET 200 /users/3
+{ "success": true, "id": 2, nmae "Zorr Oh. Five" }

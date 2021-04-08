@@ -21,7 +21,7 @@ type Server struct {
 	sync.Mutex
 }
 
-// NewServer creates a http server running on given port with handlers based on given schema.
+// NewServer creates a http server running on given port with handlers based on given routes.
 func NewServer(port int, logRequests bool, delay time.Duration) *Server {
 
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -52,16 +52,16 @@ func NewServer(port int, logRequests bool, delay time.Duration) *Server {
 	}
 }
 
-// Watch for schema changes (user edits api file)
-func (s *Server) Watch(incomingSchemas chan []*Schema) {
+// Watch for route changes (user edits api file)
+func (s *Server) Watch(incomingRoutes chan []*Route) {
 	go func() {
 		for {
-			s.WatchSchema(<-incomingSchemas)
+			s.WatchRoutes(<-incomingRoutes)
 		}
 	}()
 }
 
-func (s *Server) WatchSchema(schemas []*Schema) {
+func (s *Server) WatchRoutes(routes []*Route) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -69,26 +69,17 @@ func (s *Server) WatchSchema(schemas []*Schema) {
 	router.MethodNotAllowed = s.notAllowed
 	router.NotFound = s.notFound
 
-	log.Println("Updating router with new schema:")
+	log.Println("Updating router with new routes:")
 
-	for _, x := range schemas {
+	for _, x := range routes {
 		log.Printf("    adding method %-8s %s\n", x.Method, x.Path)
 		if s.logRequests {
-			router.Handle(x.Method, x.Path, delayer(s.delay, requestLogger(x.Handler(s.logger))))
+			router.Handle(x.Method, x.Path, requestLogger(x.Handler(s.logger)))
 		} else {
-			router.Handle(x.Method, x.Path, delayer(s.delay, x.Handler(s.logger)))
+			router.Handle(x.Method, x.Path, x.Handler(s.logger))
 		}
 	}
 
 	log.Println("--------------------------------")
 	s.Handler = router
-}
-
-func delayer(delay time.Duration, next httprouter.Handle) httprouter.Handle {
-	return func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		if delay > 0 {
-			time.Sleep(delay)
-		}
-		next(w, r, p)
-	}
 }

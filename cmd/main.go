@@ -91,14 +91,14 @@ func delayer(delay time.Duration, h http.Handler) http.Handler {
 func mockReaderAPI(reader io.Reader, port int, dbg bool, delay time.Duration) {
 	log.Printf("Serving MOCK API on localhost:%d\n", port)
 
-	schemas, err := mock.SchemaReader(reader)
+	routes, err := mock.RoutesReader(reader, delay)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err.Error())
 		os.Exit(1)
 	}
 
 	server := mock.NewServer(port, dbg, delay)
-	server.WatchSchema(schemas)
+	server.WatchRoutes(routes)
 	panic(server.ListenAndServe())
 }
 
@@ -106,10 +106,10 @@ func mockFileAPI(fn string, port int, dbg bool, delay time.Duration) {
 	log.Printf("Serving MOCK API on localhost:%d\n", port)
 
 	server := mock.NewServer(port, dbg, delay)
-	schemaChannel := make(chan []*mock.Schema)
-	server.Watch(schemaChannel)
+	routesCh := make(chan []*mock.Route)
+	server.Watch(routesCh)
 
-	watch(fn, schemaParser(fn, schemaChannel))
+	watch(fn, routesParser(fn, delay, routesCh))
 
 	panic(server.ListenAndServe())
 }
@@ -150,13 +150,13 @@ func watch(fn string, parser func()) {
 	}
 }
 
-func schemaParser(fn string, ch chan []*mock.Schema) func() {
+func routesParser(fn string, delay time.Duration, ch chan []*mock.Route) func() {
 	return func() {
-		schemas, err := mock.SchemaFile(fn)
+		routes, err := mock.RoutesFile(fn, delay)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: %s\n", err.Error())
 		} else {
-			ch <- schemas
+			ch <- routes
 		}
 	}
 }

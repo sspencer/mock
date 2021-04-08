@@ -12,22 +12,24 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 )
 
-type schemaParser struct {
-	baseDir string
+type routeParser struct {
+	baseDir      string
+	defaultDelay time.Duration
+	delay        time.Duration
 }
 
-type api struct {
-	Method      string
-	Path        string
-	Status      int
-	ContentType string
-	Body        []byte
-}
+type parseState int
 
-// SchemaFile parses an API schema file.
-func SchemaFile(fn string) (schemas []*Schema, err error) {
+const (
+	stateNone parseState = iota
+	stateBody
+)
+
+// RoutesFile parses an API file.
+func RoutesFile(fn string, delay time.Duration) (routes []*Route, err error) {
 	f, err := os.Open(fn)
 	if err != nil {
 		return
@@ -35,22 +37,22 @@ func SchemaFile(fn string) (schemas []*Schema, err error) {
 
 	defer f.Close()
 	dir := path.Dir(fn)
-	return readSchema(f, dir)
+	return parseReader(f, dir, delay)
 }
 
-func SchemaReader(r io.Reader) (schemas []*Schema, err error) {
+func RoutesReader(r io.Reader, delay time.Duration) (routes []*Route, err error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		return nil, err
 	}
 
-	return readSchema(r, dir)
+	return parseReader(r, dir, delay)
 }
 
-// SchemaReader parses an API schema.
-func readSchema(r io.Reader, dir string) ([]*Schema, error) {
-	var apis []*api
-	sp := &schemaParser{dir}
+// parseReader parses the incoming routes file
+func parseReader(r io.Reader, dir string, delay time.Duration) ([]*Route, error) {
+	var routes []*route
+	sp := &routeParser{baseDir: dir, defaultDelay: delay, delay: delay}
 
 	scanner := bufio.NewScanner(r)
 	state := stateNone
@@ -69,16 +71,21 @@ func readSchema(r io.Reader, dir string) ([]*Schema, error) {
 				continue
 			}
 
-			api, err := sp.parse(line, lineNum)
+			route, err := sp.parse(line, lineNum)
 			if err != nil {
 				return nil, err
 			}
-			apis = append(apis, api)
-			if len(api.Body) == 0 {
+
+			if route == nil {
+				continue
+			}
+
+			routes = append(routes, route)
+			if len(route.Body) == 0 {
 				state = stateBody
 				body = []byte{}
 			} else {
-				// schema had optional @file response, no Response expected
+				// route has optional @file response, no Response expected
 				state = stateNone
 			}
 
@@ -89,8 +96,8 @@ func readSchema(r io.Reader, dir string) ([]*Schema, error) {
 					if !multiLine {
 						multiLine = true
 					} else {
-						if len(apis) > 0 {
-							apis[len(apis)-1].Body = body
+						if len(routes) > 0 {
+							routes[len(routes)-1].Body = body
 							body = []byte{}
 						}
 						state = stateNone
@@ -100,8 +107,8 @@ func readSchema(r io.Reader, dir string) ([]*Schema, error) {
 					body = append(body, line...)
 				}
 			} else {
-				if len(body) > 0 && len(apis) > 0 {
-					apis[len(apis)-1].Body = body
+				if len(body) > 0 && len(routes) > 0 {
+					routes[len(routes)-1].Body = body
 					body = []byte{}
 				}
 				state = stateNone
@@ -112,14 +119,21 @@ func readSchema(r io.Reader, dir string) ([]*Schema, error) {
 		}
 	}
 
-	if len(body) > 0 && len(apis) > 0 {
-		apis[len(apis)-1].Body = body
+	if len(body) > 0 && len(routes) > 0 {
+		routes[len(routes)-1].Body = body
 	}
 
-	return generateSchemas(apis), nil
+	return mergeRoutes(routes), nil
 }
 
-func (sp *schemaParser) parse(line string, lineNum int) (*api, error) {
+func (sp *routeParser) parse(line string, lineNum int) (*route, error) {
+	ok, err := sp.setVariable(line)
+	if err != nil {
+		return nil, fmt.Errorf("invalid duration line %d: %s", lineNum, line)
+	} else if ok {
+		return nil, nil
+	}
+
 	tokens := strings.Split(line, " ")
 	tlen := len(tokens)
 	if tlen < 3 {
@@ -166,17 +180,20 @@ func (sp *schemaParser) parse(line string, lineNum int) (*api, error) {
 		}
 	}
 
-	api := &api{}
-	api.Method = strings.ToUpper(tokens[0])
-	api.Status, _ = strconv.Atoi(tokens[1])
-	api.Path = sp.cleanPath(tokens[2])
-	api.ContentType = contentType
-	api.Body = body
+	r := &route{}
+	r.Method = strings.ToUpper(tokens[0])
+	r.Status, _ = strconv.Atoi(tokens[1])
+	r.Path = sp.cleanPath(tokens[2])
+	r.ContentType = contentType
+	r.Body = body
+	r.Delay = sp.delay
 
-	return api, nil
+	sp.delay = sp.defaultDelay
+
+	return r, nil
 }
 
-func (sp *schemaParser) isHTTPMethod(m string) bool {
+func (sp *routeParser) isHTTPMethod(m string) bool {
 	switch strings.ToUpper(m) {
 	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch, http.MethodHead, http.MethodOptions:
 		return true
@@ -185,7 +202,7 @@ func (sp *schemaParser) isHTTPMethod(m string) bool {
 	}
 }
 
-func (sp *schemaParser) isHTTPStatusCode(code string) bool {
+func (sp *routeParser) isHTTPStatusCode(code string) bool {
 	var n int
 	var err error
 
@@ -196,13 +213,12 @@ func (sp *schemaParser) isHTTPStatusCode(code string) bool {
 	return n >= http.StatusContinue && n <= http.StatusNetworkAuthenticationRequired
 }
 
-func (sp *schemaParser) isHTTPPath(p string) bool {
-	// just check for leading "/"
-	// everything else will be encoded later
+func (sp *routeParser) isHTTPPath(p string) bool {
+	// just check for leading "/", everything else is encoded later
 	return p[0:1] == "/"
 }
 
-func (sp *schemaParser) cleanPath(p string) string {
+func (sp *routeParser) cleanPath(p string) string {
 	items := strings.Split(p, "/")
 	uri := []string{}
 	for _, i := range items {
@@ -212,32 +228,16 @@ func (sp *schemaParser) cleanPath(p string) string {
 	return strings.Join(uri, "/")
 }
 
-// Combine duplicate Method Paths into same route that has multiple responses
-func generateSchemas(apis []*api) []*Schema {
-	var schemas []*Schema
-	m := make(map[string]*Schema)
-	for _, t := range apis {
-		key := fmt.Sprintf("%s:%s", t.Method, t.Path)
-		resp := Response{
-			Status:      t.Status,
-			ContentType: t.ContentType,
-			Body:        t.Body,
+func (sp *routeParser) setVariable(line string) (bool, error) {
+	if strings.HasPrefix(line, "delay:") {
+		delay, err := time.ParseDuration(strings.TrimSpace(line[6:]))
+		if err != nil {
+			return false, err
 		}
 
-		if schema, ok := m[key]; ok {
-			schema.Responses = append(schema.Responses, resp)
-		} else {
-			m[key] = &Schema{
-				Method:    t.Method,
-				Path:      t.Path,
-				Responses: []Response{resp},
-			}
-		}
+		sp.delay = delay
+		return true, nil
 	}
 
-	for _, s := range m {
-		schemas = append(schemas, s)
-	}
-
-	return schemas
+	return false, nil
 }
