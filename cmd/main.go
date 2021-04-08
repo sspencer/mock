@@ -8,13 +8,11 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/sspencer/mock"
 )
 
@@ -47,7 +45,7 @@ func main() {
 	delay := time.Duration(0)
 	if *delayPtr != "" {
 		if delay, err = time.ParseDuration(*delayPtr); err != nil {
-			fmt.Fprintln(os.Stderr, "Deplay format error (e.g. '500ms').")
+			fmt.Fprintln(os.Stderr, "Delay format error (e.g. '500ms').")
 			os.Exit(1)
 		}
 	}
@@ -97,7 +95,7 @@ func mockReaderAPI(reader io.Reader, port int, dbg bool, delay time.Duration) {
 		os.Exit(1)
 	}
 
-	server := mock.NewServer(port, dbg, delay)
+	server := mock.NewServer(port, dbg)
 	server.WatchRoutes(routes)
 	panic(server.ListenAndServe())
 }
@@ -105,60 +103,9 @@ func mockReaderAPI(reader io.Reader, port int, dbg bool, delay time.Duration) {
 func mockFileAPI(fn string, port int, dbg bool, delay time.Duration) {
 	log.Printf("Serving MOCK API on localhost:%d\n", port)
 
-	server := mock.NewServer(port, dbg, delay)
-	routesCh := make(chan []*mock.Route)
-	server.Watch(routesCh)
-
-	watch(fn, routesParser(fn, delay, routesCh))
-
+	server := mock.NewServer(port, dbg)
+	server.WatchFile(fn, delay)
 	panic(server.ListenAndServe())
-}
-
-func watch(fn string, parser func()) {
-
-	// parse file at start
-	parser()
-
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	go func() {
-		for {
-			select {
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-
-				if event.Op&fsnotify.Write == fsnotify.Write && path.Base(fn) == path.Base(event.Name) {
-					parser()
-				}
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				log.Println("Error watching file:", err)
-			}
-		}
-	}()
-
-	err = watcher.Add(filepath.Dir(fn))
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
-func routesParser(fn string, delay time.Duration, ch chan []*mock.Route) func() {
-	return func() {
-		routes, err := mock.RoutesFile(fn, delay)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR: %s\n", err.Error())
-		} else {
-			ch <- routes
-		}
-	}
 }
 
 func env(key, defaultValue string) string {

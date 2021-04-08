@@ -2,12 +2,15 @@ package mock
 
 import (
 	"fmt"
+	"github.com/fsnotify/fsnotify"
+	"github.com/julienschmidt/httprouter"
 	"log"
 	"net/http"
+	"os"
+	"path"
+	"path/filepath"
 	"sync"
 	"time"
-
-	"github.com/julienschmidt/httprouter"
 )
 
 // Server is something
@@ -16,13 +19,12 @@ type Server struct {
 	notFound    http.HandlerFunc
 	notAllowed  http.HandlerFunc
 	logRequests bool
-	delay       time.Duration
 	logger      responseLogger
 	sync.Mutex
 }
 
 // NewServer creates a http server running on given port with handlers based on given routes.
-func NewServer(port int, logRequests bool, delay time.Duration) *Server {
+func NewServer(port int, logRequests bool) *Server {
 
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotImplemented)
@@ -46,7 +48,6 @@ func NewServer(port int, logRequests bool, delay time.Duration) *Server {
 		},
 		notAllowed:  notAllowed,
 		notFound:    notFound,
-		delay:       delay,
 		logRequests: logRequests,
 		logger:      logger,
 	}
@@ -82,4 +83,58 @@ func (s *Server) WatchRoutes(routes []*Route) {
 
 	log.Println("--------------------------------")
 	s.Handler = router
+}
+
+func (s *Server) WatchFile(fn string, delay time.Duration) {
+	routesCh := make(chan []*Route)
+	s.Watch(routesCh)
+
+	watchFile(fn, routesParser(fn, delay, routesCh))
+}
+
+func watchFile(fn string, parser func()) {
+
+	// parse file at start
+	parser()
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	go func() {
+		for {
+			select {
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+
+				if event.Op&fsnotify.Write == fsnotify.Write && path.Base(fn) == path.Base(event.Name) {
+					parser()
+				}
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				log.Println("Error watching file:", err)
+			}
+		}
+	}()
+
+	err = watcher.Add(filepath.Dir(fn))
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func routesParser(fn string, delay time.Duration, ch chan []*Route) func() {
+	return func() {
+		routes, err := RoutesFile(fn, delay)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR: %s\n", err.Error())
+		} else {
+			ch <- routes
+		}
+	}
 }

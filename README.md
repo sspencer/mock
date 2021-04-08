@@ -1,6 +1,6 @@
 # mock
 
-Mock creates a HTTP server with *mocked* routes specified from a local file.  It allows for
+Mock creates an HTTP server with *mocked* routes specified from a local file.  It allows for
 rapid development and testing of (REST) API clients.  The routes are dynamically configured from
 a watched file.
 
@@ -80,7 +80,7 @@ Or include a large response with a local file by prepending it with an @ symbol:
 
 The same Method and Path may now be specified.  Each duplicate Method / Path adds
 a new response to the entry.  As you request the same API, different responses
-are returned in a round robin fashion.
+are returned in a round-robin fashion.
 
 For example:
 
