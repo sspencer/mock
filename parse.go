@@ -63,11 +63,12 @@ func parseReader(r io.Reader, dir string, delay time.Duration) ([]*Route, error)
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
+		trim := strings.TrimSpace(line)
 
 		switch state {
 		case stateNone:
 			multiLine = false
-			if len(line) == 0 || line[0:1] == "#" {
+			if len(trim) == 0 || line[0:1] == "#" {
 				continue
 			}
 
@@ -76,21 +77,18 @@ func parseReader(r io.Reader, dir string, delay time.Duration) ([]*Route, error)
 				return nil, err
 			}
 
-			if route == nil {
-				continue
-			}
-
-			routes = append(routes, route)
-			if len(route.Body) == 0 {
-				state = stateBody
-				body = []byte{}
-			} else {
-				// route has optional @file response, no Response expected
-				state = stateNone
+			if route != nil {
+				routes = append(routes, route)
+				if len(route.Body) == 0 {
+					state = stateBody
+					body = []byte{}
+				} else {
+					// route has optional @file response, no Response expected
+					state = stateNone
+				}
 			}
 
 		case stateBody:
-			trim := strings.TrimSpace(line)
 			if len(trim) > 0 || multiLine {
 				if trim == `"""` {
 					if !multiLine {
@@ -127,7 +125,7 @@ func parseReader(r io.Reader, dir string, delay time.Duration) ([]*Route, error)
 }
 
 func (sp *routeParser) parse(line string, lineNum int) (*route, error) {
-	ok, err := sp.setVariable(line)
+	ok, err := sp.parseVariable(line)
 	if err != nil {
 		return nil, fmt.Errorf("invalid duration line %d: %s", lineNum, line)
 	} else if ok {
@@ -228,7 +226,7 @@ func (sp *routeParser) cleanPath(p string) string {
 	return strings.Join(uri, "/")
 }
 
-func (sp *routeParser) setVariable(line string) (bool, error) {
+func (sp *routeParser) parseVariable(line string) (bool, error) {
 	if strings.HasPrefix(line, "delay:") {
 		delay, err := time.ParseDuration(strings.TrimSpace(line[6:]))
 		if err != nil {

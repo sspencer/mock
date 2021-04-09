@@ -53,15 +53,7 @@ func NewServer(port int, logRequests bool) *Server {
 	}
 }
 
-// Watch for route changes (user edits api file)
-func (s *Server) Watch(incomingRoutes chan []*Route) {
-	go func() {
-		for {
-			s.WatchRoutes(<-incomingRoutes)
-		}
-	}()
-}
-
+//WatchRoutes sets all routes handled by the server
 func (s *Server) WatchRoutes(routes []*Route) {
 	s.Lock()
 	defer s.Unlock()
@@ -70,7 +62,7 @@ func (s *Server) WatchRoutes(routes []*Route) {
 	router.MethodNotAllowed = s.notAllowed
 	router.NotFound = s.notFound
 
-	log.Println("Updating router with new routes:")
+	log.Println("Updating server with new routes:")
 
 	for _, x := range routes {
 		log.Printf("    adding method %-8s %s\n", x.Method, x.Path)
@@ -85,6 +77,7 @@ func (s *Server) WatchRoutes(routes []*Route) {
 	s.Handler = router
 }
 
+//WatchFile watches the API file for changes, reloading routes upon save
 func (s *Server) WatchFile(fn string, delay time.Duration) {
 	routesCh := make(chan []*Route)
 	s.Watch(routesCh)
@@ -92,11 +85,22 @@ func (s *Server) WatchFile(fn string, delay time.Duration) {
 	watchFile(fn, routesParser(fn, delay, routesCh))
 }
 
+// Watch for route changes (user edits api file)
+func (s *Server) Watch(incomingRoutes chan []*Route) {
+	go func() {
+		for {
+			s.WatchRoutes(<-incomingRoutes)
+		}
+	}()
+}
+
+// watchFile monitors specified file, calling the parser function when file changes
 func watchFile(fn string, parser func()) {
 
-	// parse file at start
+	// initially parse file at start up
 	parser()
 
+	// watch file for changes calling parser() again on change
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal(err)
@@ -128,6 +132,7 @@ func watchFile(fn string, parser func()) {
 	}
 }
 
+// routesParser is the "parser()" function passed into watchFile()
 func routesParser(fn string, delay time.Duration, ch chan []*Route) func() {
 	return func() {
 		routes, err := RoutesFile(fn, delay)
