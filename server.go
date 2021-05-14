@@ -2,8 +2,6 @@ package mock
 
 import (
 	"fmt"
-	"github.com/fsnotify/fsnotify"
-	"github.com/julienschmidt/httprouter"
 	"log"
 	"net/http"
 	"os"
@@ -11,6 +9,9 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
+	"github.com/julienschmidt/httprouter"
 )
 
 // Server is something
