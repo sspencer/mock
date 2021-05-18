@@ -5,13 +5,13 @@ GET 200 /users/1
 GET 200 /users/1
 { "success": true, "id": 1, name: "One No Wait" }
 
-delay: 2sad
-GET 20a0 /users/2
-{ "success": true, "id": 2, nmae "Two Seconds" }
+delay: 2s
+GET 200 /users/2
+{ "success": true, "id": 2, name "Two Seconds" }
 
 GET 200 /users/0
-{ "success": true, "id": 2, nmae "No Delay" }
+{ "success": true, "id": 2, name "No Delay" }
 
 delay: 500ms
 GET 200 /users/3
-{ "success": true, "id": 2, nmae "Zorr Oh. Five" }
+{ "success": true, "id": 2, name "Zor Oh. Five" }
