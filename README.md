@@ -116,3 +116,8 @@ Include longer inline responses that can include empty lines by using triple quo
 - [x] autoload file changes
 - [x] multiple responses per Method / Path
 - [x] dockerized
+
+## Ideas
+ - [ ] :auto_id and :auto_uuid path variables in response to auto increment (or randomly generate) ids
+ - [ ] specify enumerated values for path variables and randomly choose value in response :rand_state
+ 
