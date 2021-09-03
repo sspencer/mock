@@ -61,8 +61,8 @@ Augmented chord - sharp the 5th note of the scale
 
 GET 200 /status
 {
-    "version": "1.0",
-    "sha": "cafe1234"    
+    "status": "ok",
+    "uptime": "13:33  up 8 days, 33 mins"
 }
 
 GET 200 /index2.html "text/html; charset=utf-8"
