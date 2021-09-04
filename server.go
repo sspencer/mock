@@ -78,12 +78,12 @@ func (s *Server) WatchRoutes(routes []*Route) {
 	s.Handler = router
 }
 
-//WatchFile watches the API file for changes, reloading routes upon save
-func (s *Server) WatchFile(fn string, delay time.Duration) {
+//WatchFiles watches the API file(s) for changes, reloading routes upon save
+func (s *Server) WatchFiles(files []string, delay time.Duration) {
 	routesCh := make(chan []*Route)
-	s.Watch(routesCh)
 
-	watchFile(fn, routesParser(fn, delay, routesCh))
+	s.Watch(routesCh)
+	watchFiles(files, routesParser(files, delay, routesCh))
 }
 
 // Watch for route changes (user edits api file)
@@ -96,7 +96,7 @@ func (s *Server) Watch(incomingRoutes chan []*Route) {
 }
 
 // watchFile monitors specified file, calling the parser function when file changes
-func watchFile(fn string, parser func()) {
+func watchFiles(files []string, parser func()) {
 
 	// initially parse file at start up
 	parser()
@@ -107,6 +107,11 @@ func watchFile(fn string, parser func()) {
 		log.Fatal(err)
 	}
 
+	fileMap := make(map[string]bool)
+	for _, fn := range files {
+		fileMap[path.Base(fn)] = true
+	}
+
 	go func() {
 		for {
 			select {
@@ -115,7 +120,7 @@ func watchFile(fn string, parser func()) {
 					return
 				}
 
-				if event.Op&fsnotify.Write == fsnotify.Write && path.Base(fn) == path.Base(event.Name) {
+				if event.Op&fsnotify.Write == fsnotify.Write && fileMap[path.Base(event.Name)] == true {
 					parser()
 				}
 			case err, ok := <-watcher.Errors:
@@ -127,16 +132,18 @@ func watchFile(fn string, parser func()) {
 		}
 	}()
 
-	err = watcher.Add(filepath.Dir(fn))
-	if err != nil {
-		log.Fatal(err)
+	for _, fn := range files {
+		err = watcher.Add(filepath.Dir(fn))
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 }
 
 // routesParser is the "parser()" function passed into watchFile()
-func routesParser(fn string, delay time.Duration, ch chan []*Route) func() {
+func routesParser(files []string, delay time.Duration, ch chan []*Route) func() {
 	return func() {
-		routes, err := RoutesFile(fn, delay)
+		routes, err := RoutesFiles(files, delay)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: %s\n", err.Error())
 		} else {

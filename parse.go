@@ -17,6 +17,8 @@ import (
 
 type routeParser struct {
 	baseDir      string
+	fileName     string
+	routes       []*route
 	defaultDelay time.Duration
 	delay        time.Duration
 }
@@ -28,32 +30,51 @@ const (
 	stateBody
 )
 
-// RoutesFile parses an API file.
-func RoutesFile(fn string, delay time.Duration) (routes []*Route, err error) {
-	f, err := os.Open(fn)
-	if err != nil {
-		return
-	}
-
-	defer f.Close()
-	dir := path.Dir(fn)
-	return parseReader(f, dir, delay)
-}
-
 func RoutesReader(r io.Reader, delay time.Duration) (routes []*Route, err error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		return nil, err
 	}
 
-	return parseReader(r, dir, delay)
+	sp := &routeParser{baseDir: dir, defaultDelay: delay, delay: delay}
+	if err = sp.parseReader(r); err != nil {
+		return nil, err
+	}
+
+	return mergeRoutes(sp.routes), nil
 }
 
-// parseReader parses the incoming routes file
-func parseReader(r io.Reader, dir string, delay time.Duration) ([]*Route, error) {
-	var routes []*route
-	sp := &routeParser{baseDir: dir, defaultDelay: delay, delay: delay}
+// RoutesFiles parses API file(s).
+func RoutesFiles(files []string, delay time.Duration) ([]*Route, error) {
+	sp := &routeParser{defaultDelay: delay, delay: delay}
 
+	for _, fn := range files {
+		err := sp.parseFile(fn)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return mergeRoutes(sp.routes), nil
+}
+
+// parseFile parses the incoming routes from a file
+func (sp *routeParser) parseFile(fn string) error {
+	f, err := os.Open(fn)
+	if err != nil {
+		return err
+	}
+
+	defer f.Close()
+
+	sp.fileName = fn
+	sp.baseDir = path.Dir(fn)
+
+	return sp.parseReader(f)
+}
+
+// parseReader parses the incoming routes from a reader
+func (sp *routeParser) parseReader(r io.Reader) error {
 	scanner := bufio.NewScanner(r)
 	state := stateNone
 
@@ -74,11 +95,11 @@ func parseReader(r io.Reader, dir string, delay time.Duration) ([]*Route, error)
 
 			route, err := sp.parse(line, lineNum)
 			if err != nil {
-				return nil, err
+				return err
 			}
 
 			if route != nil {
-				routes = append(routes, route)
+				sp.routes = append(sp.routes, route)
 				if len(route.Body) == 0 {
 					state = stateBody
 					body = []byte{}
@@ -94,8 +115,8 @@ func parseReader(r io.Reader, dir string, delay time.Duration) ([]*Route, error)
 					if !multiLine {
 						multiLine = true
 					} else {
-						if len(routes) > 0 {
-							routes[len(routes)-1].Body = body
+						if len(sp.routes) > 0 {
+							sp.routes[len(sp.routes)-1].Body = body
 							body = []byte{}
 						}
 						state = stateNone
@@ -105,8 +126,8 @@ func parseReader(r io.Reader, dir string, delay time.Duration) ([]*Route, error)
 					body = append(body, line...)
 				}
 			} else {
-				if len(body) > 0 && len(routes) > 0 {
-					routes[len(routes)-1].Body = body
+				if len(body) > 0 && len(sp.routes) > 0 {
+					sp.routes[len(sp.routes)-1].Body = body
 					body = []byte{}
 				}
 				state = stateNone
@@ -117,11 +138,19 @@ func parseReader(r io.Reader, dir string, delay time.Duration) ([]*Route, error)
 		}
 	}
 
-	if len(body) > 0 && len(routes) > 0 {
-		routes[len(routes)-1].Body = body
+	if len(body) > 0 && len(sp.routes) > 0 {
+		sp.routes[len(sp.routes)-1].Body = body
 	}
 
-	return mergeRoutes(routes), nil
+	return nil
+}
+
+func (sp *routeParser) lineError(msg string, lineNum int, line string) error {
+	if sp.fileName == "" {
+		return fmt.Errorf(msg, lineNum, line)
+	}
+
+	return fmt.Errorf("file %q, "+msg, sp.fileName, lineNum, line)
 }
 
 func (sp *routeParser) parse(line string, lineNum int) (*route, error) {
@@ -135,29 +164,29 @@ func (sp *routeParser) parse(line string, lineNum int) (*route, error) {
 	tokens := strings.Split(line, " ")
 	tlen := len(tokens)
 	if tlen < 3 {
-		return nil, fmt.Errorf("parsing line %d: %s", lineNum, line)
+		return nil, sp.lineError("parsing line %d: %s", lineNum, line)
 	}
 
 	if !sp.isHTTPMethod(tokens[0]) {
-		return nil, fmt.Errorf("invalid http method, line %d: %s", lineNum, line)
+		return nil, sp.lineError("invalid http method, line %d: %s", lineNum, line)
 	}
 
 	if !sp.isHTTPStatusCode(tokens[1]) {
-		return nil, fmt.Errorf("invalid http status code, line %d: %s", lineNum, line)
+		return nil, sp.lineError("invalid http status code, line %d: %s", lineNum, line)
 	}
 
 	if !sp.isHTTPPath(tokens[2]) {
-		return nil, fmt.Errorf("invalid path, line %d: %s", lineNum, line)
+		return nil, sp.lineError("invalid path, line %d: %s", lineNum, line)
 	}
 
 	contentType := "application/json"
-	body := []byte{}
+	var body []byte
 
 	if tlen > 3 {
 		rest := strings.Join(tokens[3:tlen], "")
 		rlen := len(rest)
 		if rlen < 2 {
-			return nil, fmt.Errorf("invalid optional, line %d: %s", lineNum, line)
+			return nil, sp.lineError("invalid optional, line %d: %s", lineNum, line)
 		}
 
 		first := rest[0:1]
@@ -173,7 +202,7 @@ func (sp *routeParser) parse(line string, lineNum int) (*route, error) {
 			contentType = mime.TypeByExtension(path.Ext(fn))
 			if body, err = ioutil.ReadFile(fn); err != nil {
 				fmt.Fprintln(os.Stderr, err.Error())
-				return nil, fmt.Errorf("could not read file, line %d: %s", lineNum, line)
+				return nil, sp.lineError("could not read file, line %d: %s", lineNum, line)
 			}
 		}
 	}
@@ -218,7 +247,7 @@ func (sp *routeParser) isHTTPPath(p string) bool {
 
 func (sp *routeParser) cleanPath(p string) string {
 	items := strings.Split(p, "/")
-	uri := []string{}
+	var uri []string
 	for _, i := range items {
 		uri = append(uri, url.PathEscape(i))
 	}

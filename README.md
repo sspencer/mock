@@ -15,7 +15,7 @@ Thought it would be fun to recreate something similar with a less verbose API sy
 
 ## Run / Develop
 
-    mock [flags] [input_file]
+    mock [flags] [input_file1] [input_file2]
       -d string
             delay server responses (default "0ms")
       -p int
@@ -23,8 +23,8 @@ Thought it would be fun to recreate something similar with a less verbose API sy
       -r    
             log the request
 
-1. Mock API: `mock examples/user.api` or `cat my.api | mock`
-2. Serve Directory: `mock .`
+1. Mock API: `mock examples/user.api` or `cat my.api | mock` or even `mock < my.api`
+2. Serve Directory: `mock .`  NOTE: can't combine serving a directory with serving api files.
 3. Each flag can be specified through ENV Vars:
    * `MOCK_PORT`:  ex/ "8080"
    * `MOCK_LOG`:   ex/ "1" or "true" -- bool type value
@@ -111,6 +111,7 @@ Include longer inline responses that can include empty lines by using triple quo
 ## Features
 
 - [x] easy api specification
+- [x] specify multiple api files from command line
 - [x] include external files
 - [x] path variables
 - [x] autoload file changes
@@ -119,8 +120,7 @@ Include longer inline responses that can include empty lines by using triple quo
 
 ## Ideas
 
-- [ ] handle *more than one* input file OR #include files inline???
-- [ ] basic auth per method (basicauth: user=hello pass=world)
+- [ ] basic auth per method (basic auth: user=hello pass=world)
 - [ ] specify *random* or *sequential* for endpoints with more than 1 response
 - [ ] :auto_id and :auto_uuid path variables in response to auto increment (or randomly generate) ids
 - [ ] specify enumerated values for path variables and randomly choose value in response :rand_state

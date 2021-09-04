@@ -29,8 +29,18 @@ func main() {
 
 	flag.Parse()
 
-	fn := flag.Arg(0)
-	if fn == "" {
+	delay := time.Duration(0)
+	if *delayPtr != "" {
+		if delay, err = time.ParseDuration(*delayPtr); err != nil {
+			fmt.Fprintln(os.Stderr, "Delay format error (e.g. '500ms').")
+			os.Exit(1)
+		}
+	}
+
+	filename := flag.Arg(0)
+
+	if filename == "" {
+		// check for input on stdin
 		info, err := os.Stdin.Stat()
 		if err != nil {
 			panic(err)
@@ -40,32 +50,39 @@ func main() {
 			flag.Usage()
 			os.Exit(1)
 		}
-	}
 
-	delay := time.Duration(0)
-	if *delayPtr != "" {
-		if delay, err = time.ParseDuration(*delayPtr); err != nil {
-			fmt.Fprintln(os.Stderr, "Delay format error (e.g. '500ms').")
-			os.Exit(1)
-		}
-	}
-
-	if fn == "" {
 		mockReaderAPI(bufio.NewReader(os.Stdin), *portPtr, *reqPtr, delay)
 	} else {
-		fn = filepath.Clean(fn)
+		// one or more files specified on command line
+		var files, dirs []string
+		for _, f := range flag.Args() {
+			f = filepath.Clean(f)
 
-		fi, err := os.Stat(fn)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			fi, err := os.Stat(f)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+
+			switch mode := fi.Mode(); {
+			case mode.IsDir():
+				dirs = append(dirs, f)
+				//serveDirectory(f, *portPtr, delay)
+			case mode.IsRegular():
+				files = append(files, f)
+				//mockFileAPI(f, *portPtr, *reqPtr, delay)
+			}
 		}
 
-		switch mode := fi.Mode(); {
-		case mode.IsDir():
-			serveDirectory(fn, *portPtr, delay)
-		case mode.IsRegular():
-			mockFileAPI(fn, *portPtr, *reqPtr, delay)
+		numDirs := len(dirs)
+		numFiles := len(files)
+		if numFiles > 0 && numDirs == 0 {
+			mockAPI(files, *portPtr, *reqPtr, delay)
+		} else if numFiles == 0 && numDirs == 1 {
+			serveDirectory(dirs[0], *portPtr, delay)
+		} else {
+			fmt.Fprintln(os.Stderr, "Only serves one directory, or one or more files")
+			os.Exit(1)
 		}
 	}
 }
@@ -97,15 +114,23 @@ func mockReaderAPI(reader io.Reader, port int, dbg bool, delay time.Duration) {
 
 	server := mock.NewServer(port, dbg)
 	server.WatchRoutes(routes)
-	panic(server.ListenAndServe())
+	err = server.ListenAndServe()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Server address %d already in use\n", port)
+		os.Exit(1)
+	}
 }
 
-func mockFileAPI(fn string, port int, dbg bool, delay time.Duration) {
+func mockAPI(fn []string, port int, dbg bool, delay time.Duration) {
 	log.Printf("Serving MOCK API on localhost:%d\n", port)
 
 	server := mock.NewServer(port, dbg)
-	server.WatchFile(fn, delay)
-	panic(server.ListenAndServe())
+	server.WatchFiles(fn, delay)
+	err := server.ListenAndServe()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Server address %d already in use\n", port)
+		os.Exit(1)
+	}
 }
 
 func env(key, defaultValue string) string {
