@@ -9,7 +9,7 @@ APP_NAME=mock
 APP_MAIN=cmd/main.go
 BINARY=${GOPATH}/bin/${APP_NAME}
 
-all: $(BINARY) fmt vet
+all: fmt vet $(BINARY)
 
 $(BINARY): $(SRC)
 	CGO_ENABLED=0 go build -o ${BINARY} ${APP_MAIN}
@@ -21,7 +21,7 @@ vet:
 	go vet $(PKG)
 
 clean:
-	rm -f ${BINARY}
+	rm -f $(BINARY)
 
 mod:
 	go mod tidy
