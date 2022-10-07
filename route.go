@@ -3,22 +3,14 @@ package mock
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
 )
-
-// route representation during parse, with just a single response.
-type route struct {
-	Method      string
-	Path        string
-	Status      int
-	ContentType string
-	Delay       time.Duration
-	Body        []byte
-}
 
 // Route represents the mocked endpoint, with one or more responses.
 type Route struct {
@@ -29,17 +21,19 @@ type Route struct {
 }
 
 type Response struct {
-	Status      int
-	ContentType string
-	Delay       time.Duration
-	Body        []byte
+	Name   string
+	Status int
+	Header map[string]string
+	Delay  time.Duration
+	Body   []byte
 }
 
 func (s *Route) String() string {
 	var b strings.Builder
 	nr := len(s.Responses)
 	for i, resp := range s.Responses {
-		fmt.Fprintf(&b, " %3d | %-6s %-28s | %-24s | %4d bytes | %s", resp.Status, s.Method, s.Path, resp.ContentType, len(resp.Body), resp.Delay)
+		contentType, _ := resp.Header["content-type"]
+		fmt.Fprintf(&b, " %3d | %-6s %-28s | %-24s | %4d bytes | %s", resp.Status, s.Method, s.Path, contentType, len(resp.Body), resp.Delay)
 		if nr > 1 && i < nr-1 {
 			fmt.Fprintln(&b)
 		}
@@ -58,7 +52,9 @@ func (s *Route) Handler(logger responseLogger) httprouter.Handle {
 		resp := s.Responses[s.Index]
 
 		logger(resp.Status, r)
-		w.Header().Add("Content-Type", resp.ContentType)
+		for n, v := range resp.Header {
+			w.Header().Add(n, v)
+		}
 		w.WriteHeader(resp.Status)
 
 		if resp.Delay > 0 {
@@ -89,10 +85,9 @@ func mergeRoutes(apis []*route) []*Route {
 	for _, t := range apis {
 		key := fmt.Sprintf("%s:%s", t.Method, t.Path)
 		resp := Response{
-			Status:      t.Status,
-			ContentType: t.ContentType,
-			Body:        t.Body,
-			Delay:       t.Delay,
+			Status: t.Status,
+			Body:   t.Body,
+			Header: t.Header,
 		}
 
 		if route, ok := m[key]; ok {
@@ -111,4 +106,32 @@ func mergeRoutes(apis []*route) []*Route {
 	}
 
 	return routes
+}
+
+func RoutesReader(r io.Reader, delay time.Duration) (routes []*Route, err error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+
+	sp := &parser{baseDir: dir, defaultDelay: delay}
+	if err = sp.parse(r); err != nil {
+		return nil, err
+	}
+
+	return mergeRoutes(sp.routes), nil
+}
+
+// RoutesFiles parses the *.http file(s).
+func RoutesFiles(files []string, delay time.Duration) ([]*Route, error) {
+	sp := &parser{defaultDelay: delay}
+
+	for _, fn := range files {
+		err := sp.readFile(fn)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return mergeRoutes(sp.routes), nil
 }

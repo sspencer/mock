@@ -1,0 +1,28 @@
+### Get loaves
+# @delay 1s
+GET /bread/
+Content-Type: application/json
+
+[
+  "sourdough",
+  "baguette",
+  "brioche",
+  "focaccia",
+  "ciabatta",
+  "rye Bread",
+  "multigrain",
+  "pita"
+]
+
+### Create loaf
+# @status 201
+# @delay 2s
+POST /bread/
+Content-Type: application/json
+
+{
+  "id": "{{randomInt}}",
+  "name": "wheat bread"
+}
+
+###

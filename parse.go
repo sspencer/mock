@@ -2,64 +2,100 @@ package mock
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 )
 
-type routeParser struct {
-	baseDir      string
-	fileName     string
-	routes       []*route
-	defaultDelay time.Duration
-	delay        time.Duration
-}
+const defaultContentType = "text/html; charset=utf-8"
 
 type parseState int
 
 const (
 	stateNone parseState = iota
+	stateVariable
+	stateResponse
+	stateHeader
 	stateBody
 )
 
-func RoutesReader(r io.Reader, delay time.Duration) (routes []*Route, err error) {
-	dir, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
+// parse @variable = value
+var (
+	variableRegex = regexp.MustCompile("(@[a-z][-a-z0-9_]+)=?(.*)?")
+)
 
-	sp := &routeParser{baseDir: dir, defaultDelay: delay, delay: delay}
-	if err = sp.parseReader(r); err != nil {
-		return nil, err
-	}
-
-	return mergeRoutes(sp.routes), nil
+// route representation during parse, with just a single response.
+type route struct {
+	Name   string
+	Method string
+	Path   string
+	Status int
+	Delay  time.Duration
+	Body   []byte
+	Header map[string]string
 }
 
-// RoutesFiles parses API file(s).
-func RoutesFiles(files []string, delay time.Duration) ([]*Route, error) {
-	sp := &routeParser{defaultDelay: delay, delay: delay}
-
-	for _, fn := range files {
-		err := sp.parseFile(fn)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return mergeRoutes(sp.routes), nil
+type parser struct {
+	baseDir      string
+	fileName     string
+	routes       []*route
+	defaultDelay time.Duration
+	route        *route
 }
 
-// parseFile parses the incoming routes from a file
-func (sp *routeParser) parseFile(fn string) error {
+func (s parseState) String() string {
+	switch s {
+	case stateNone:
+		return "NONE"
+	case stateVariable:
+		return "VARIABLE"
+	case stateResponse:
+		return "RESPONSE"
+	case stateHeader:
+		return "HEADER"
+	default:
+		return "BODY"
+	}
+}
+
+// String returns an internal representation of a single route, used in
+// *.golden files when testing
+func (r *route) String() string {
+	hdr := ""
+	for n, v := range r.Header {
+		hdr += n + v
+	}
+	return fmt.Sprintf("%s: %s %s delay=%s status=%d header=%d body=%d",
+		r.Name,
+		r.Method,
+		r.Path,
+		r.Delay,
+		r.Status,
+		len(hdr),
+		len(r.Body))
+}
+
+func (p *parser) String() string {
+	sb := strings.Builder{}
+	for _, r := range p.routes {
+		sb.WriteString(r.String())
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
+// readFile parses the incoming routes from a file
+func (p *parser) readFile(fn string) error {
 	f, err := os.Open(fn)
 	if err != nil {
 		return err
@@ -67,160 +103,198 @@ func (sp *routeParser) parseFile(fn string) error {
 
 	defer f.Close()
 
-	sp.fileName = fn
-	sp.baseDir = path.Dir(fn)
+	p.fileName = fn
+	p.baseDir = path.Dir(fn)
 
-	return sp.parseReader(f)
+	return p.parse(f)
 }
 
-// parseReader parses the incoming routes from a reader
-func (sp *routeParser) parseReader(r io.Reader) error {
+// parse parses the incoming routes from a reader
+func (p *parser) parse(r io.Reader) error {
 	scanner := bufio.NewScanner(r)
 	state := stateNone
-
-	var body []byte
+	var err error
 	lineNum := 0
-	multiLine := false
+
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
-		trim := strings.TrimSpace(line)
-
+		// fmt.Printf("%03d %s: %s\n", lineNum, state, line)
 		switch state {
 		case stateNone:
-			multiLine = false
-			if len(trim) == 0 || line[0:1] == "#" {
-				continue
-			}
+			state, err = p.parseNone(line, lineNum)
 
-			route, err := sp.parse(line, lineNum)
-			if err != nil {
-				return err
-			}
+		case stateVariable:
+			state, err = p.parseVariable(line, lineNum)
 
-			if route != nil {
-				sp.routes = append(sp.routes, route)
-				if len(route.Body) == 0 {
-					state = stateBody
-					body = []byte{}
-				} else {
-					// route has optional @file response, no Response expected
-					state = stateNone
-				}
-			}
+		case stateResponse:
+			state, err = p.parseRequest(line, lineNum)
+
+		case stateHeader:
+			state, err = p.parseHeader(line, lineNum)
 
 		case stateBody:
-			if len(trim) > 0 || multiLine {
-				if trim == `"""` {
-					if !multiLine {
-						multiLine = true
-					} else {
-						if len(sp.routes) > 0 {
-							sp.routes[len(sp.routes)-1].Body = body
-							body = []byte{}
-						}
-						state = stateNone
-					}
-				} else {
-					line = line + "\r\n"
-					body = append(body, line...)
-				}
-			} else {
-				if len(body) > 0 && len(sp.routes) > 0 {
-					sp.routes[len(sp.routes)-1].Body = body
-					body = []byte{}
-				}
-				state = stateNone
-			}
+			state, err = p.parseBody(line, lineNum)
+		}
 
-		default:
-			continue
+		if err != nil {
+			return err
 		}
 	}
 
-	if len(body) > 0 && len(sp.routes) > 0 {
-		sp.routes[len(sp.routes)-1].Body = body
+	if p.route != nil {
+		p.appendRoute()
 	}
-
 	return nil
 }
 
-func (sp *routeParser) lineError(msg string, lineNum int, line string) error {
-	if sp.fileName == "" {
+func (p *parser) parseNone(line string, lineNum int) (parseState, error) {
+	if len(line) >= 3 && line[:3] == "###" {
+		// TBD save previous Response
+		name := strings.TrimSpace(line[3:])
+		p.route = &route{
+			Name:   name,
+			Status: http.StatusOK,
+			Delay:  p.defaultDelay,
+			Header: map[string]string{"content-type": defaultContentType},
+		}
+		return stateVariable, nil
+	}
+
+	return stateNone, nil
+}
+
+func (p *parser) parseVariable(line string, lineNum int) (parseState, error) {
+	// skip blank line
+	if len(strings.TrimSpace(line)) == 0 {
+		return stateVariable, nil
+	}
+
+	if len(line) >= 3 && line[:3] == "###" {
+		p.route = nil
+		return stateNone, nil
+	}
+
+	// if line doesn't start with "#", move to next state
+	if line[:1] != "#" {
+		// return stateResponse, nil
+		return p.parseRequest(line, lineNum)
+	}
+
+	// variable specification:
+	// # @name value
+	// # @name=value
+	tokens := variableRegex.FindStringSubmatch(line[1:])
+	if tokens != nil && len(tokens) == 3 {
+		name := tokens[1]
+		val := strings.TrimSpace(strings.Trim(tokens[2], "\""))
+		switch name {
+		case "@delay":
+			delay, err := time.ParseDuration(val)
+			if err != nil {
+				return stateNone, fmt.Errorf("invalid duration, line %d: %s", lineNum, line)
+			}
+
+			p.route.Delay = delay
+			return stateVariable, nil
+
+		case "@status":
+			status, err := strconv.Atoi(val)
+			statusText := http.StatusText(status)
+			if err != nil || statusText == "" {
+				return stateNone, p.lineError("invalid status, line %d: %s", lineNum, line)
+			}
+
+			p.route.Status = status
+
+		case "@file":
+			// TBD verify file is readable
+			var err error
+			fn := path.Join(p.baseDir, path.Clean(val))
+			p.route.Header["content-type"] = mime.TypeByExtension(path.Ext(fn))
+			if p.route.Body, err = os.ReadFile(fn); err != nil {
+				fmt.Fprintln(os.Stderr, err.Error())
+				return stateNone, p.lineError("could not read file, line %d: %s", lineNum, line)
+			}
+
+		default:
+			return stateNone, p.lineError("unrecognized variable, line %d: %s", lineNum, line)
+		}
+	}
+
+	return stateVariable, nil
+}
+
+func (p *parser) parseRequest(line string, lineNum int) (parseState, error) {
+	method, url, err := p.getRequest(line, lineNum)
+
+	if err != nil {
+		return stateNone, err
+	}
+
+	p.route.Method = method
+	p.route.Path = url
+
+	return stateHeader, nil
+}
+
+func (p *parser) parseHeader(line string, lineNum int) (parseState, error) {
+	if len(strings.TrimSpace(line)) == 0 {
+		return stateBody, nil
+	}
+
+	tokens := strings.SplitN(line, ":", 2)
+	p.route.Header[strings.ToLower(tokens[0])] = tokens[1]
+
+	return stateHeader, nil
+}
+
+func (p *parser) parseBody(line string, lineNum int) (parseState, error) {
+	if len(line) >= 3 && line[:3] == "###" {
+		p.appendRoute()
+		return p.parseNone(line, lineNum)
+	}
+
+	line = line + "\r\n"
+	p.route.Body = append(p.route.Body, line...)
+
+	return stateBody, nil
+}
+
+func (p *parser) appendRoute() {
+	if len(p.route.Path) > 0 {
+		p.route.Body = bytes.TrimSpace(p.route.Body)
+		p.routes = append(p.routes, p.route)
+	}
+}
+
+func (p *parser) getRequest(line string, lineNum int) (string, string, error) {
+
+	tokens := strings.Split(line, " ")
+	switch len(tokens) {
+	case 1:
+		if p.isHTTPPath(tokens[0]) {
+			return http.MethodGet, tokens[0], nil
+		}
+
+	case 2:
+		if p.isHTTPMethod(tokens[0]) && p.isHTTPPath(tokens[1]) {
+			return strings.ToUpper(tokens[0]), p.cleanPath(tokens[1]), nil
+		}
+	}
+
+	return "", "", p.lineError("unrecognized request, line %d: %s", lineNum, line)
+}
+
+func (p *parser) lineError(msg string, lineNum int, line string) error {
+	if p.fileName == "" {
 		return fmt.Errorf(msg, lineNum, line)
 	}
 
-	return fmt.Errorf("file %q, "+msg, sp.fileName, lineNum, line)
+	return fmt.Errorf("file %q, "+msg, p.fileName, lineNum, line)
 }
 
-func (sp *routeParser) parse(line string, lineNum int) (*route, error) {
-	ok, err := sp.parseVariable(line)
-	if err != nil {
-		return nil, fmt.Errorf("invalid duration line %d: %s", lineNum, line)
-	} else if ok {
-		return nil, nil
-	}
-
-	tokens := strings.Split(line, " ")
-	tlen := len(tokens)
-	if tlen < 3 {
-		return nil, sp.lineError("parsing line %d: %s", lineNum, line)
-	}
-
-	if !sp.isHTTPMethod(tokens[0]) {
-		return nil, sp.lineError("invalid http method, line %d: %s", lineNum, line)
-	}
-
-	if !sp.isHTTPStatusCode(tokens[1]) {
-		return nil, sp.lineError("invalid http status code, line %d: %s", lineNum, line)
-	}
-
-	if !sp.isHTTPPath(tokens[2]) {
-		return nil, sp.lineError("invalid path, line %d: %s", lineNum, line)
-	}
-
-	contentType := "application/json"
-	var body []byte
-
-	if tlen > 3 {
-		rest := strings.Join(tokens[3:tlen], "")
-		rlen := len(rest)
-		if rlen < 2 {
-			return nil, sp.lineError("invalid optional, line %d: %s", lineNum, line)
-		}
-
-		first := rest[0:1]
-		last := rest[rlen-1 : rlen]
-
-		if first == "\"" && last == "\"" {
-			contentType = rest[1 : rlen-1]
-		}
-
-		if first == "@" {
-			var err error
-			fn := path.Join(sp.baseDir, path.Clean(rest[1:rlen]))
-			contentType = mime.TypeByExtension(path.Ext(fn))
-			if body, err = ioutil.ReadFile(fn); err != nil {
-				fmt.Fprintln(os.Stderr, err.Error())
-				return nil, sp.lineError("could not read file, line %d: %s", lineNum, line)
-			}
-		}
-	}
-
-	r := &route{}
-	r.Method = strings.ToUpper(tokens[0])
-	r.Status, _ = strconv.Atoi(tokens[1])
-	r.Path = sp.cleanPath(tokens[2])
-	r.ContentType = contentType
-	r.Body = body
-	r.Delay = sp.delay
-
-	sp.delay = sp.defaultDelay
-
-	return r, nil
-}
-
-func (sp *routeParser) isHTTPMethod(m string) bool {
+func (p *parser) isHTTPMethod(m string) bool {
 	switch strings.ToUpper(m) {
 	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch, http.MethodHead, http.MethodOptions:
 		return true
@@ -229,42 +303,17 @@ func (sp *routeParser) isHTTPMethod(m string) bool {
 	}
 }
 
-func (sp *routeParser) isHTTPStatusCode(code string) bool {
-	var n int
-	var err error
-
-	if n, err = strconv.Atoi(code); err != nil {
-		return false
-	}
-
-	return n >= http.StatusContinue && n <= http.StatusNetworkAuthenticationRequired
-}
-
-func (sp *routeParser) isHTTPPath(p string) bool {
+func (p *parser) isHTTPPath(url string) bool {
 	// just check for leading "/", everything else is encoded later
-	return p[0:1] == "/"
+	return url[0:1] == "/"
 }
 
-func (sp *routeParser) cleanPath(p string) string {
-	items := strings.Split(p, "/")
-	var uri []string
+func (p *parser) cleanPath(uri string) string {
+	items := strings.Split(uri, "/")
+	var s []string
 	for _, i := range items {
-		uri = append(uri, url.PathEscape(i))
+		s = append(s, url.PathEscape(i))
 	}
 
-	return strings.Join(uri, "/")
-}
-
-func (sp *routeParser) parseVariable(line string) (bool, error) {
-	if strings.HasPrefix(line, "delay:") {
-		delay, err := time.ParseDuration(strings.TrimSpace(line[6:]))
-		if err != nil {
-			return false, err
-		}
-
-		sp.delay = delay
-		return true, nil
-	}
-
-	return false, nil
+	return strings.Join(s, "/")
 }

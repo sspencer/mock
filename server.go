@@ -54,7 +54,7 @@ func NewServer(port int, logRequests bool) *Server {
 	}
 }
 
-//WatchRoutes sets all routes handled by the server
+// WatchRoutes sets all routes handled by the server
 func (s *Server) WatchRoutes(routes []*Route) {
 	s.Lock()
 	defer s.Unlock()
@@ -78,7 +78,7 @@ func (s *Server) WatchRoutes(routes []*Route) {
 	s.Handler = router
 }
 
-//WatchFiles watches the API file(s) for changes, reloading routes upon save
+// WatchFiles watches the API file(s) for changes, reloading routes upon save
 func (s *Server) WatchFiles(files []string, delay time.Duration) {
 	routesCh := make(chan []*Route)
 

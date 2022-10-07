@@ -1,0 +1,41 @@
+### Return a user without delay
+GET /users/0
+Content-Type: application/json
+
+{
+  "id": 0,
+  "name": "No delay"
+}
+
+### Return a user immediately or
+
+GET /users/1
+Content-Type: application/json
+
+{
+  "id": 1,
+  "name": "{{$random.alphabetic()}}"
+}
+
+### return a user after 1 second delay
+# @delay 1000ms
+GET /users/1
+Content-Type: application/json
+
+{
+  "id": 1,
+  "name": "One Thousand Millis"
+}
+
+### Return a user after 2 second delay
+# @delay=2s
+GET /users/2
+Content-Type: application/json
+
+{
+  "id": "{{$uuid}}",
+  "name": "Two seconds"
+}
+
+
+###

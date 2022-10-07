@@ -108,6 +108,25 @@ Include longer inline responses that can include empty lines by using triple quo
     Last line, one skipped.
     """
 
+## HTTP Request Format
+
+Use go templates for this!!
+
+Builtin Variables
+
+* $exampleServer
+* $isoTimestamp
+* $random.alphabetic
+* $random.alphanumeric
+* $random.email
+* $random.float
+* $random.hexadecimal
+* $random.integer
+* $random.uuid
+* $randomInt
+* $timestamp
+* $uuid
+
 ## Features
 
 - [x] easy api specification
@@ -124,4 +143,4 @@ Include longer inline responses that can include empty lines by using triple quo
 - [ ] specify *random* or *sequential* for endpoints with more than 1 response
 - [ ] :auto_id and :auto_uuid path variables in response to auto increment (or randomly generate) ids
 - [ ] specify enumerated values for path variables and randomly choose value in response :rand_state
- 
+- [ ] use http request file type (.http) instead of current made-up .api 

@@ -1,0 +1,4 @@
+### Delete loaf
+# @delay 1s
+# @status 204
+DELETE /bread/1

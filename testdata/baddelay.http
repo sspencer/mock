@@ -1,0 +1,4 @@
+### Bad status
+# @status 204
+# @delay zero
+DELETE /bread/1
