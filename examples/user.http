@@ -25,7 +25,8 @@ Content-Type: application/json
 {
     "success": true,
     "id": {{$random.integer(10)}},
-    "name": "{{$random.alphabetic()}} {{$random.alphabetic()}}"
+    "name": "{{$random.alphabetic()}} {{$random.alphabetic()}}",
+    "event": "{{$uuid}}"
 }
 
 ### Create user failure
@@ -45,8 +46,10 @@ Content-Type: application/json
 {
     "success": true,
     "id": "{{id}}",
+    "event": "{{$uuid}}",
     "name": "Pizza Dough",
-    "email": "john@dough.com"
+    "email": "john@dough.com",
+    "time": {{$timestamp}}
 }
 
 ### Delete a user

@@ -1,15 +1,22 @@
 package mock
 
 import (
-	"bytes"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/julienschmidt/httprouter"
+)
+
+var (
+	// replace {{id}} or {{$uuid}} expressions in body
+	replacerRegex = regexp.MustCompile(`\{\{[^}]+\}\}`)
 )
 
 // Route represents the mocked endpoint, with one or more responses.
@@ -62,19 +69,37 @@ func (s *Route) Handler(logger responseLogger) httprouter.Handle {
 		}
 
 		// replace {{params}} in body
-		if len(ps) > 0 {
-			r := resp.Body
-			for i := range ps {
-				key := fmt.Sprintf("{{%s}}", ps[i].Key)
-				r = bytes.ReplaceAll(r, []byte(key), []byte(ps[i].Value))
-			}
-
-			w.Write(r)
-		} else {
-			w.Write(resp.Body)
-		}
+		out := replacerRegex.ReplaceAllFunc(resp.Body, substituteVars(ps))
+		w.Write(out)
 
 		s.Index++
+	}
+}
+
+func substituteVars(params httprouter.Params) func([]byte) []byte {
+	vars := make(map[string]string)
+	for i := range params {
+		k := fmt.Sprintf("{{%s}}", params[i].Key)
+		vars[k] = params[i].Value
+	}
+
+	return func(k []byte) []byte {
+		key := string(k)
+		switch key {
+		case "{{$uuid}}":
+			id := uuid.New()
+			return []byte(id.String())
+		case "{{$randomInt}}":
+			return []byte(fmt.Sprintf("%d", rand.Intn(10000)))
+		case "{{$timestamp}}":
+			return []byte(fmt.Sprintf("%d", time.Now().Unix()))
+		default:
+			if val, ok := vars[key]; ok {
+				return []byte(val)
+			}
+
+			return k
+		}
 	}
 }
 

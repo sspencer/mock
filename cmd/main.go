@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,6 +18,8 @@ import (
 )
 
 func main() {
+	rand.Seed(time.Now().UnixNano())
+
 	var err error
 	portPtr := flag.Int("p", envInt("MOCK_PORT", 8080), "port to run server on")
 	reqPtr := flag.Bool("r", envBool("MOCK_LOG", false), "log the request")
