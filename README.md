@@ -8,6 +8,8 @@ For added flexibility, Mock optionally just serves the specified directory.
 
 This project was originally inspired by [localroast](https://github.com/caalberts/localroast).  
 Thought it would be fun to recreate something similar with a less verbose API syntax.
+The syntax is very similar to VSCode's [REST Client](https://marketplace.visualstudio.com/items?itemName=humao.rest-client) /
+IntelliJ's [HTTP Client](https://www.jetbrains.com/help/idea/http-client-in-product-code-editor.html#creating-http-request-files). 
 
 ## Build/Install
 
@@ -23,8 +25,8 @@ Thought it would be fun to recreate something similar with a less verbose API sy
       -r    
             log the request
 
-1. Mock API: `mock examples/user.api` or `cat my.api | mock` or even `mock < my.api`
-2. Serve Directory: `mock .`  NOTE: can't combine serving a directory with serving api files.
+1. Mock API: `mock examples/user.http` or `cat my.http | mock` or even `mock < my.http`
+2. Serve Directory: `mock .`  NOTE: can't combine serving a directory with serving `.http` files.
 3. Each flag can be specified through ENV Vars:
    * `MOCK_PORT`:  ex/ "8080"
    * `MOCK_LOG`:   ex/ "1" or "true" -- bool type value
@@ -34,98 +36,111 @@ If you're interested in developing `mock` *itself*, simply start `mock` with:
 
     go run cmd/main.go examples/user.api
 
-## API File
+## Response File
 
-Routes are mocked in a text file.  The HTTP Method, Status Code and Path are specified
-on the first line.  All remaining text until the next empty line will be treated as a
-JSON response. Parameters in the path may be specified by preceding the parameter with
-a COLON.  To substitute this parameter in the response, surround the name with double
-curly brackets.  See example below (or [examples/user.api](examples/user.api)).
+Responses are mocked in a text file.  Responses start with `###`, specify optional 
+parameters, then the HTTP Method and PATH, followed by optional headers, an 
+empty line and an optional body. Parameters in the path may be specified by preceding 
+the parameter with a COLON.  To substitute this parameter in the response, surround 
+the name with double curly brackets.
 
-There is an optional fourth parameter that specifies either the
-non-default (`application/json`) content-type, or a file to be served as the response body.
+Examples:
 
-    METHOD STATUS PATH [optional parameter]
-    body line 1
-    body line 2
-    ...
-    body line n
+    ### Return user
+    GET /users/:id
+    content-type: application/json
 
-For example:
-
-    GET 200 /users/:id
     {
         "id": "{{id}}"
         "name": "John Dough",
         "email": "john@dough.com"
     }
 
-### Optional Parameters
+    ### Delete user
+    # @status 204
+    DELETE /users/:id
 
-You may serve a non-json content-type like by marking it with double quotes:
+In general, syntax is:
 
-    GET 200 /hello "text/plain"
-    Hello World
+    ### Response Name
+    # @varname value (optional, zero or more)
+    method path
+    header      (optional zero or more)
+                (empty line, required if body specified)
+    body line 1 (optional)
+    body line 2 (optional)
+    
+    ### Response 2
+    ...
 
-Or include a large response with a local file by prepending it with an @ symbol:
+### Response Variables
 
-    GET 200 /users @users.json
+Variables are specified after `###`, are optional, and are defined one per line.
 
-1. The content-type of included files will be guessed based on the file's extension.
-2. Files are assumed to be relative to the API file (see [examples/](examples/)).
+1. `# @delay 500ms` delays response (defaults to 0, golang duration syntax)
+2. `# @status 201` defines http status code (defaults to 200)
+3. `# @file index.html` specifies body from external file (defaults to unspecified)
 
-### New for 2021
+### Path Variables
 
-#### Multiple Responses
+Variables may be defined in the path, preceded by a colon.  For any path variable
+defined in the path, `{{varname}}` in the body will be replaced with the value
+of the variable.
 
-The same Method and Path may now be specified.  Each duplicate Method / Path adds
+    ### say hello
+    GET /hello/:name
+    content-type: text/plain
+
+    Hello {{name}}!
+
+Read more about the path variables syntax in Julien Schimdt's 
+[httprouter](https://github.com/julienschmidt/httprouter),
+the router used `mock`.
+
+### Headers
+
+Headers are optional.  By default, every response will respond
+with `content-type: "text/html; charset=utf-8"`.  
+
+**NOTE** While it'd be nicer to default content type to `application/json`, 
+HTTP Client plugins only highlight JSON bodies if the content-type
+is specified.
+
+### Body Variables
+
+Besides replacing path variables in the body e.g. `{{id}}`, the following
+variables will be replaced in the body:
+
+* `{{$uuid}}` 
+* `{{$timestamp}}`
+* `{{$randomInt}}`
+
+More may be added.
+
+## Multiple Responses
+
+The same Method and Path can be specified.  Each duplicate Method / Path adds
 a new response to the entry.  As you request the same API, different responses
 are returned in a round-robin fashion.
 
-For example:
+For example (not actual format):
 
-    POST 201 /users
+    # @status 201
+    POST /users
     { "id": 5 }
 
+    # @status 201
     POST 201 /users
     { "id": 6 }
 
+    # @status 201
     POST 400 /users
     { "id": 0 }
 
 Will return the status codes `201`, `201`, `400` and responses `{ "id": 5 }`, 
 `{ "id": 6 }`, `{ "id": 0 }` in order as you issue
-`curl -XPOST http://localhost:8080/users` commands.
+`curl -XPOST http://localhost:8080/users` requests.
 
-#### Multiline Responses
-
-Include longer inline responses that can include empty lines by using triple quotes:
-
-    GET 200 /long "text/plain"
-    """
-    First line
-
-    Last line, one skipped.
-    """
-
-## HTTP Request Format
-
-Use go templates for this!!
-
-Builtin Variables
-
-* $exampleServer
-* $isoTimestamp
-* $random.alphabetic
-* $random.alphanumeric
-* $random.email
-* $random.float
-* $random.hexadecimal
-* $random.integer
-* $random.uuid
-* $randomInt
-* $timestamp
-* $uuid
 
 ## Features
 
@@ -139,8 +154,19 @@ Builtin Variables
 
 ## Ideas
 
-- [ ] basic auth per method (basic auth: user=hello pass=world)
-- [ ] specify *random* or *sequential* for endpoints with more than 1 response
-- [ ] :auto_id and :auto_uuid path variables in response to auto increment (or randomly generate) ids
-- [ ] specify enumerated values for path variables and randomly choose value in response :rand_state
-- [ ] use http request file type (.http) instead of current made-up .api 
+- [ ] support `@basicauth name pass` in response variable 
+
+### TBD Body Variables 
+
+* $exampleServer
+* $isoTimestamp
+* $random.alphabetic
+* $random.alphanumeric
+* $random.email
+* $random.float
+* $random.hexadecimal
+* $random.integer
+* $random.uuid
+* $randomInt
+* $timestamp
+* $uuid
