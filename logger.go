@@ -3,7 +3,7 @@ package mock
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -66,9 +66,9 @@ func requestLogger(next httprouter.Handle) httprouter.Handle {
 
 		request = append(request, "\n")
 
-		buf, _ := ioutil.ReadAll(r.Body)
-		rdr1 := ioutil.NopCloser(bytes.NewBuffer(buf))
-		rdr2 := ioutil.NopCloser(bytes.NewBuffer(buf)) // create a second Buffer, since rdr1 will be read
+		buf, _ := io.ReadAll(r.Body)
+		rdr1 := io.NopCloser(bytes.NewBuffer(buf))
+		rdr2 := io.NopCloser(bytes.NewBuffer(buf)) // create a second Buffer, since rdr1 will be read
 
 		// copy body from rdr1 to buffer
 		bb := new(bytes.Buffer)
