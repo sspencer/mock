@@ -109,7 +109,7 @@ func (p *parser) readFile(fn string) error {
 	return p.parse(f)
 }
 
-// parse parses the incoming routes from a reader
+// parse the incoming routes from a reader
 func (p *parser) parse(r io.Reader) error {
 	scanner := bufio.NewScanner(r)
 	state := stateNone
