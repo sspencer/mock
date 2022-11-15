@@ -144,7 +144,7 @@ Will return the status codes `201`, `201`, `400` and responses `{ "id": 5 }`,
 
 ## Features
 
-- [x] easy api specification
+- [x] easy api specification similar to [HTTP Client](https://www.jetbrains.com/help/idea/http-client-in-product-code-editor.html)
 - [x] specify multiple api files from command line
 - [x] include external files
 - [x] path variables
@@ -154,19 +154,20 @@ Will return the status codes `201`, `201`, `400` and responses `{ "id": 5 }`,
 
 ## Ideas
 
-- [ ] support `@basicauth name pass` in response variable 
-
-### TBD Body Variables 
-
-* $exampleServer
-* $isoTimestamp
-* $random.alphabetic
-* $random.alphanumeric
-* $random.email
-* $random.float
-* $random.hexadecimal
-* $random.integer
-* $random.uuid
-* $randomInt
-* $timestamp
-* $uuid
+- [ ] support `@basicauth name pass` in response variable
+- [ ] add {{body}} variables similar to what http client supports
+    - $exampleServer
+    - $isoTimestamp
+    - $random.alphabetic
+    - $random.alphanumeric
+    - $random.email
+    - $random.float
+    - $random.hexadecimal
+    - $random.integer
+    - $random.uuid
+    - $randomInt
+    - $timestamp
+    - $uuid
+- [ ] Use [faker](https://github.com/jaswdr/faker) for body variables 
+- [ ] Embed web server on different port that displays log of all requests/responses.  Use [ngrok](https://ngrok.com) as inspiration.
+- [ ] Use Go lang text templates instead of ReplaceAll()
