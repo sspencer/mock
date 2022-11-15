@@ -95,7 +95,7 @@ of the variable.
 
 Read more about the path variables syntax in Julien Schimdt's 
 [httprouter](https://github.com/julienschmidt/httprouter),
-the router used `mock`.
+the router used by `mock`.
 
 ### Headers
 
