@@ -4,19 +4,17 @@ import (
 	"fmt"
 	"github.com/sspencer/mock/internal/colorlog"
 	"io"
-	"math/rand"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/julienschmidt/httprouter"
 )
 
 var (
-	// replace {{id}} or {{$uuid}} expressions in body
+	// replace {{params}} in body
 	replacerRegex = regexp.MustCompile(`\{\{[^}]+}}`)
 )
 
@@ -69,38 +67,11 @@ func (e *Endpoint) Handle(logger colorlog.ResponseLoggerFunc) httprouter.Handle 
 			time.Sleep(resp.Delay)
 		}
 
-		// replace {{params}} in body
-		out := replacerRegex.ReplaceAllFunc(resp.Body, substituteVars(ps))
+		// replace {{params}} and {{variables}} in body
+		out := substituteVars(replacerRegex.ReplaceAllFunc(resp.Body, substituteParams(ps)))
 		w.Write(out)
 
 		e.Index++
-	}
-}
-
-func substituteVars(params httprouter.Params) func([]byte) []byte {
-	vars := make(map[string]string)
-	for i := range params {
-		k := fmt.Sprintf("{{%s}}", params[i].Key)
-		vars[k] = params[i].Value
-	}
-
-	return func(k []byte) []byte {
-		key := string(k)
-		switch key {
-		case "{{$uuid}}":
-			id := uuid.New()
-			return []byte(id.String())
-		case "{{$randomInt}}":
-			return []byte(fmt.Sprintf("%d", rand.Intn(10000)))
-		case "{{$timestamp}}":
-			return []byte(fmt.Sprintf("%d", time.Now().Unix()))
-		default:
-			if val, ok := vars[key]; ok {
-				return []byte(val)
-			}
-
-			return k
-		}
 	}
 }
 

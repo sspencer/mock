@@ -14,7 +14,7 @@ Content-Type: application/json
 
 {
   "id": 1,
-  "name": "{{$random.alphabetic()}}"
+  "name": "{{name}}"
 }
 
 ### return a user after 1 second delay
@@ -33,7 +33,7 @@ GET /users/2
 Content-Type: application/json
 
 {
-  "id": "{{$uuid}}",
+  "id": "{{uuid}}",
   "name": "Two seconds"
 }
 

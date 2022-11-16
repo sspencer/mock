@@ -24,9 +24,9 @@ Content-Type: application/json
 
 {
     "success": true,
-    "id": {{$random.integer(10)}},
-    "name": "{{$random.alphabetic()}} {{$random.alphabetic()}}",
-    "event": "{{$uuid}}"
+    "id": {{integer}},
+    "name": "{{name}}",
+    "event": "{{uuid}}"
 }
 
 ### Create user failure
@@ -46,10 +46,23 @@ Content-Type: application/json
 {
     "success": true,
     "id": "{{id}}",
-    "event": "{{$uuid}}",
-    "name": "Pizza Dough",
-    "email": "john@dough.com",
-    "time": {{$timestamp}}
+    "event": "{{uuid}}",
+    "name": "{{name}}",
+    "dog": "{{firstName}}",
+    "cat": "{{lastName}}",
+    "phone": "{{phone}}",
+    "login": "{{user}}",
+    "email": "{{email}}",
+    "activated": {{bool}},
+    "logins": {{integer}},
+    "score": {{float}},
+    "profile": "{{file}}",
+    "homepage": "{{url}}",
+    "server": "{{server}}",
+    "hash": "{{hash}}",
+    "lastLogin": {{timestamp}},
+    "time": "{{isoTimestamp}}",
+    "blurb": "{{sentence}}"
 }
 
 ### Delete a user

@@ -109,11 +109,28 @@ is specified.
 ### Body Variables
 
 Besides replacing path variables in the body e.g. `{{id}}`, the following
-variables will be replaced in the body:
-
-* `{{$uuid}}` 
-* `{{$timestamp}}`
-* `{{$randomInt}}`
+variables will be dynamically generated with [faker](https://github.com/jaswdr/faker)
+and replaced in the body:
+ 
+* `{{name}}`
+* `{{firstName}}`
+* `{{lastName}}`
+* `{{user}}`
+* `{{email}}`
+* `{{phone}}`
+* `{{url}}`
+* `{{file}}`
+* `{{server}}`
+* `{{hash}}`
+* `{{bool}}`
+* `{{integer}}`
+* `{{float}}`
+* `{{uuid}}`
+* `{{timestamp}}`
+* `{{isoTimestamp}}`
+* `{{sentence}}`
+* `{{paragraph}}`
+* `{{article}}`
 
 More may be added.
 
@@ -151,23 +168,10 @@ Will return the status codes `201`, `201`, `400` and responses `{ "id": 5 }`,
 - [x] autoload file changes
 - [x] multiple responses per Method / Path
 - [x] dockerized
+- [x] add {{body}} variables similar to what http client supports
+- [x] Use Go lang text templates instead of ReplaceAll()
 
 ## Ideas
 
 - [ ] support `@basicauth name pass` in response variable
-- [ ] add {{body}} variables similar to what http client supports
-    - $exampleServer
-    - $isoTimestamp
-    - $random.alphabetic
-    - $random.alphanumeric
-    - $random.email
-    - $random.float
-    - $random.hexadecimal
-    - $random.integer
-    - $random.uuid
-    - $randomInt
-    - $timestamp
-    - $uuid
-- [ ] Use [faker](https://github.com/jaswdr/faker) for body variables 
 - [ ] Embed web server on different port that displays log of all requests/responses.  Use [ngrok](https://ngrok.com) as inspiration.
-- [ ] Use Go lang text templates instead of ReplaceAll()
