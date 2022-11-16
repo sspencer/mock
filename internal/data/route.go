@@ -114,6 +114,7 @@ func mergeRoutes(apis []*route) []*Endpoint {
 			Status: t.Status,
 			Body:   t.Body,
 			Header: t.Header,
+			Delay:  t.Delay,
 		}
 
 		if route, ok := m[key]; ok {
