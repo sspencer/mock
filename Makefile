@@ -6,7 +6,7 @@ SRC=$(shell find . -name '*.go')
 PKG=$(shell go list ./...)
 
 APP_NAME=mock
-APP_MAIN=cmd/main.go
+APP_MAIN=./cmd/server
 BINARY=${GOPATH}/bin/${APP_NAME}
 
 all: fmt vet $(BINARY)
@@ -20,12 +20,20 @@ fmt:
 vet:
 	go vet $(PKG)
 
+update:
+	@echo updating go.mod packages
+	go get -u -v ./...
+	go mod tidy
+
 clean:
 	rm -f $(BINARY)
 
 mod:
 	go mod tidy
 	go mod vendor
+
+test:
+	go test ./...
 
 docker:
 	docker build -t test .

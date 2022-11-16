@@ -1,4 +1,4 @@
-package mock
+package data
 
 import (
 	"bufio"
@@ -17,16 +17,6 @@ import (
 )
 
 const defaultContentType = "text/html; charset=utf-8"
-
-type parseState int
-
-const (
-	stateNone parseState = iota
-	stateVariable
-	stateResponse
-	stateHeader
-	stateBody
-)
 
 // parse @variable = value
 var (
@@ -51,6 +41,16 @@ type parser struct {
 	defaultDelay time.Duration
 	route        *route
 }
+
+type parseState int
+
+const (
+	stateNone parseState = iota
+	stateVariable
+	stateResponse
+	stateHeader
+	stateBody
+)
 
 func (s parseState) String() string {
 	switch s {
@@ -109,7 +109,7 @@ func (p *parser) readFile(fn string) error {
 	return p.parse(f)
 }
 
-// parse parses the incoming routes from a reader
+// parse the incoming routes from a reader
 func (p *parser) parse(r io.Reader) error {
 	scanner := bufio.NewScanner(r)
 	state := stateNone
@@ -119,10 +119,10 @@ func (p *parser) parse(r io.Reader) error {
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
-		// fmt.Printf("%03d %s: %s\n", lineNum, state, line)
+
 		switch state {
 		case stateNone:
-			state, err = p.parseNone(line, lineNum)
+			state, err = p.parseNone(line)
 
 		case stateVariable:
 			state, err = p.parseVariable(line, lineNum)
@@ -131,10 +131,10 @@ func (p *parser) parse(r io.Reader) error {
 			state, err = p.parseRequest(line, lineNum)
 
 		case stateHeader:
-			state, err = p.parseHeader(line, lineNum)
+			state, err = p.parseHeader(line)
 
 		case stateBody:
-			state, err = p.parseBody(line, lineNum)
+			state, err = p.parseBody(line)
 		}
 
 		if err != nil {
@@ -148,7 +148,7 @@ func (p *parser) parse(r io.Reader) error {
 	return nil
 }
 
-func (p *parser) parseNone(line string, lineNum int) (parseState, error) {
+func (p *parser) parseNone(line string) (parseState, error) {
 	if len(line) >= 3 && line[:3] == "###" {
 		// TBD save previous Response
 		name := strings.TrimSpace(line[3:])
@@ -226,19 +226,19 @@ func (p *parser) parseVariable(line string, lineNum int) (parseState, error) {
 }
 
 func (p *parser) parseRequest(line string, lineNum int) (parseState, error) {
-	method, url, err := p.getRequest(line, lineNum)
+	method, uri, err := p.getRequest(line, lineNum)
 
 	if err != nil {
 		return stateNone, err
 	}
 
 	p.route.Method = method
-	p.route.Path = url
+	p.route.Path = uri
 
 	return stateHeader, nil
 }
 
-func (p *parser) parseHeader(line string, lineNum int) (parseState, error) {
+func (p *parser) parseHeader(line string) (parseState, error) {
 	if len(strings.TrimSpace(line)) == 0 {
 		return stateBody, nil
 	}
@@ -249,10 +249,10 @@ func (p *parser) parseHeader(line string, lineNum int) (parseState, error) {
 	return stateHeader, nil
 }
 
-func (p *parser) parseBody(line string, lineNum int) (parseState, error) {
+func (p *parser) parseBody(line string) (parseState, error) {
 	if len(line) >= 3 && line[:3] == "###" {
 		p.appendRoute()
-		return p.parseNone(line, lineNum)
+		return p.parseNone(line)
 	}
 
 	line = line + "\r\n"
