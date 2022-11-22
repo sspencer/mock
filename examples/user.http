@@ -70,11 +70,13 @@ Content-Type: application/json
 DELETE /users/:id
 
 ### Require auth
+# @basicauth jane pa55word
 GET /admin
 Content-Type: application/json
 
 {
-    "message": "authorized"
+    "success": true,
+    "message": "You have successfully entered the Admin Portal"
 }
 
 ### Return a little music theory
@@ -106,6 +108,17 @@ Content-Type: application/json
     "status": "ok",
     "uptime": "13:33  up 8 days, 33 mins"
 }
+
+### Return a page after a delay
+# @delay 1500ms
+GET /delay
+Content-Type: application/json
+
+{
+  "status": "ok",
+  "message": "A bit delayed, right?"
+}
+
 
 ### Return embedded HTML
 GET /index2.html

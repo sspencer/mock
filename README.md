@@ -18,8 +18,6 @@ IntelliJ's [HTTP Client](https://www.jetbrains.com/help/idea/http-client-in-prod
 ## Run / Develop
 
     mock [flags] [input_file1] [input_file2]
-      -d string
-            delay server responses (default "0ms")
       -p int
             port to run server on (default 8080)
       -r    
@@ -30,8 +28,7 @@ IntelliJ's [HTTP Client](https://www.jetbrains.com/help/idea/http-client-in-prod
 3. Each flag can be specified through ENV Vars:
    * `MOCK_PORT`:  ex/ "8080"
    * `MOCK_LOG`:   ex/ "1" or "true" -- bool type value
-   * `MOCK_DELAY`: ex/ "1500ms"
-
+   
 If you're interested in developing `mock` *itself*, simply start `mock` with:
 
     go run cmd/main.go examples/user.api
@@ -170,8 +167,8 @@ Will return the status codes `201`, `201`, `400` and responses `{ "id": 5 }`,
 - [x] dockerized
 - [x] add {{body}} variables similar to what http client supports
 - [x] Use Go lang text templates instead of ReplaceAll()
+- [x] support `@basicauth name pass`
 
 ## Ideas
 
-- [ ] support `@basicauth name pass` in response variable
 - [ ] Embed web server on different port that displays log of all requests/responses.  Use [ngrok](https://ngrok.com) as inspiration.
