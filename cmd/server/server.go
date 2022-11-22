@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"github.com/fsnotify/fsnotify"
+	"github.com/julienschmidt/httprouter"
 	"github.com/sspencer/mock/internal/colorlog"
 	"github.com/sspencer/mock/internal/data"
 	"log"
@@ -10,10 +12,6 @@ import (
 	"path"
 	"path/filepath"
 	"sync"
-	"time"
-
-	"github.com/fsnotify/fsnotify"
-	"github.com/julienschmidt/httprouter"
 )
 
 // server is something
@@ -36,7 +34,7 @@ func newServer(port int, logRequests bool) *server {
 	logger := colorlog.NewResponseLoggerFunc()
 	notAllowed := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger(http.StatusMethodNotAllowed, r)
-		http.Error(w, "405 Method Not Allowed", http.StatusNotImplemented)
+		http.Error(w, "405 method Not Allowed", http.StatusNotImplemented)
 	})
 
 	notFound := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -81,11 +79,11 @@ func (s *server) loadRoutes(endpoints []*data.Endpoint) {
 }
 
 // watchFiles watches the API file(s) for changes, reloading routes upon save
-func (s *server) watchFiles(files []string, delay time.Duration) {
+func (s *server) watchFiles(files []string) {
 	routesCh := make(chan []*data.Endpoint)
 
 	s.Watch(routesCh)
-	doWatchFiles(files, routesParser(files, delay, routesCh))
+	doWatchFiles(files, routesParser(files, routesCh))
 }
 
 // Watch for route changes (user edits api file)
@@ -143,9 +141,9 @@ func doWatchFiles(files []string, parser func()) {
 }
 
 // routesParser is the "parser()" function passed into watchFile()
-func routesParser(files []string, delay time.Duration, ch chan []*data.Endpoint) func() {
+func routesParser(files []string, ch chan []*data.Endpoint) func() {
 	return func() {
-		routes, err := data.GetEndpointsFromFiles(files, delay)
+		routes, err := data.GetEndpointsFromFiles(files)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: %s\n", err.Error())
 		} else {

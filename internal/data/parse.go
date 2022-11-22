@@ -23,15 +23,22 @@ var (
 	variableRegex = regexp.MustCompile("(@[a-z][-a-z0-9_]+)=?(.*)?")
 )
 
+type auth struct {
+	authType authType
+	username string
+	password string
+}
+
 // route representation during parse, with just a single response.
 type route struct {
-	Name   string
-	Method string
-	Path   string
-	Status int
-	Delay  time.Duration
-	Body   []byte
-	Header map[string]string
+	name   string
+	method string
+	path   string
+	status int
+	delay  time.Duration
+	auth   auth
+	body   []byte
+	header map[string]string
 }
 
 type parser struct {
@@ -41,6 +48,13 @@ type parser struct {
 	defaultDelay time.Duration
 	route        *route
 }
+
+type authType int
+
+const (
+	authTypeNone authType = iota
+	authTypeBasic
+)
 
 type parseState int
 
@@ -71,17 +85,17 @@ func (s parseState) String() string {
 // *.golden files when testing
 func (r *route) String() string {
 	hdr := ""
-	for n, v := range r.Header {
+	for n, v := range r.header {
 		hdr += n + v
 	}
 	return fmt.Sprintf("%s: %s %s delay=%s status=%d header=%d body=%d",
-		r.Name,
-		r.Method,
-		r.Path,
-		r.Delay,
-		r.Status,
+		r.name,
+		r.method,
+		r.path,
+		r.delay,
+		r.status,
 		len(hdr),
-		len(r.Body))
+		len(r.body))
 }
 
 func (p *parser) String() string {
@@ -150,13 +164,13 @@ func (p *parser) parse(r io.Reader) error {
 
 func (p *parser) parseNone(line string) (parseState, error) {
 	if len(line) >= 3 && line[:3] == "###" {
-		// TBD save previous Response
+		// TBD save previous response
 		name := strings.TrimSpace(line[3:])
 		p.route = &route{
-			Name:   name,
-			Status: http.StatusOK,
-			Delay:  p.defaultDelay,
-			Header: map[string]string{"content-type": defaultContentType},
+			name:   name,
+			status: http.StatusOK,
+			delay:  p.defaultDelay,
+			header: map[string]string{"content-type": defaultContentType},
 		}
 		return stateVariable, nil
 	}
@@ -195,7 +209,7 @@ func (p *parser) parseVariable(line string, lineNum int) (parseState, error) {
 				return stateNone, fmt.Errorf("invalid duration, line %d: %s", lineNum, line)
 			}
 
-			p.route.Delay = delay
+			p.route.delay = delay
 			return stateVariable, nil
 
 		case "@status":
@@ -205,14 +219,26 @@ func (p *parser) parseVariable(line string, lineNum int) (parseState, error) {
 				return stateNone, p.lineError("invalid status, line %d: %s", lineNum, line)
 			}
 
-			p.route.Status = status
+			p.route.status = status
+
+		case "@basicauth":
+			vals := strings.Split(val, " ")
+			if len(vals) != 2 {
+				return stateNone, fmt.Errorf("invalid Auth, line %d: %s", lineNum, line)
+			}
+
+			p.route.auth = auth{
+				authType: authTypeBasic,
+				username: vals[0],
+				password: vals[1],
+			}
 
 		case "@file":
 			// TBD verify file is readable
 			var err error
 			fn := path.Join(p.baseDir, path.Clean(val))
-			p.route.Header["content-type"] = mime.TypeByExtension(path.Ext(fn))
-			if p.route.Body, err = os.ReadFile(fn); err != nil {
+			p.route.header["content-type"] = mime.TypeByExtension(path.Ext(fn))
+			if p.route.body, err = os.ReadFile(fn); err != nil {
 				fmt.Fprintln(os.Stderr, err.Error())
 				return stateNone, p.lineError("could not read file, line %d: %s", lineNum, line)
 			}
@@ -232,8 +258,8 @@ func (p *parser) parseRequest(line string, lineNum int) (parseState, error) {
 		return stateNone, err
 	}
 
-	p.route.Method = method
-	p.route.Path = uri
+	p.route.method = method
+	p.route.path = uri
 
 	return stateHeader, nil
 }
@@ -244,7 +270,7 @@ func (p *parser) parseHeader(line string) (parseState, error) {
 	}
 
 	tokens := strings.SplitN(line, ":", 2)
-	p.route.Header[strings.ToLower(tokens[0])] = tokens[1]
+	p.route.header[strings.ToLower(tokens[0])] = tokens[1]
 
 	return stateHeader, nil
 }
@@ -256,14 +282,14 @@ func (p *parser) parseBody(line string) (parseState, error) {
 	}
 
 	line = line + "\r\n"
-	p.route.Body = append(p.route.Body, line...)
+	p.route.body = append(p.route.body, line...)
 
 	return stateBody, nil
 }
 
 func (p *parser) appendRoute() {
-	if len(p.route.Path) > 0 {
-		p.route.Body = bytes.TrimSpace(p.route.Body)
+	if len(p.route.path) > 0 {
+		p.route.body = bytes.TrimSpace(p.route.body)
 		p.routes = append(p.routes, p.route)
 	}
 }

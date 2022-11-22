@@ -1,0 +1,30 @@
+### Successful Basic authorization.
+GET http://localhost:7777/admin
+Authorization: Basic jane pa55word
+
+### Unsuccessful basic authorization.
+GET http://localhost:7777/admin
+Authorization: Basic joe pa55word
+
+### Get user
+GET http://localhost:7777/users/123
+
+### Create user
+POST http://localhost:7777/users
+Content-Type: application/json; charset=utf-8
+
+{
+  "name": "Test"
+}
+
+### Delete user
+DELETE http://localhost:7777/users/12
+
+### Get chords
+GET http://localhost:7777/chords
+
+### Get home page
+GET http://localhost:7777/
+
+### Get all users
+GET http://localhost:7777/users

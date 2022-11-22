@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"time"
 )
 
 func requestLogger(next httprouter.Handle) httprouter.Handle {
@@ -47,13 +46,4 @@ func requestLogger(next httprouter.Handle) httprouter.Handle {
 
 		next(w, r, p)
 	}
-}
-
-func delayer(delay time.Duration, h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if delay > 0 {
-			time.Sleep(delay)
-		}
-		h.ServeHTTP(w, r)
-	})
 }

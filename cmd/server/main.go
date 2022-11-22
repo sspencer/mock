@@ -18,10 +18,8 @@ import (
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
-	var err error
 	portPtr := flag.Int("p", envInt("MOCK_PORT", 8080), "port to run server on")
 	reqPtr := flag.Bool("r", envBool("MOCK_LOG", false), "log the request")
-	delayPtr := flag.String("d", env("MOCK_DELAY", "0ms"), "delay server responses")
 
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Start the mock HTTP server with the API file or <stdin>.\nmock [flags] [input_file]")
@@ -29,14 +27,6 @@ func main() {
 	}
 
 	flag.Parse()
-
-	delay := time.Duration(0)
-	if *delayPtr != "" {
-		if delay, err = time.ParseDuration(*delayPtr); err != nil {
-			fmt.Fprintln(os.Stderr, "Delay format error (e.g. '500ms').")
-			os.Exit(1)
-		}
-	}
 
 	filename := flag.Arg(0)
 	if filename == "" {
@@ -51,7 +41,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		mockReaderServer(bufio.NewReader(os.Stdin), *portPtr, *reqPtr, delay)
+		mockReaderServer(bufio.NewReader(os.Stdin), *portPtr, *reqPtr)
 	} else {
 		files, dirs, err := readArgs()
 		if err != nil {
@@ -63,9 +53,9 @@ func main() {
 		numFiles := len(files)
 
 		if numFiles > 0 && numDirs == 0 {
-			mockFileServer(files, *portPtr, *reqPtr, delay)
+			mockFileServer(files, *portPtr, *reqPtr)
 		} else if numFiles == 0 && numDirs == 1 {
-			staticFileServer(dirs[0], *portPtr, delay)
+			staticFileServer(dirs[0], *portPtr)
 		} else {
 			fmt.Fprintln(os.Stderr, "Only serves one directory, or one or more files")
 			os.Exit(1)
@@ -95,18 +85,18 @@ func readArgs() ([]string, []string, error) {
 }
 
 // serve single directory as static file assets (html, css, js, whatever)
-func staticFileServer(fn string, port int, delay time.Duration) {
+func staticFileServer(fn string, port int) {
 	fn = strings.Replace(fn, " ", "\\ ", -1)
 
 	log.Printf("Serving %q on localhost:%d\n", fn, port)
-	panic(http.ListenAndServe(fmt.Sprintf(":%d", port), delayer(delay, http.FileServer(http.Dir(fn)))))
+	panic(http.ListenAndServe(fmt.Sprintf(":%d", port), http.FileServer(http.Dir(fn))))
 }
 
 // serve <stdin> or piped file as mock file input
-func mockReaderServer(reader io.Reader, port int, dbg bool, delay time.Duration) {
+func mockReaderServer(reader io.Reader, port int, dbg bool) {
 	log.Printf("Serving MOCK API on localhost:%d\n", port)
 
-	routes, err := data.GetEndpointsFromReader(reader, delay)
+	routes, err := data.GetEndpointsFromReader(reader)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err.Error())
 		os.Exit(1)
@@ -122,11 +112,11 @@ func mockReaderServer(reader io.Reader, port int, dbg bool, delay time.Duration)
 }
 
 // serve all files specified on command line as mock files
-func mockFileServer(fn []string, port int, dbg bool, delay time.Duration) {
+func mockFileServer(fn []string, port int, dbg bool) {
 	log.Printf("Serving MOCK API on localhost:%d\n", port)
 
 	server := newServer(port, dbg)
-	server.watchFiles(fn, delay)
+	server.watchFiles(fn)
 	err := server.ListenAndServe()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "server address %d already in use\n", port)
