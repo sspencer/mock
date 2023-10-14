@@ -41,4 +41,7 @@ docker:
 run:
 	docker run -p 7777:8080 test
 
+lint:
+	golangci-lint run --config=~/.golangci.yaml ./...
+
 dockerize: mod docker

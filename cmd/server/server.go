@@ -2,152 +2,82 @@ package main
 
 import (
 	"fmt"
-	"github.com/fsnotify/fsnotify"
-	"github.com/julienschmidt/httprouter"
-	"github.com/sspencer/mock/internal/colorlog"
-	"github.com/sspencer/mock/internal/data"
+	"io"
 	"log"
 	"net/http"
 	"os"
-	"path"
-	"path/filepath"
 	"sync"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/sspencer/mock/internal/colorlog"
+	"github.com/sspencer/mock/internal/data"
 )
 
-// server is something
-type server struct {
+// mock MockServer
+type MockServer struct {
 	*http.Server
-	notFound    http.HandlerFunc
-	notAllowed  http.HandlerFunc
-	logRequests bool
-	logger      colorlog.ResponseLoggerFunc
+	logger colorlog.LoggerFunc
 	sync.Mutex
 }
 
-// newServer creates a http server running on given port with handlers based on given routes.
-func newServer(port int, logRequests bool) *server {
+// newServer creates a http MockServer running on given port with handlers based on given routes.
+func newServer(port int, logRequest bool) *MockServer {
+	logger := colorlog.New(logRequest)
 
-	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	notImplemented := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotImplemented)
 	})
 
-	logger := colorlog.NewResponseLoggerFunc()
-	notAllowed := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		logger(http.StatusMethodNotAllowed, r)
-		http.Error(w, "405 method Not Allowed", http.StatusNotImplemented)
-	})
-
-	notFound := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		logger(http.StatusNotFound, r)
-		http.Error(w, "404 Page Not Found", http.StatusNotFound)
-	})
-
-	return &server{
+	return &MockServer{
 		Server: &http.Server{
-			Addr:    fmt.Sprintf(":%d", port),
-			Handler: h,
+			Addr:              fmt.Sprintf(":%d", port),
+			Handler:           notImplemented,
+			ReadHeaderTimeout: 5 * time.Second,
 		},
-		notAllowed:  notAllowed,
-		notFound:    notFound,
-		logRequests: logRequests,
-		logger:      logger,
+		logger: logger,
 	}
 }
 
-// loadRoutes reloads all routes handled by the server
-func (s *server) loadRoutes(endpoints []*data.Endpoint) {
+// serve <stdin> or piped file as mock file input
+func newMockServerReader(port int, reader io.Reader, logRequest bool) *MockServer {
+	routes, err := data.GetEndpointsFromReader(reader)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err.Error())
+		os.Exit(1)
+	}
+
+	server := newServer(port, logRequest)
+	server.loadRoutes(routes)
+
+	return server
+}
+
+// serve all files specified on command line as mock files
+func newMockServerFile(port int, fn string, logRequest bool) *MockServer {
+	server := newServer(port, logRequest)
+	server.watchFile(fn)
+
+	return server
+}
+
+// loadRoutes reloads all routes handled by the MockServer
+func (s *MockServer) loadRoutes(endpoints []*data.Endpoint) {
 	s.Lock()
 	defer s.Unlock()
 
-	router := httprouter.New()
-	router.MethodNotAllowed = s.notAllowed
-	router.NotFound = s.notFound
+	mux := chi.NewRouter()
+	mux.Use(s.ColorLogger())
+	mux.MethodNotAllowed(methodNotAllowed)
+	mux.NotFound(methodNotFound)
 
-	log.Println("Updating server with new routes:")
+	log.Println("Updating MockServer with new routes:")
 
 	for _, e := range endpoints {
 		log.Printf("    adding method %-8s %s\n", e.Method, e.Path)
-		if s.logRequests {
-			router.Handle(e.Method, e.Path, requestLogger(e.Handle(s.logger)))
-		} else {
-			router.Handle(e.Method, e.Path, e.Handle(s.logger))
-		}
+		mux.MethodFunc(e.Method, e.Path, e.Handle())
 	}
 
 	log.Println("--------------------------------")
-	s.Handler = router
-}
-
-// watchFiles watches the API file(s) for changes, reloading routes upon save
-func (s *server) watchFiles(files []string) {
-	routesCh := make(chan []*data.Endpoint)
-
-	s.Watch(routesCh)
-	doWatchFiles(files, routesParser(files, routesCh))
-}
-
-// Watch for route changes (user edits api file)
-func (s *server) Watch(incomingRoutes chan []*data.Endpoint) {
-	go func() {
-		for {
-			s.loadRoutes(<-incomingRoutes)
-		}
-	}()
-}
-
-// watchFile monitors specified file, calling the parser function when file changes
-func doWatchFiles(files []string, parser func()) {
-
-	// initially parse file at start up
-	parser()
-
-	// watch file for changes calling parser() again on change
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fileMap := make(map[string]bool)
-	for _, fn := range files {
-		fileMap[path.Base(fn)] = true
-	}
-
-	go func() {
-		for {
-			select {
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-
-				if event.Op&fsnotify.Write == fsnotify.Write && fileMap[path.Base(event.Name)] == true {
-					parser()
-				}
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				log.Println("Error watching file:", err)
-			}
-		}
-	}()
-
-	for _, fn := range files {
-		err = watcher.Add(filepath.Dir(fn))
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-}
-
-// routesParser is the "parser()" function passed into watchFile()
-func routesParser(files []string, ch chan []*data.Endpoint) func() {
-	return func() {
-		routes, err := data.GetEndpointsFromFiles(files)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR: %s\n", err.Error())
-		} else {
-			ch <- routes
-		}
-	}
+	s.Handler = mux
 }

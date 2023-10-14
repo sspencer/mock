@@ -4,12 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/jaswdr/faker"
-	"github.com/julienschmidt/httprouter"
 	"log"
+	"net/url"
 	"text/template"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/jaswdr/faker"
 )
 
 var funcMap template.FuncMap
@@ -96,16 +97,15 @@ func init() {
 	}
 }
 
-func substituteParams(params httprouter.Params) func([]byte) []byte {
+func substituteParams(values url.Values) func([]byte) []byte {
 	vars := make(map[string]string)
-	for i := range params {
-		k := fmt.Sprintf("{{%s}}", params[i].Key)
-		vars[k] = params[i].Value
+	for name, value := range values {
+		k := fmt.Sprintf("{{%s}}", name)
+		vars[k] = value[0]
 	}
 
 	return func(k []byte) []byte {
-		key := string(k)
-		if val, ok := vars[key]; ok {
+		if val, ok := vars[string(k)]; ok {
 			return []byte(val)
 		}
 

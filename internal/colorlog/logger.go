@@ -1,10 +1,11 @@
 package colorlog
 
 import (
-	"github.com/mattn/go-isatty"
 	"log"
 	"net/http"
 	"os"
+
+	"github.com/mattn/go-isatty"
 )
 
 var (
@@ -18,28 +19,60 @@ var (
 	reset   = string([]byte{27, 91, 48, 109})
 )
 
-type ResponseLoggerFunc func(int, *http.Request)
+type HTTPLog struct {
+	Status int
+	Method string
+	Uri    string
+	Body   string
+}
 
-func NewResponseLoggerFunc() ResponseLoggerFunc {
-	disableColor := true
+type LoggerFunc func(log HTTPLog)
 
+func New(displayBody bool) LoggerFunc {
 	if isatty.IsTerminal(os.Stdout.Fd()) {
-		disableColor = false
+		return colorlog(displayBody)
 	}
 
-	return func(statusCode int, r *http.Request) {
-		var statusColor, methodColor, resetColor string
-		if !disableColor {
-			statusColor = colorForStatus(statusCode)
-			methodColor = colorForMethod(r.Method)
-			resetColor = reset
-		}
+	return monolog(displayBody)
+}
 
-		log.Printf("%s %3d %s| %s %-7s %s %s\n",
-			statusColor, statusCode, resetColor,
-			methodColor, r.Method, resetColor,
-			r.URL.Path,
-		)
+func monolog(displayBody bool) LoggerFunc {
+	return func(r HTTPLog) {
+		if displayBody {
+			log.Printf(" %3d | %-7s %s\n%s\n",
+				r.Status,
+				r.Method,
+				r.Uri,
+				r.Body)
+		} else {
+			log.Printf(" %3d | %-7s %s\n%s\n",
+				r.Status,
+				r.Method,
+				r.Uri,
+				r.Body)
+		}
+	}
+}
+
+func colorlog(displayBody bool) LoggerFunc {
+	return func(r HTTPLog) {
+		statusColor := colorForStatus(r.Status)
+		methodColor := colorForMethod(r.Method)
+		resetColor := reset
+		if displayBody {
+			log.Printf("%s %3d %s %s %-7s %s %s\n%s\n",
+				statusColor, r.Status, resetColor,
+				methodColor, r.Method, resetColor,
+				r.Uri,
+				r.Body,
+			)
+		} else {
+			log.Printf("%s %3d %s %s %-7s %s %s\n",
+				statusColor, r.Status, resetColor,
+				methodColor, r.Method, resetColor,
+				r.Uri,
+			)
+		}
 	}
 }
 

@@ -2,48 +2,54 @@ package main
 
 import (
 	"bytes"
-	"fmt"
-	"github.com/julienschmidt/httprouter"
-	"io"
-	"log"
 	"net/http"
-	"strings"
+	"net/http/httputil"
+
+	"github.com/sspencer/mock/internal/colorlog"
 )
 
-func requestLogger(next httprouter.Handle) httprouter.Handle {
-	return func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		var request []string
-		url := fmt.Sprintf("%v %v %v", r.Method, r.URL, r.Proto)
-		request = append(request, url)
-		request = append(request, fmt.Sprintf("Host: %v", r.Host))
+// ResponseCapturingWriter is a custom ResponseWriter that captures the response data.
+type ResponseCapturingWriter struct {
+	http.ResponseWriter
+	StatusCode int
+	Body       *bytes.Buffer
+}
 
-		// Loop through headers
-		for name, headers := range r.Header {
-			name = strings.ToLower(name)
-			for _, h := range headers {
-				request = append(request, fmt.Sprintf("%v: %v", name, h))
+func (w *ResponseCapturingWriter) WriteHeader(statusCode int) {
+	w.StatusCode = statusCode
+	w.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (w *ResponseCapturingWriter) Write(data []byte) (int, error) {
+	if w.Body != nil {
+		w.Body.Write(data)
+	}
+	return w.ResponseWriter.Write(data)
+}
+
+func (s *MockServer) ColorLogger() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			cw := &ResponseCapturingWriter{
+				ResponseWriter: w,
+				StatusCode:     http.StatusOK,
+				Body:           &bytes.Buffer{},
 			}
-		}
 
-		request = append(request, "\n")
+			// Call the next handler with the capturing writer
+			next.ServeHTTP(cw, r)
 
-		buf, _ := io.ReadAll(r.Body)
-		rdr1 := io.NopCloser(bytes.NewBuffer(buf))
-		rdr2 := io.NopCloser(bytes.NewBuffer(buf)) // create a second Buffer, since rdr1 will be read
+			body, err := httputil.DumpRequest(r, true)
+			if err != nil {
+				body = []byte("")
+			}
 
-		// copy body from rdr1 to buffer
-		bb := new(bytes.Buffer)
-		bb.ReadFrom(rdr1)
-
-		request = append(request, bb.String()) // append request body
-
-		// log request/headers/body
-		msg := strings.TrimSpace(strings.Join(request, "\n"))
-		log.Printf("REQUEST:\n----\n%s\n----\n", msg)
-
-		// set body to unread buffer
-		r.Body = rdr2
-
-		next(w, r, p)
+			s.logger(colorlog.HTTPLog{
+				Status: cw.StatusCode,
+				Method: r.Method,
+				Uri:    r.URL.String(),
+				Body:   string(body),
+			})
+		})
 	}
 }

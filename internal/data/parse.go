@@ -14,29 +14,29 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
-const defaultContentType = "text/html; charset=utf-8"
+const (
+	defaultContentType   = "text/html; charset=utf-8"
+	recordStartIndicator = "###"
+)
 
 // parse @variable = value
 var (
 	variableRegex = regexp.MustCompile("(@[a-z][-a-z0-9_]+)=?(.*)?")
 )
 
-type auth struct {
-	authType authType
-	username string
-	password string
-}
-
 // route representation during parse, with just a single response.
 type route struct {
 	name   string
 	method string
 	path   string
+	uriKey string
+	uriVal string
 	status int
 	delay  time.Duration
-	auth   auth
 	body   []byte
 	header map[string]string
 }
@@ -48,13 +48,6 @@ type parser struct {
 	defaultDelay time.Duration
 	route        *route
 }
-
-type authType int
-
-const (
-	authTypeNone authType = iota
-	authTypeBasic
-)
 
 type parseState int
 
@@ -108,20 +101,13 @@ func (p *parser) String() string {
 	return sb.String()
 }
 
-// readFile parses the incoming routes from a file
-func (p *parser) readFile(fn string) error {
-	f, err := os.Open(fn)
-	if err != nil {
-		return err
-	}
-
-	defer f.Close()
-
-	p.fileName = fn
-	p.baseDir = path.Dir(fn)
-
-	return p.parse(f)
-}
+// A route looks like this:
+//     ### Request Name          # parseNone
+//     # @status 200             # parseVariable
+//     POST /users               # parseRequest
+//     Content-Type: plain/text  # parseHeader
+//                               # "blank line"
+//     response body             # parseBody
 
 // parse the incoming routes from a reader
 func (p *parser) parse(r io.Reader) error {
@@ -136,19 +122,19 @@ func (p *parser) parse(r io.Reader) error {
 
 		switch state {
 		case stateNone:
-			state, err = p.parseNone(line)
+			state, err = p.handleStateNone(line)
 
 		case stateVariable:
-			state, err = p.parseVariable(line, lineNum)
+			state, err = p.handleStateVariable(line, lineNum)
 
 		case stateResponse:
-			state, err = p.parseRequest(line, lineNum)
+			state, err = p.handleStateRequest(line, lineNum)
 
 		case stateHeader:
-			state, err = p.parseHeader(line)
+			state, err = p.handleStateHeader(line)
 
 		case stateBody:
-			state, err = p.parseBody(line)
+			state, err = p.handleStateBody(line)
 		}
 
 		if err != nil {
@@ -162,12 +148,21 @@ func (p *parser) parse(r io.Reader) error {
 	return nil
 }
 
-func (p *parser) parseNone(line string) (parseState, error) {
-	if len(line) >= 3 && line[:3] == "###" {
-		// TBD save previous response
-		name := strings.TrimSpace(line[3:])
+// parseName assumes line starts with "###" otherwise returns UUID
+func (p *parser) getName(line string) string {
+	name := strings.TrimSpace(line[3:])
+	if name == "" {
+		name = uuid.New().String()
+	}
+
+	return name
+}
+
+// parseNone looks for start of a new http request, which is signified by "###"
+func (p *parser) handleStateNone(line string) (parseState, error) {
+	if strings.HasPrefix(line, recordStartIndicator) {
 		p.route = &route{
-			name:   name,
+			name:   p.getName(line),
 			status: http.StatusOK,
 			delay:  p.defaultDelay,
 			header: map[string]string{"content-type": defaultContentType},
@@ -178,28 +173,29 @@ func (p *parser) parseNone(line string) (parseState, error) {
 	return stateNone, nil
 }
 
-func (p *parser) parseVariable(line string, lineNum int) (parseState, error) {
-	// skip blank line
-	if len(strings.TrimSpace(line)) == 0 {
+// parseVariable looks for "# @var value" definitions immediately after new request definition
+func (p *parser) handleStateVariable(line string, lineNum int) (parseState, error) {
+	// skip blank line, continue looking for variables
+	if strings.TrimSpace(line) == "" {
 		return stateVariable, nil
 	}
 
-	if len(line) >= 3 && line[:3] == "###" {
+	// route ended early, start over
+	if strings.HasPrefix(line, recordStartIndicator) {
 		p.route = nil
 		return stateNone, nil
 	}
 
 	// if line doesn't start with "#", move to next state
 	if line[:1] != "#" {
-		// return stateResponse, nil
-		return p.parseRequest(line, lineNum)
+		return p.handleStateRequest(line, lineNum)
 	}
 
 	// variable specification:
 	// # @name value
 	// # @name=value
 	tokens := variableRegex.FindStringSubmatch(line[1:])
-	if tokens != nil && len(tokens) == 3 {
+	if len(tokens) == 3 {
 		name := tokens[1]
 		val := strings.TrimSpace(strings.Trim(tokens[2], "\""))
 		switch name {
@@ -221,18 +217,6 @@ func (p *parser) parseVariable(line string, lineNum int) (parseState, error) {
 
 			p.route.status = status
 
-		case "@basicauth":
-			vals := strings.Split(val, " ")
-			if len(vals) != 2 {
-				return stateNone, fmt.Errorf("invalid Auth, line %d: %s", lineNum, line)
-			}
-
-			p.route.auth = auth{
-				authType: authTypeBasic,
-				username: vals[0],
-				password: vals[1],
-			}
-
 		case "@file":
 			// TBD verify file is readable
 			var err error
@@ -251,21 +235,24 @@ func (p *parser) parseVariable(line string, lineNum int) (parseState, error) {
 	return stateVariable, nil
 }
 
-func (p *parser) parseRequest(line string, lineNum int) (parseState, error) {
-	method, uri, err := p.getRequest(line, lineNum)
-
+// parseRequest expects one http method and url, like "GET /users"
+func (p *parser) handleStateRequest(line string, lineNum int) (parseState, error) {
+	req, err := p.getRequest(line, lineNum)
 	if err != nil {
 		return stateNone, err
 	}
 
-	p.route.method = method
-	p.route.path = uri
+	p.route.method = req.method
+	p.route.path = req.uri
+	p.route.uriKey = req.key
+	p.route.uriVal = req.val
 
 	return stateHeader, nil
 }
 
-func (p *parser) parseHeader(line string) (parseState, error) {
-	if len(strings.TrimSpace(line)) == 0 {
+// parseHeader expects 0 or more lines with "Content-Type: application/json"
+func (p *parser) handleStateHeader(line string) (parseState, error) {
+	if strings.TrimSpace(line) == "" {
 		return stateBody, nil
 	}
 
@@ -275,15 +262,14 @@ func (p *parser) parseHeader(line string) (parseState, error) {
 	return stateHeader, nil
 }
 
-func (p *parser) parseBody(line string) (parseState, error) {
-	if len(line) >= 3 && line[:3] == "###" {
+// parseLine expects an additional line to make up the http request
+func (p *parser) handleStateBody(line string) (parseState, error) {
+	if strings.HasPrefix(line, recordStartIndicator) {
 		p.appendRoute()
-		return p.parseNone(line)
+		return p.handleStateNone(line)
 	}
 
-	line = line + "\r\n"
-	p.route.body = append(p.route.body, line...)
-
+	p.route.body = append(p.route.body, line+"\r\n"...)
 	return stateBody, nil
 }
 
@@ -294,22 +280,64 @@ func (p *parser) appendRoute() {
 	}
 }
 
-func (p *parser) getRequest(line string, lineNum int) (string, string, error) {
+type requestInfo struct {
+	method string
+	uri    string
+	key    string
+	val    string
+}
 
+// getRequest returns "[<http method>] <url>" from line
+func (p *parser) getRequest(line string, lineNum int) (req *requestInfo, err error) {
 	tokens := strings.Split(line, " ")
 	switch len(tokens) {
 	case 1:
 		if p.isHTTPPath(tokens[0]) {
-			return http.MethodGet, tokens[0], nil
+			uri, err := p.cleanPath(tokens[0])
+			if err != nil {
+				return nil, err
+			}
+			k, v := getVarParams(tokens[0])
+
+			return &requestInfo{
+				method: http.MethodGet,
+				uri:    uri,
+				key:    k,
+				val:    v,
+			}, nil
 		}
 
 	case 2:
 		if p.isHTTPMethod(tokens[0]) && p.isHTTPPath(tokens[1]) {
-			return strings.ToUpper(tokens[0]), p.cleanPath(tokens[1]), nil
+			method := strings.ToUpper(tokens[0])
+			uri, err := p.cleanPath(tokens[1])
+			if err != nil {
+				return nil, err
+			}
+
+			k, v := getVarParams(tokens[1])
+
+			return &requestInfo{
+				method: method,
+				uri:    uri,
+				key:    k,
+				val:    v,
+			}, nil
 		}
 	}
 
-	return "", "", p.lineError("unrecognized request, line %d: %s", lineNum, line)
+	return nil, p.lineError("unrecognized request, line %d: %s", lineNum, line)
+}
+
+func getVarParams(uri string) (string, string) {
+	u, err := url.Parse(uri)
+	if err == nil {
+		values := u.Query()
+		for key, value := range values {
+			return key, value[0]
+		}
+	}
+	return "", ""
 }
 
 func (p *parser) lineError(msg string, lineNum int, line string) error {
@@ -329,17 +357,29 @@ func (p *parser) isHTTPMethod(m string) bool {
 	}
 }
 
-func (p *parser) isHTTPPath(url string) bool {
+// isHTTPPath verifies string looks like an url (has leading "/")
+func (p *parser) isHTTPPath(u string) bool {
 	// just check for leading "/", everything else is encoded later
-	return url[0:1] == "/"
+	return len(u) != 0 && u[0:1] == "/"
 }
 
-func (p *parser) cleanPath(uri string) string {
-	items := strings.Split(uri, "/")
-	var s []string
-	for _, i := range items {
-		s = append(s, url.PathEscape(i))
+func (p *parser) cleanPath(uri string) (string, error) {
+	u, err := url.Parse(uri)
+	if err != nil {
+		return "", err
 	}
 
-	return strings.Join(s, "/")
+	uri = u.Path
+
+	items := strings.Split(uri, "/")
+	s := make([]string, len(items))
+	for i, item := range items {
+		if strings.HasPrefix(item, ":") && len(item) > 1 {
+			s[i] = "{" + url.PathEscape(item[1:]) + "}"
+		} else {
+			s[i] = url.PathEscape(item)
+		}
+	}
+
+	return strings.Join(s, "/"), nil
 }

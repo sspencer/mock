@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/jaswdr/faker"
 	"log"
 	"os"
 	"text/template"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/jaswdr/faker"
 )
 
 // Testbed for adding variables available for response {{substitution}}.

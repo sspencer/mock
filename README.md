@@ -90,10 +90,6 @@ of the variable.
 
     Hello {{name}}!
 
-Read more about the path variables syntax in Julien Schimdt's 
-[httprouter](https://github.com/julienschmidt/httprouter),
-the router used by `mock`.
-
 ### Headers
 
 Headers are optional.  By default, every response will respond
@@ -167,7 +163,6 @@ Will return the status codes `201`, `201`, `400` and responses `{ "id": 5 }`,
 - [x] dockerized
 - [x] add {{body}} variables similar to what http client supports
 - [x] Use Go lang text templates instead of ReplaceAll()
-- [x] support `@basicauth name pass`
 
 ## Ideas
 
