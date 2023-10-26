@@ -48,7 +48,7 @@ func (s *MockServer) ColorLogger() func(http.Handler) http.Handler {
 				Status: cw.StatusCode,
 				Method: r.Method,
 				Uri:    r.URL.String(),
-				Body:   string(body),
+				Body:   string(bytes.TrimSpace(body)),
 			})
 		})
 	}
