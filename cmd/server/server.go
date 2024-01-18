@@ -14,7 +14,7 @@ import (
 	"github.com/sspencer/mock/internal/data"
 )
 
-// mock MockServer
+// MockServer is the http server struct
 type MockServer struct {
 	*http.Server
 	logger colorlog.LoggerFunc

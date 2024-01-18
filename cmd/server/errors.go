@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-func methodNotFound(w http.ResponseWriter, r *http.Request) {
+func methodNotFound(w http.ResponseWriter, _ *http.Request) {
 	message := "The requested resource could not be found"
 	http.Error(w, message, http.StatusNotFound)
 }
