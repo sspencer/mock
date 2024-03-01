@@ -1,9 +1,7 @@
 package main
 
 import (
-	"fmt"
 	"log"
-	"os"
 	"path"
 	"path/filepath"
 
@@ -43,7 +41,7 @@ func (s *MockServer) watchFile(fn string) {
 	routesParser := func() {
 		routes, err := data.GetEndpointsFromFile(fn)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR: %s\n", err.Error())
+			log.Println(err.Error())
 		} else {
 			ch <- routes
 		}

@@ -147,21 +147,3 @@ Content-Type: "text/html; charset=utf-8"
 </body>
 </html>
 
-
-### Examine http get vars for response: cat
-GET /pet/names?type=cat
-Content-Type: application/json
-
-{
-    "type": "cat",
-    "names": ["whiskers", "jigsaw", "burger", "bingo"]
-}
-
-### Examine http get vars for response: dog
-GET /pet/names?type=dog
-Content-Type: application/json
-
-{
-    "type": "dog",
-    "names": ["rusty", "sparky", "surge", "bolt"]
-}

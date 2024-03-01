@@ -17,17 +17,14 @@ IntelliJ's [HTTP Client](https://www.jetbrains.com/help/idea/http-client-in-prod
 
 ## Run / Develop
 
-    mock [flags] [input_file1] [input_file2]
+    mock [flags] [input_files]
       -p int
-            port to run server on (default 8080)
-      -r    
-            log the request body
+            port (default 7777)
+      -r    log request
+      -s    log response
 
 1. Mock API: `mock examples/user.http` or `cat my.http | mock` or even `mock < my.http`
 2. Serve Directory: `mock .`  NOTE: can't combine serving a directory with serving `.http` files.
-3. Each flag can be specified through ENV Vars:
-   * `MOCK_PORT`:  ex/ "8080"
-   * `MOCK_LOG`:   ex/ "1" or "true" -- bool type value
    
 If you're interested in developing `mock` *itself*, simply start `mock` with:
 

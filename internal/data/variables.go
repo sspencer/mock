@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"net/url"
 	"text/template"
 	"time"
@@ -101,7 +102,7 @@ func substituteParams(values url.Values) func([]byte) []byte {
 	vars := make(map[string]string)
 	for name, value := range values {
 		k := fmt.Sprintf("{{%s}}", name)
-		vars[k] = value[0]
+		vars[k] = value[rand.IntN(len(value))]
 	}
 
 	return func(k []byte) []byte {

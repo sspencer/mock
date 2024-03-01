@@ -1,5 +1,5 @@
 # builder image
-FROM golang:1.16.3-alpine3.13 as builder
+FROM golang:1.22-alpine3.19 as builder
 RUN mkdir /build
 RUN mkdir /build/cmd
 WORKDIR /build
@@ -12,7 +12,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -a -o golang-mock cmd/main.go
 
 # generate clean, final image for end users
-FROM alpine:3.13
+FROM alpine:3.19
 COPY --from=builder /build/golang-mock .
 COPY --from=builder /build/examples/ .
 

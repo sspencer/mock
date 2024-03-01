@@ -22,7 +22,10 @@ func (w *ResponseCapturingWriter) WriteHeader(statusCode int) {
 
 func (w *ResponseCapturingWriter) Write(data []byte) (int, error) {
 	if w.Body != nil {
-		w.Body.Write(data)
+		n, err := w.Body.Write(data)
+		if err != nil {
+			return n, err
+		}
 	}
 	return w.ResponseWriter.Write(data)
 }
@@ -45,10 +48,12 @@ func (s *MockServer) ColorLogger() func(http.Handler) http.Handler {
 			}
 
 			s.logger(colorlog.HTTPLog{
-				Status: cw.StatusCode,
-				Method: r.Method,
-				Uri:    r.URL.String(),
-				Body:   string(bytes.TrimSpace(body)),
+				Status:   cw.StatusCode,
+				Method:   r.Method,
+				Uri:      r.URL.String(),
+				Body:     string(bytes.TrimSpace(body)),
+				Response: cw.Body.String(),
+				Header:   cw.Header(),
 			})
 		})
 	}

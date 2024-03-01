@@ -9,26 +9,25 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/sspencer/mock/internal/util"
 )
+
+func printUsageMessage() {
+	message := "Start mock MockServer with mock file, directory or <stdin>.\nmock [flags] [input_file]"
+	fmt.Fprintln(os.Stderr, message)
+	flag.PrintDefaults()
+}
 
 func main() {
 	var serverPort int
-	var logRequest bool
+	var logRequest, logResponse bool
 
-	flag.IntVar(&serverPort, "p", util.EnvInt("MOCK_PORT", 7777), "port")
-	flag.BoolVar(&logRequest, "r", util.EnvBool("MOCK_LOG", false), "log request body")
-
-	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Start mock MockServer with mock file, directory or <stdin>.\nmock [flags] [input_file]")
-		flag.PrintDefaults()
-	}
-
+	flag.Usage = printUsageMessage
+	flag.IntVar(&serverPort, "p", 7777, "port")
+	flag.BoolVar(&logRequest, "r", false, "log request")
+	flag.BoolVar(&logResponse, "s", false, "log response")
 	flag.Parse()
-	filename := flag.Arg(0)
 
-	var mockServer *MockServer
+	filename := flag.Arg(0)
 
 	if filename == "" {
 		// read input from stdin
@@ -42,8 +41,8 @@ func main() {
 			os.Exit(1)
 		}
 
-		mockServer = newMockServerReader(serverPort, bufio.NewReader(os.Stdin), logRequest)
-		startMockServer(mockServer.Server)
+		mock := newMockServerReader(serverPort, bufio.NewReader(os.Stdin), logRequest, logResponse)
+		checkErr(mock.Server.ListenAndServe())
 
 	} else {
 		// check command line input:
@@ -57,21 +56,16 @@ func main() {
 		if mode.IsDir() {
 			startStaticServer(f, serverPort)
 		} else {
-			mockServer = newMockServerFile(serverPort, f, logRequest)
-			startMockServer(mockServer.Server)
+			mock := newMockServerFile(serverPort, f, logRequest, logResponse)
+			checkErr(mock.Server.ListenAndServe())
 		}
 	}
 }
 
 func checkErr(err error) {
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
+		log.Fatalln(err.Error())
 	}
-}
-
-func startMockServer(s *http.Server) {
-	checkErr(s.ListenAndServe())
 }
 
 // serve single directory as static file assets (html, css, js, whatever)

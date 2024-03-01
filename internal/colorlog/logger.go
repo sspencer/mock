@@ -1,6 +1,8 @@
 package colorlog
 
 import (
+	"bytes"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -20,25 +22,27 @@ var (
 )
 
 type HTTPLog struct {
-	Status int
-	Method string
-	Uri    string
-	Body   string
+	Status   int
+	Method   string
+	Uri      string
+	Body     string
+	Response string
+	Header   http.Header
 }
 
 type LoggerFunc func(log HTTPLog)
 
-func New(displayBody bool) LoggerFunc {
+func New(displayRequestBody, displayResponse bool) LoggerFunc {
 	if isatty.IsTerminal(os.Stdout.Fd()) {
-		return colorlog(displayBody)
+		return colorlog(displayRequestBody, displayResponse)
 	}
 
-	return monolog(displayBody)
+	return monolog(displayRequestBody, displayResponse)
 }
 
-func monolog(displayBody bool) LoggerFunc {
+func monolog(displayRequestBody, displayResponse bool) LoggerFunc {
 	return func(r HTTPLog) {
-		if displayBody {
+		if displayRequestBody {
 			log.Printf(" %3d | %-7s %s\n%s\n",
 				r.Status,
 				r.Method,
@@ -51,15 +55,41 @@ func monolog(displayBody bool) LoggerFunc {
 				r.Uri,
 				r.Body)
 		}
+
+		if displayResponse {
+			response := logResponse(r)
+			fmt.Printf("Response:\n%s", response)
+		}
 	}
 }
 
-func colorlog(displayBody bool) LoggerFunc {
+func logResponse(r HTTPLog) string {
+	var buffer bytes.Buffer
+
+	hdrs := 0
+	for k, v := range r.Header {
+		hdrs++
+		val := ""
+		if len(v) > 0 {
+			val = v[0]
+		}
+		buffer.WriteString(fmt.Sprintf("%s: %s\n", k, val))
+	}
+
+	if hdrs > 0 {
+		buffer.WriteString("\n")
+	}
+
+	buffer.WriteString(r.Response)
+	return buffer.String()
+}
+
+func colorlog(displayRequestBody, displayResponse bool) LoggerFunc {
 	return func(r HTTPLog) {
 		statusColor := colorForStatus(r.Status)
 		methodColor := colorForMethod(r.Method)
 		resetColor := reset
-		if displayBody {
+		if displayRequestBody {
 			log.Printf("%s %3d %s %s %-7s %s %s\n%s\n",
 				statusColor, r.Status, resetColor,
 				methodColor, r.Method, resetColor,
@@ -72,6 +102,11 @@ func colorlog(displayBody bool) LoggerFunc {
 				methodColor, r.Method, resetColor,
 				r.Uri,
 			)
+		}
+
+		if displayResponse {
+			response := logResponse(r)
+			log.Printf("%s Response: %s\n%s\n", blue, resetColor, response)
 		}
 	}
 }

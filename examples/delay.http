@@ -14,7 +14,8 @@ Content-Type: application/json
 
 {
   "id": 1,
-  "name": "{{name}}"
+  "name": "{{name}}",
+  "delay": "{{delay}}"
 }
 
 ### return a user after 1 second delay
@@ -24,7 +25,8 @@ Content-Type: application/json
 
 {
   "id": 1,
-  "name": "One Thousand Millis"
+  "name": "{{name}}",
+  "delay": "{{delay}}"
 }
 
 ### Return a user after 2 second delay
@@ -34,7 +36,9 @@ Content-Type: application/json
 
 {
   "id": "{{uuid}}",
-  "name": "Two seconds"
+  "name": "Two seconds",
+  "delay": "{{delay}}"
+
 }
 
 
