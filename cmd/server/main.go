@@ -11,66 +11,79 @@ import (
 	"strings"
 )
 
-func printUsageMessage() {
-	message := "Start mock MockServer with mock file, directory or <stdin>.\nmock [flags] [input_file]"
-	fmt.Fprintln(os.Stderr, message)
-	flag.PrintDefaults()
+type config struct {
+	addr        string
+	logRequest  bool
+	logResponse bool
 }
 
 func main() {
 	var serverPort int
-	var logRequest, logResponse bool
+	var cfg config
 
 	flag.Usage = printUsageMessage
 	flag.IntVar(&serverPort, "p", 7777, "port")
-	flag.BoolVar(&logRequest, "r", false, "log request")
-	flag.BoolVar(&logResponse, "s", false, "log response")
+	flag.BoolVar(&cfg.logRequest, "r", false, "log request")
+	flag.BoolVar(&cfg.logResponse, "s", false, "log response")
 	flag.Parse()
 
-	filename := flag.Arg(0)
+	filename := filepath.Clean(flag.Arg(0))
+	cfg.addr = fmt.Sprintf(":%d", serverPort)
 
 	if filename == "" {
-		// read input from stdin
-		info, err := os.Stdin.Stat()
+		err := serveReader(cfg)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
-
-		if info.Mode()&os.ModeCharDevice != 0 || info.Size() <= 0 {
-			flag.Usage()
-			os.Exit(1)
-		}
-
-		mock := newMockServerReader(serverPort, bufio.NewReader(os.Stdin), logRequest, logResponse)
-		checkErr(mock.Server.ListenAndServe())
-
 	} else {
-		// check command line input:
-		//   file: start mock server
-		//   directory: start static server
-		f := filepath.Clean(filename)
-		fi, err := os.Stat(f)
-		checkErr(err)
+		fi, err := os.Stat(filename)
 
-		mode := fi.Mode()
-		if mode.IsDir() {
-			startStaticServer(f, serverPort)
-		} else {
-			mock := newMockServerFile(serverPort, f, logRequest, logResponse)
-			checkErr(mock.Server.ListenAndServe())
+		if err == nil {
+			if fi.Mode().IsDir() {
+				err = serveDirectory(cfg, filename)
+			} else {
+				err = serveFile(cfg, filename)
+			}
+		}
+
+		if err != nil {
+			log.Fatalln(err.Error())
 		}
 	}
 }
 
-func checkErr(err error) {
+// serveReader reads from mock file from <stdin>
+func serveReader(cfg config) error {
+	// read input from stdin
+	info, err := os.Stdin.Stat()
 	if err != nil {
-		log.Fatalln(err.Error())
+		return err
 	}
+
+	if info.Mode()&os.ModeCharDevice != 0 || info.Size() <= 0 {
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	mock := newMockReader(cfg, bufio.NewReader(os.Stdin))
+	return mock.Server.ListenAndServe()
 }
 
-// serve single directory as static file assets (html, css, js, whatever)
-func startStaticServer(fn string, port int) {
+// serveFile serves mock file passed in from command line
+func serveFile(cfg config, fn string) error {
+	mock := newMockFile(cfg, fn)
+	return mock.Server.ListenAndServe()
+}
+
+// serveDirectory serves directory of standard html files
+func serveDirectory(cfg config, fn string) error {
 	fn = strings.ReplaceAll(fn, " ", "\\ ")
-	log.Printf("Serving %q on localhost:%d\n", fn, port)
-	checkErr(http.ListenAndServe(fmt.Sprintf(":%d", port), http.FileServer(http.Dir(fn))))
+	log.Printf("Serving %q on localhost%s\n", fn, cfg.addr)
+	return http.ListenAndServe(cfg.addr, http.FileServer(http.Dir(fn)))
+}
+
+func printUsageMessage() {
+	message := "Start mock MockServer with mock file, directory or <stdin>.\nmock [flags] [input_file]"
+	fmt.Fprintln(os.Stderr, message)
+	flag.PrintDefaults()
 }

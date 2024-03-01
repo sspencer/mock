@@ -10,3 +10,4 @@ lint.txt
 /.idea
 /.vscode
 /dump.rdb
+/qodana.yaml

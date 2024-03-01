@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -17,13 +16,13 @@ import (
 type MockServer struct {
 	*http.Server
 	logger colorlog.LoggerFunc
-	port   int
+	addr   string
 	sync.Mutex
 }
 
 // newServer creates a http MockServer running on given port with handlers based on given routes.
-func newServer(port int, logRequest, logResponse bool) *MockServer {
-	logger := colorlog.New(logRequest, logResponse)
+func newServer(cfg config) *MockServer {
+	logger := colorlog.New(cfg.logRequest, cfg.logResponse)
 
 	notImplemented := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotImplemented)
@@ -31,33 +30,32 @@ func newServer(port int, logRequest, logResponse bool) *MockServer {
 
 	return &MockServer{
 		Server: &http.Server{
-			Addr:              fmt.Sprintf(":%d", port),
+			Addr:              cfg.addr,
 			Handler:           notImplemented,
 			ReadHeaderTimeout: 5 * time.Second,
 		},
 		logger: logger,
-		port:   port,
+		addr:   cfg.addr,
 	}
 }
 
 // serve <stdin> or piped file as mock file input
-func newMockServerReader(port int, reader io.Reader, logRequest, logResponse bool) *MockServer {
+func newMockReader(cfg config, reader io.Reader) *MockServer {
 	routes, err := data.GetEndpointsFromReader(reader)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 
-	server := newServer(port, logRequest, logResponse)
+	server := newServer(cfg)
 	server.loadRoutes(routes)
 
 	return server
 }
 
 // serve all files specified on command line as mock files
-func newMockServerFile(port int, fn string, logRequest, logResponse bool) *MockServer {
-	server := newServer(port, logRequest, logResponse)
+func newMockFile(cfg config, fn string) *MockServer {
+	server := newServer(cfg)
 	server.watchFile(fn)
-
 	return server
 }
 
@@ -71,7 +69,7 @@ func (s *MockServer) loadRoutes(endpoints []*data.Endpoint) {
 	mux.MethodNotAllowed(methodNotAllowed)
 	mux.NotFound(methodNotFound)
 
-	log.Printf("Updating MockServer with new routes on :%d\n", s.port)
+	log.Printf("Updating MockServer with new routes on %s\n", s.addr)
 
 	for _, e := range endpoints {
 		log.Printf("    adding method %-8s %s\n", e.Method, e.Path)
