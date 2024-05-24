@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestParser(t *testing.T) {
@@ -19,18 +18,18 @@ func TestParser(t *testing.T) {
 
 	for _, path := range paths {
 		_, filename := filepath.Split(path)
-		testname := filename[:len(filename)-len(filepath.Ext(path))]
+		testName := filename[:len(filename)-len(filepath.Ext(path))]
 
 		// Each path turns into a test: the test name is the filename without the
 		// extension.
-		t.Run(testname, func(t *testing.T) {
+		t.Run(testName, func(t *testing.T) {
 			source, err := os.Open(path)
 			if err != nil {
 				t.Fatal("error reading source file:", err)
 			}
 
-			delay := time.Duration(0)
-			sp := &parser{baseDir: "testdata", defaultDelay: delay}
+			sp := newParser("testdata", "")
+
 			var output string
 			err = sp.parse(source)
 
@@ -40,14 +39,14 @@ func TestParser(t *testing.T) {
 				output = sp.String()
 			}
 
-			gold := filepath.Join("testdata", testname+".golden")
+			gold := filepath.Join("testdata", testName+".golden")
 			want, err := os.ReadFile(gold)
 			if err != nil {
 				t.Fatal("error reading good file:", err)
 			}
 
 			if !bytes.Equal([]byte(strings.TrimSpace(output)), bytes.TrimSpace(want)) {
-				t.Errorf("\n==== got:\n%s\n==== want:\n%s\n", output, want)
+				t.Errorf("test %q \n==== got:\n%s\n==== want:\n%s\n", testName, output, want)
 			}
 		})
 	}

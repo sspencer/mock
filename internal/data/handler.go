@@ -5,10 +5,15 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+)
+
+var (
+	dollarReplacerRegex = regexp.MustCompile(`{{\s*\$([a-zA-Z_]\w*)\s*}}`)
 )
 
 // Handle returns a HTTP handler method for the given endpoint.
@@ -61,8 +66,15 @@ func (e *Endpoint) writeHTTPResponse(w http.ResponseWriter, r *http.Request, pat
 	w.WriteHeader(resp.status)
 
 	// replace {{params}} and {{variables}} in body
-	items := strings.Split(path, "/")
 	subVars := make(url.Values)
+
+	// 1. add global vars
+	for name, val := range e.globalVars {
+		subVars[name] = []string{val}
+	}
+
+	// 2. add vars from path
+	items := strings.Split(path, "/")
 	for _, item := range items {
 		if strings.HasPrefix(item, "{") && strings.HasSuffix(item, "}") {
 			// Remove curly braces and print the item
@@ -72,9 +84,10 @@ func (e *Endpoint) writeHTTPResponse(w http.ResponseWriter, r *http.Request, pat
 		}
 	}
 
+	// 3. add endpoint's delay value
 	subVars["delay"] = []string{resp.delay.String()}
 
-	// add HTTP GET params as substitution variables
+	// 4. add HTTP GET params as substitution variables
 	for k, v := range r.URL.Query() {
 		arr := strings.SplitN(getVar, "=", 2)
 
@@ -87,7 +100,14 @@ func (e *Endpoint) writeHTTPResponse(w http.ResponseWriter, r *http.Request, pat
 		}
 	}
 
-	out := substituteVars(replacerRegex.ReplaceAllFunc(resp.body, substituteParams(subVars)))
+	// replace {{$var}} with {{var}} otherwise tmpl Funcs replacement won't work
+	out := replaceVarDollars(resp.body)
+
+	// replace global variables and path params into body
+	out = replacerRegex.ReplaceAllFunc(out, substituteParams(subVars))
+
+	// replaced mapped functions like {{uuid}} into body
+	out = substituteVars(out)
 
 	_, err := w.Write(out)
 	if err != nil {

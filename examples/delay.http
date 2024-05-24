@@ -14,19 +14,19 @@ Content-Type: application/json
 
 {
   "id": 1,
-  "name": "{{name}}",
-  "delay": "{{delay}}"
+  "name": "{{$name}}",
+  "delay": "{{$delay}}"
 }
 
 ### return a user after 1 second delay
-# @delay 1000ms
+# @delay=1000ms
 GET /users/1
 Content-Type: application/json
 
 {
   "id": 1,
-  "name": "{{name}}",
-  "delay": "{{delay}}"
+  "name": "{{$name}}",
+  "delay": "{{$delay}}"
 }
 
 ### Return a user after 2 second delay
@@ -35,11 +35,9 @@ GET /users/2
 Content-Type: application/json
 
 {
-  "id": "{{uuid}}",
+  "id": "{{$uuid}}",
   "name": "Two seconds",
-  "delay": "{{delay}}"
+  "delay": "{{$delay}}"
 
 }
 
-
-###

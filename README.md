@@ -1,15 +1,13 @@
 # mock
 
-Mock creates an HTTP server with *mocked* routes specified from a local file.  It allows for
-rapid development and testing of (REST) API clients.  The routes are dynamically configured from
-a watched file.
+Mock creates an HTTP server with *mocked* routes specified from a local file.  
+It allows for rapid development and testing of (REST) API clients.  The routes 
+are dynamically configured from a watched file.
 
-For added flexibility, Mock optionally just serves the specified directory.
+For added flexibility, Mock optionally serves a specified directory.
 
-This project was originally inspired by [localroast](https://github.com/caalberts/localroast).  
-Thought it would be fun to recreate something similar with a less verbose API syntax.
-The syntax is very similar to VSCode's [REST Client](https://marketplace.visualstudio.com/items?itemName=humao.rest-client) /
-IntelliJ's [HTTP Client](https://www.jetbrains.com/help/idea/http-client-in-product-code-editor.html#creating-http-request-files). 
+The format of the file is very similar (compatible) to the client specification
+of VSCode's [REST Client](https://marketplace.visualstudio.com/items?itemName=humao.rest-client) / IntelliJ's [HTTP Client](https://www.jetbrains.com/help/idea/http-client-in-product-code-editor.html#creating-http-request-files). 
 
 ## Build/Install
 
@@ -51,14 +49,14 @@ Examples:
     }
 
     ### Delete user
-    # @status 204
-    DELETE /users/:id
+    # @status=204
+    DELETE http://localhost:1234/users/:id
 
 In general, syntax is:
 
     ### Response Name
-    # @varname value (optional, zero or more)
-    method path
+    # @var=value (understands @delay, @status, @file)
+    HTTP_METHOD URL 
     header      (optional zero or more)
                 (empty line, required if body specified)
     body line 1 (optional)
@@ -71,21 +69,28 @@ In general, syntax is:
 
 Variables are specified after `###`, are optional, and are defined one per line.
 
-1. `# @delay 500ms` delays response (defaults to 0, golang duration syntax)
-2. `# @status 201` defines http status code (defaults to 200)
-3. `# @file index.html` specifies body from external file (defaults to unspecified)
+1. `# @delay=500ms` delays response (defaults to 0, golang duration syntax)
+2. `# @status=201` defines http status code (defaults to 200)
+3. `# @file=index.html` specifies body from external file (defaults to unspecified)
+
+### Global Variables
+
+May specify global variables that can then be substituted in responses
+with `{{$name}}`.  This are usually specified at the top of the file.
+
+`@name=value`
 
 ### Path Variables
 
 Variables may be defined in the path, preceded by a colon.  For any path variable
-defined in the path, `{{varname}}` in the body will be replaced with the value
+defined in the path, `{{$name}}` in the body will be replaced with the value
 of the variable.
 
     ### say hello
     GET /hello/:name
     content-type: text/plain
 
-    Hello {{name}}!
+    Hello {{$name}}!
 
 ### Headers
 
@@ -102,25 +107,25 @@ Besides replacing path variables in the body e.g. `{{id}}`, the following
 variables will be dynamically generated with [faker](https://github.com/jaswdr/faker)
 and replaced in the body:
  
-* `{{name}}`
-* `{{firstName}}`
-* `{{lastName}}`
-* `{{user}}`
-* `{{email}}`
-* `{{phone}}`
-* `{{url}}`
-* `{{file}}`
-* `{{server}}`
-* `{{hash}}`
-* `{{bool}}`
-* `{{integer}}`
-* `{{float}}`
-* `{{uuid}}`
-* `{{timestamp}}`
-* `{{isoTimestamp}}`
-* `{{sentence}}`
-* `{{paragraph}}`
-* `{{article}}`
+* `{{$name}}`
+* `{{$firstName}}`
+* `{{$lastName}}`
+* `{{$user}}`
+* `{{$email}}`
+* `{{$phone}}`
+* `{{$url}}`
+* `{{$file}}`
+* `${{server}}`
+* `${{hash}}`
+* `${{bool}}`
+* `${{integer}}`
+* `${{float}}`
+* `${{uuid}}`
+* `${{timestamp}}`
+* `${{isoTimestamp}}`
+* `${{sentence}}`
+* `${{paragraph}}`
+* `${{article}}`
 
 More may be added.
 
@@ -132,14 +137,17 @@ are returned in a round-robin fashion.
 
 For example (not actual format):
 
-    # @status 201
+    ### response 1
+    # @status=201
     POST /users
     { "id": 5 }
 
-    # @status 201
+    ### response 2
+    # @status=201
     POST 201 /users
     { "id": 6 }
 
+    ### response 3
     # @status 201
     POST 400 /users
     { "id": 0 }
@@ -158,7 +166,7 @@ Will return the status codes `201`, `201`, `400` and responses `{ "id": 5 }`,
 - [x] autoload file changes
 - [x] multiple responses per Method / Path
 - [x] dockerized
-- [x] add {{body}} variables similar to what http client supports
+- [x] add {{$body}} variables similar to what http client supports
 - [x] Use Go lang text templates instead of ReplaceAll()
 
 ## Ideas

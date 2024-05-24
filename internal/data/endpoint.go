@@ -18,11 +18,12 @@ var (
 
 // Endpoint represents the mocked route and can have one or more responses.
 type Endpoint struct {
-	Method    string
-	Path      string
-	index     int
-	responses []mockResponse
-	varmap    map[string]mockResponse
+	Method     string
+	Path       string
+	index      int
+	responses  []mockResponse
+	varmap     map[string]mockResponse
+	globalVars map[string]string
 	sync.RWMutex
 }
 
@@ -48,7 +49,7 @@ func (e *Endpoint) String() string {
 }
 
 // Combine duplicate routes (method/path) into an Endpoint with one or more responses
-func merge(apis []*route) []*Endpoint {
+func merge(apis []*route, globalVars map[string]string) []*Endpoint {
 	m := make(map[string]*Endpoint)
 
 	for _, t := range apis {
@@ -62,10 +63,11 @@ func merge(apis []*route) []*Endpoint {
 
 		if _, ok := m[key]; !ok {
 			m[key] = &Endpoint{
-				Method:    t.method,
-				Path:      t.path,
-				responses: make([]mockResponse, 0),
-				varmap:    make(map[string]mockResponse),
+				Method:     t.method,
+				Path:       t.path,
+				responses:  make([]mockResponse, 0),
+				varmap:     make(map[string]mockResponse),
+				globalVars: globalVars,
 			}
 		}
 
@@ -128,10 +130,10 @@ func GetEndpointsFromFile(fn string) ([]*Endpoint, error) {
 }
 
 func getEndpoints(r io.Reader, dir, fn string) (routes []*Endpoint, err error) {
-	p := &parser{baseDir: dir, fileName: fn}
+	p := newParser(dir, fn)
 	if err := p.parse(r); err != nil {
 		return nil, err
 	}
 
-	return merge(p.routes), nil
+	return merge(p.routes, p.globalVars), nil
 }

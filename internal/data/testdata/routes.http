@@ -1,5 +1,5 @@
 ### Get loaves
-# @delay 1s
+# @delay=1s
 GET /bread/
 Content-Type: application/json
 
@@ -15,8 +15,8 @@ Content-Type: application/json
 ]
 
 ### Create loaf
-# @status 201
-# @delay 2s
+# @status=201
+# @delay=2s
 POST /bread/
 Content-Type: application/json
 

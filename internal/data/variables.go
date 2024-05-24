@@ -132,3 +132,8 @@ func substituteVars(body []byte) []byte {
 	w.Flush()
 	return b.Bytes()
 }
+
+// convert {{$var}} to {{var}}
+func replaceVarDollars(body []byte) []byte {
+	return dollarReplacerRegex.ReplaceAll(body, []byte("{{${1}}}"))
+}

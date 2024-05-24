@@ -20,13 +20,14 @@ import (
 )
 
 const (
-	defaultContentType   = "text/html; charset=utf-8"
-	recordStartIndicator = "###"
+	defaultContentType      = "text/html; charset=utf-8"
+	recordStartIndicator    = "###"
+	globalVariableIndicator = "@"
 )
 
 // parse @variable = value
 var (
-	variableRegex = regexp.MustCompile("(@[a-z][-a-z0-9_]+)=?(.*)?")
+	variableRegex = regexp.MustCompile(`@\s*([a-zA-Z][\w]*)\s*=\s*(.+)`)
 )
 
 // route representation during parse, with just a single response.
@@ -48,6 +49,7 @@ type parser struct {
 	routes       []*route
 	defaultDelay time.Duration
 	route        *route
+	globalVars   map[string]string
 }
 
 type parseState int
@@ -59,6 +61,14 @@ const (
 	stateHeader
 	stateBody
 )
+
+func newParser(baseDir, fileName string) *parser {
+	return &parser{
+		baseDir:    baseDir,
+		fileName:   fileName,
+		globalVars: make(map[string]string),
+	}
+}
 
 func (s parseState) String() string {
 	switch s {
@@ -123,7 +133,7 @@ func (p *parser) parse(r io.Reader) error {
 
 		switch state {
 		case stateNone:
-			state, err = p.handleStateNone(line)
+			state, err = p.handleStateNone(line, lineNum)
 
 		case stateVariable:
 			state, err = p.handleStateVariable(line, lineNum)
@@ -132,10 +142,10 @@ func (p *parser) parse(r io.Reader) error {
 			state, err = p.handleStateRequest(line, lineNum)
 
 		case stateHeader:
-			state, err = p.handleStateHeader(line)
+			state, err = p.handleStateHeader(line, lineNum)
 
 		case stateBody:
-			state, err = p.handleStateBody(line)
+			state, err = p.handleStateBody(line, lineNum)
 		}
 
 		if err != nil {
@@ -160,7 +170,7 @@ func (p *parser) getName(line string) string {
 }
 
 // parseNone looks for start of a new http request, which is signified by "###"
-func (p *parser) handleStateNone(line string) (parseState, error) {
+func (p *parser) handleStateNone(line string, lineNum int) (parseState, error) {
 	if strings.HasPrefix(line, recordStartIndicator) {
 		p.route = &route{
 			name:   p.getName(line),
@@ -169,6 +179,18 @@ func (p *parser) handleStateNone(line string) (parseState, error) {
 			header: map[string]string{"content-type": defaultContentType},
 		}
 		return stateVariable, nil
+	} else if strings.HasPrefix(line, globalVariableIndicator) {
+		tokens := variableRegex.FindStringSubmatch(line)
+		if len(tokens) == 3 {
+			name := tokens[1]
+			value := strings.TrimSpace(tokens[2])
+
+			if name == "delay" {
+				p.defaultDelay, _ = time.ParseDuration(value)
+			}
+
+			p.globalVars[name] = value
+		}
 	}
 
 	return stateNone, nil
@@ -193,14 +215,13 @@ func (p *parser) handleStateVariable(line string, lineNum int) (parseState, erro
 	}
 
 	// variable specification:
-	// # @name value
 	// # @name=value
 	tokens := variableRegex.FindStringSubmatch(line[1:])
 	if len(tokens) == 3 {
 		name := tokens[1]
 		val := strings.TrimSpace(strings.Trim(tokens[2], "\""))
 		switch name {
-		case "@delay":
+		case "delay":
 			delay, err := time.ParseDuration(val)
 			if err != nil {
 				return stateNone, fmt.Errorf("invalid duration, line %d: %s", lineNum, line)
@@ -209,7 +230,7 @@ func (p *parser) handleStateVariable(line string, lineNum int) (parseState, erro
 			p.route.delay = delay
 			return stateVariable, nil
 
-		case "@status":
+		case "status":
 			status, err := strconv.Atoi(val)
 			statusText := http.StatusText(status)
 			if err != nil || statusText == "" {
@@ -218,7 +239,7 @@ func (p *parser) handleStateVariable(line string, lineNum int) (parseState, erro
 
 			p.route.status = status
 
-		case "@file":
+		case "file":
 			// TBD verify file is readable
 			var err error
 			fn := path.Join(p.baseDir, path.Clean(val))
@@ -252,7 +273,7 @@ func (p *parser) handleStateRequest(line string, lineNum int) (parseState, error
 }
 
 // parseHeader expects 0 or more lines with "Content-Type: application/json"
-func (p *parser) handleStateHeader(line string) (parseState, error) {
+func (p *parser) handleStateHeader(line string, lineNum int) (parseState, error) {
 	if strings.TrimSpace(line) == "" {
 		return stateBody, nil
 	}
@@ -264,10 +285,10 @@ func (p *parser) handleStateHeader(line string) (parseState, error) {
 }
 
 // parseLine expects an additional line to make up the http request
-func (p *parser) handleStateBody(line string) (parseState, error) {
+func (p *parser) handleStateBody(line string, lineNum int) (parseState, error) {
 	if strings.HasPrefix(line, recordStartIndicator) {
 		p.appendRoute()
-		return p.handleStateNone(line)
+		return p.handleStateNone(line, lineNum)
 	}
 
 	p.route.body = append(p.route.body, line+"\r\n"...)
@@ -360,8 +381,15 @@ func (p *parser) isHTTPMethod(m string) bool {
 
 // isHTTPPath verifies string looks like an url (has leading "/")
 func (p *parser) isHTTPPath(u string) bool {
+	x, err := url.Parse(u)
+	if err != nil {
+		return false
+	}
+
+	urlPath := x.Path
+
 	// just check for leading "/", everything else is encoded later
-	return len(u) != 0 && u[0:1] == "/"
+	return len(urlPath) != 0 && urlPath[0:1] == "/"
 }
 
 func (p *parser) cleanPath(uri string) (string, error) {

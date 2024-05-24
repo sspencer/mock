@@ -1,13 +1,13 @@
 ### Return home page external html filea
-# @file index.html
+# @file=index.html
 GET /
 
 ### Return external json file
-# @file users.json
+# @file=users.json
 GET /users
 
 ### Create static user
-# @status 201
+# @status=201
 POST /users
 Content-Type: application/json
 
@@ -18,19 +18,19 @@ Content-Type: application/json
 }
 
 ### Create random user
-# @status 201
+# @status=201
 POST /users
 Content-Type: application/json
 
 {
     "success": true,
-    "id": {{integer}},
-    "name": "{{name}}",
-    "event": "{{uuid}}"
+    "id": {{$integer}},
+    "name": "{{$name}}",
+    "event": "{{$uuid}}"
 }
 
 ### Create user failure
-# @status 400
+# @status=400
 POST /users
 Content-Type: application/json
 
@@ -45,7 +45,7 @@ Content-Type: application/json
 
 {
     "success": true,
-    "type": "{{type}}",
+    "type": "{{$type}}",
     "names": ["whiskers", "jigsaw", "burger", "bingo"]
 }
 
@@ -55,7 +55,7 @@ Content-Type: application/json
 
 {
     "success": true,
-    "type": "{{type}}",
+    "type": "{{$type}}",
     "names": ["rusty", "sparky", "surge", "bolt"]
 }
 
@@ -67,28 +67,28 @@ Content-Type: application/json
 
 {
     "success": true,
-    "id": "{{id}}",
-    "event": "{{uuid}}",
-    "name": "{{name}}",
-    "dog": "{{firstName}}",
-    "cat": "{{lastName}}",
-    "phone": "{{phone}}",
-    "login": "{{user}}",
-    "email": "{{email}}",
-    "activated": {{bool}},
-    "logins": {{integer}},
-    "score": {{float}},
-    "profile": "{{file}}",
-    "homepage": "{{url}}",
-    "server": "{{server}}",
-    "hash": "{{hash}}",
-    "lastLogin": {{timestamp}},
-    "time": "{{isoTimestamp}}",
-    "blurb": "{{sentence}}"
+    "id": {{$id}},
+    "event": "{{$uuid}}",
+    "name": "{{$name}}",
+    "dog": "{{$firstName}}",
+    "cat": "{{$lastName}}",
+    "phone": "{{$phone}}",
+    "login": "{{$user}}",
+    "email": "{{$email}}",
+    "activated": {{$bool}},
+    "logins": {{$integer}},
+    "score": {{$float}},
+    "profile": "{{$file}}",
+    "homepage": "{{$url}}",
+    "server": "{{$server}}",
+    "hash": "{{$hash}}",
+    "lastLogin": {{$timestamp}},
+    "time": "{{$isoTimestamp}}",
+    "blurb": "{{$sentence}}"
 }
 
 ### Delete a user
-# @status 204
+# @status=204
 DELETE /users/:id
 
 ### Return a little music theory
@@ -122,7 +122,7 @@ Content-Type: application/json
 }
 
 ### Return a page after a delay
-# @delay 1500ms
+# @delay=1500ms
 GET /delay
 Content-Type: application/json
 
