@@ -1,4 +1,4 @@
-# mock
+# mock - http server
 
 Mock creates an HTTP server with *mocked* routes specified from a local file.  
 It allows for rapid development and testing of (REST) API clients.  The routes 
