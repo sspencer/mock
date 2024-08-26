@@ -40,6 +40,27 @@ func New(displayRequestBody, displayResponse bool) LoggerFunc {
 	return monolog(displayRequestBody, displayResponse)
 }
 
+func logResponse(r HTTPLog) string {
+	var buffer bytes.Buffer
+
+	hdrs := 0
+	for k, v := range r.Header {
+		hdrs++
+		val := ""
+		if len(v) > 0 {
+			val = v[0]
+		}
+		buffer.WriteString(fmt.Sprintf("%s: %s\n", k, val))
+	}
+
+	if hdrs > 0 {
+		buffer.WriteString("\n")
+	}
+
+	buffer.WriteString(r.Response)
+	return buffer.String()
+}
+
 func monolog(displayRequestBody, displayResponse bool) LoggerFunc {
 	return func(r HTTPLog) {
 		if displayRequestBody {
@@ -61,27 +82,6 @@ func monolog(displayRequestBody, displayResponse bool) LoggerFunc {
 			fmt.Printf("Response:\n%s", response)
 		}
 	}
-}
-
-func logResponse(r HTTPLog) string {
-	var buffer bytes.Buffer
-
-	hdrs := 0
-	for k, v := range r.Header {
-		hdrs++
-		val := ""
-		if len(v) > 0 {
-			val = v[0]
-		}
-		buffer.WriteString(fmt.Sprintf("%s: %s\n", k, val))
-	}
-
-	if hdrs > 0 {
-		buffer.WriteString("\n")
-	}
-
-	buffer.WriteString(r.Response)
-	return buffer.String()
 }
 
 func colorlog(displayRequestBody, displayResponse bool) LoggerFunc {

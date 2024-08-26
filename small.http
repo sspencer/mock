@@ -1,0 +1,25 @@
+@delay = 100ms
+@message = Hello There Dear World
+
+### Get with full url
+GET http://localhost:8080/user/:id
+Content-Type: application/json
+
+{
+    "id": {{$id}},
+    "name": "{{$name}}",
+    "email": "{{$email}}",
+    "delay": "{{$delay}}",
+    "message": "{{$message}}"
+}
+
+### Create user
+# @status = 201
+# @delay = 250ms
+POST http://localhost:8080/user
+Content-Type: application/json
+
+{
+    "id": {{$integer}},
+    "delay": {{$delay}}
+}
