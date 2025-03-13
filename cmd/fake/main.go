@@ -3,11 +3,11 @@ package main
 import (
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"os"
 	"text/template"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jaswdr/faker"
 )
 
@@ -18,7 +18,7 @@ func main() {
 
 	fakeFile := func() func() string {
 		return func() string {
-			return fake.File().AbsoluteFilePath(5)
+			return fake.File().AbsoluteFilePath(3 + rand.IntN(4))
 		}
 	}
 
@@ -41,31 +41,25 @@ func main() {
 
 	fakeSentence := func() func() string {
 		return func() string {
-			return fake.Lorem().Sentence(14)
+			return fake.Lorem().Sentence(8 + rand.IntN(9))
 		}
 	}
 
 	fakeParagraph := func() func() string {
 		return func() string {
-			s1 := fake.Lorem().Sentence(12)
-			s2 := fake.Lorem().Sentence(14)
-			s3 := fake.Lorem().Sentence(10)
+			s1 := fake.Lorem().Sentence(8 + rand.IntN(9))
+			s2 := fake.Lorem().Sentence(8 + rand.IntN(9))
+			s3 := fake.Lorem().Sentence(8 + rand.IntN(9))
 			return fmt.Sprintf("%s %s %s", s1, s2, s3)
 		}
 	}
 
 	fakeArticle := func() func() string {
 		return func() string {
-			p1 := fake.Lorem().Paragraph(2)
-			p2 := fake.Lorem().Paragraph(3)
-			p3 := fake.Lorem().Paragraph(2)
+			p1 := fake.Lorem().Paragraph(2 + rand.IntN(3))
+			p2 := fake.Lorem().Paragraph(2 + rand.IntN(3))
+			p3 := fake.Lorem().Paragraph(2 + rand.IntN(3))
 			return fmt.Sprintf("%s\n\n%s\n\n%s\n", p1, p2, p3)
-		}
-	}
-
-	fakeUUID := func() func() string {
-		return func() string {
-			return uuid.New().String()
 		}
 	}
 
@@ -81,7 +75,7 @@ func main() {
 		"hash":         fake.Hash().MD5,
 		"phone":        fake.Phone().Number,
 		"bool":         fake.Boolean().Bool,
-		"uuid":         fakeUUID(),
+		"uuid":         fake.UUID().V4,
 		"timestamp":    fakeTimestamp(),
 		"isoTimestamp": fakeISOTimestamp(),
 		"integer":      fake.UInt16,
@@ -93,27 +87,25 @@ func main() {
 	}
 
 	const templateText = `
-UUID: {{uuid}}
-UUID: {{uuid}}
-First: {{firstName}}
-Last: {{lastName}}
-Email: {{email}}
-User: {{user}}
-URL: {{url}}
-Host: {{server}}
-Bool: {{bool}}
-Integer: {{integer}}
-Float: {{float}}
-File: {{file}}
-Hash: {{hash}}
-Phone: {{phone}}
-UUID: {{uuid}}
-Timestamp: {{timestamp}}
+UUID:         {{uuid}}
+First:        {{firstName}}
+Last:         {{lastName}}
+Email:        {{email}}
+User:         {{user}}
+URL:          {{url}}
+Host:         {{server}}
+Bool:         {{bool}}
+Integer:      {{integer}}
+Float:        {{float}}
+File:         {{file}}
+Hash:         {{hash}}
+Phone:        {{phone}}
+Timestamp:    {{timestamp}}
 ISOTimestamp: {{isoTimestamp}}
-Sentence: {{sentence}}
-Paragraph: {{paragraph}}
-Article: {{article}}
-Input: {{printf "%q" .}}
+Sentence:     {{sentence}}
+Paragraph:    {{paragraph}}
+Article:      {{article}}
+Input:        {{printf "%q" .}}
 `
 
 	tmpl, err := template.New("titleTest").Funcs(funcMap).Parse(templateText)

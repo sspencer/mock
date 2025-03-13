@@ -10,7 +10,6 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jaswdr/faker"
 )
 
@@ -67,12 +66,6 @@ func init() {
 		}
 	}
 
-	fakeUUID := func() func() string {
-		return func() string {
-			return uuid.New().String()
-		}
-	}
-
 	// https://pkg.go.dev/github.com/jaswdr/faker
 	funcMap = template.FuncMap{
 		// The name "title" is what the function will be called in the template text.
@@ -86,7 +79,7 @@ func init() {
 		"hash":         fake.Hash().MD5,
 		"phone":        fake.Phone().Number,
 		"bool":         fake.Boolean().Bool,
-		"uuid":         fakeUUID(),
+		"uuid":         fake.UUID().V4,
 		"timestamp":    fakeTimestamp(),
 		"isoTimestamp": fakeISOTimestamp(),
 		"integer":      fake.UInt16,
