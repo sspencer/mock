@@ -38,6 +38,5 @@ Content-Type: application/json
   "id": "{{$uuid}}",
   "name": "Two seconds",
   "delay": "{{$delay}}"
-
 }
 
