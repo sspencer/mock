@@ -22,7 +22,7 @@ func init() {
 
 	fakeFile := func() func() string {
 		return func() string {
-			return fake.File().AbsoluteFilePath(5)
+			return fake.File().AbsoluteFilePath(3 + rand.IntN(4))
 		}
 	}
 
@@ -45,24 +45,24 @@ func init() {
 
 	fakeSentence := func() func() string {
 		return func() string {
-			return fake.Lorem().Sentence(14)
+			return fake.Lorem().Sentence(8 + rand.IntN(9))
 		}
 	}
 
 	fakeParagraph := func() func() string {
 		return func() string {
-			s1 := fake.Lorem().Sentence(12)
-			s2 := fake.Lorem().Sentence(14)
-			s3 := fake.Lorem().Sentence(10)
+			s1 := fake.Lorem().Sentence(8 + rand.IntN(9))
+			s2 := fake.Lorem().Sentence(8 + rand.IntN(9))
+			s3 := fake.Lorem().Sentence(8 + rand.IntN(9))
 			return fmt.Sprintf("%s %s %s", s1, s2, s3)
 		}
 	}
 
 	fakeArticle := func() func() string {
 		return func() string {
-			p1 := fake.Lorem().Paragraph(2)
-			p2 := fake.Lorem().Paragraph(3)
-			p3 := fake.Lorem().Paragraph(2)
+			p1 := fake.Lorem().Paragraph(2 + rand.IntN(3))
+			p2 := fake.Lorem().Paragraph(2 + rand.IntN(3))
+			p3 := fake.Lorem().Paragraph(2 + rand.IntN(3))
 			return fmt.Sprintf("%s\n\n%s\n\n%s\n", p1, p2, p3)
 		}
 	}
