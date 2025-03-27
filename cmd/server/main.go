@@ -20,18 +20,18 @@ type config struct {
 
 func main() {
 	var mockPort int
-	var adminPort int
+	var eventsPort int
 	var cfg config
 
 	flag.Usage = printUsageMessage
 	flag.IntVar(&mockPort, "p", 7777, "port")
-	flag.IntVar(&adminPort, "e", 7778, "events port")
-	flag.BoolVar(&cfg.logRequest, "r", false, "log request")
-	flag.BoolVar(&cfg.logResponse, "s", false, "log response")
+	flag.IntVar(&eventsPort, "e", 7778, "events port")
+	flag.BoolVar(&cfg.logRequest, "r", false, "log request to stdout")
+	flag.BoolVar(&cfg.logResponse, "s", false, "log response to stdout")
 	flag.Parse()
 
 	filename := filepath.Clean(flag.Arg(0))
-	cfg.eventsAddr = fmt.Sprintf(":%d", adminPort)
+	cfg.eventsAddr = fmt.Sprintf(":%d", eventsPort)
 	cfg.mockAddr = fmt.Sprintf(":%d", mockPort)
 
 	es := NewEventServer()

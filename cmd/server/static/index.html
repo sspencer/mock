@@ -24,7 +24,7 @@
         .header {
             background-color: #222;
             color: white;
-            padding: 15px;
+            padding: 12px;
             text-align: center;
             font-size: 1.1em;
             font-weight: bold;
@@ -46,7 +46,7 @@
             padding: 20px;
             display: flex;
             flex-direction: column;
-            gap: 12px; /* Spacing between request and response */
+            gap: 12px;
             height: 100%;
         }
         .table-container {
@@ -79,19 +79,26 @@
             margin-bottom: 2px;
         }
         .detail-section {
-            flex: 1; /* Makes both sections take equal vertical space */
             display: flex;
             flex-direction: column;
+            min-height: 0;
+        }
+        .detail-section:first-child {
+            flex: 1;
+        }
+        .detail-section:last-child {
+            flex: 2;
         }
         .detail-content {
-            flex: 1; /* Expands to fill the section */
+            flex: 1;
             background-color: #f0f0f0;
             padding: 6px;
             font-family: 'Courier New', Courier, monospace;
             white-space: pre-wrap;
             word-wrap: break-word;
             overflow: auto;
-            border: 1px solid black; /* Creates a 12px gap between sections */
+            border: 1px solid #ccc;
+            resize: none;
         }
     </style>
 </head>

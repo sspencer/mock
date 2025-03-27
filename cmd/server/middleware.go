@@ -83,7 +83,6 @@ func (s *MockServer) ColorLogger(eventServer *EventServer) func(http.Handler) ht
 
 			jsonBody, _ := json.Marshal(data)
 
-			fmt.Println(string(jsonBody))
 			eventServer.Broadcast(string(jsonBody))
 			s.logger(data)
 		})
