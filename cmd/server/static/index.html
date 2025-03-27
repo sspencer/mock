@@ -11,16 +11,19 @@
             margin: 0;
             padding: 0;
         }
+
         body, html {
             height: 100%;
             overflow: hidden;
-            font-size:16px;
+            font-size: 16px;
         }
+
         .container {
             display: flex;
             flex-direction: column;
             height: 100%;
         }
+
         .header {
             background-color: #222;
             color: white;
@@ -29,66 +32,79 @@
             font-size: 1.1em;
             font-weight: bold;
         }
+
         .content {
             display: flex;
             flex: 1;
             overflow: hidden;
             font-size: 0.8em;
         }
+
         .left-column {
             width: 50%;
             display: flex;
             flex-direction: column;
             border-right: 1px solid #e0e0e0;
         }
+
         .right-column {
             width: 50%;
-            padding: 20px;
+            padding: 10px 12px;
             display: flex;
             flex-direction: column;
             gap: 12px;
             height: 100%;
         }
+
         .table-container {
             flex: 1;
             overflow-y: auto;
         }
+
         .table-label {
             padding: 10px;
             font-weight: bold;
-            background-color: #f4f4f4;
         }
+
         table {
             width: 100%;
             border-collapse: collapse;
         }
+
         th, td {
             border: 1px solid #ddd;
             padding: 8px;
             text-align: left;
         }
+
         tbody tr:hover {
             background-color: #f1f1f1;
             cursor: pointer;
         }
+
         tbody tr.selected {
             background-color: #d0ebff;
         }
+
         .detail-label {
             font-weight: bold;
             margin-bottom: 2px;
         }
+
         .detail-section {
             display: flex;
             flex-direction: column;
             min-height: 0;
         }
+
         .detail-section:first-child {
             flex: 1;
         }
+
         .detail-section:last-child {
             flex: 2;
         }
+
         .detail-content {
             flex: 1;
             background-color: #f0f0f0;
@@ -97,9 +113,69 @@
             white-space: pre-wrap;
             word-wrap: break-word;
             overflow: auto;
-            border: 1px solid #ccc;
+            border: 1px solid #e0e0e0;
             resize: none;
         }
+
+        .method-get {
+            background-color: #e6f3ff;
+            color: #0056b3;
+            font-weight: bold;
+        }
+
+        .method-post {
+            background-color: #e6ffe6;
+            color: #006400;
+            font-weight: bold;
+        }
+
+        .method-put {
+            background-color: #fff3e6;
+            color: #8b4513;
+            font-weight: bold;
+        }
+
+        .method-patch {
+            background-color: #f0e6ff;
+            color: #4b0082;
+            font-weight: bold;
+        }
+
+        .method-delete {
+            background-color: #ffe6e6;
+            color: #8b0000;
+            font-weight: bold;
+        }
+
+        .status-2xx {
+            color: #28a745;
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            font-weight: bold;
+        }
+
+        .status-3xx {
+            color: #ffc107;
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            font-weight: bold;
+        }
+
+        .status-4xx {
+            color: #dc3545;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            font-weight: bold;
+        }
+
+        .status-5xx {
+            color: white;
+            background-color: #ff6b6b;
+            border: 1px solid #e04b4b;
+            font-weight: bold;
+        }
+
+
     </style>
 </head>
 <body>
@@ -112,14 +188,15 @@
                 <table>
                     <thead>
                     <tr>
-                        <th>Method</th>
                         <th>Path</th>
                         <th>Status</th>
                         <th>Time</th>
                     </tr>
                     </thead>
                     <tbody id="requestTableBody">
-                    <!-- Rows will be dynamically added here -->
+                    <tr>
+                        <td colspan="3" style="text-align:center;">No requests available</td>
+                    </tr>
                     </tbody>
                 </table>
             </div>
@@ -144,9 +221,10 @@
     const requestDetails = document.getElementById('requestDetails');
     const responseDetails = document.getElementById('responseDetails');
     const events = [];
-    const source = new EventSource('/events');
+    let source = new EventSource('/events');
+    let rowIndex = 0;
 
-    source.onmessage = function(event) {
+    source.onmessage = function (event) {
         try {
             const data = JSON.parse(event.data);
             console.log(data);
@@ -154,12 +232,6 @@
         } catch (e) {
             console.error("Error parsing json", e);
         }
-    };
-
-    source.onerror = function(error) {
-        //display.textContent = 'Connection closed';
-        // to disable reconnect attempts, remove comments below
-        //source.close();
     };
 
     requestTableBody.addEventListener('mouseover', (e) => {
@@ -174,21 +246,17 @@
         }
     });
 
-    function addEventToTable(event) {
-        const row = this.requestTableBody.insertRow(0);
-        row.insertCell(0).textContent = event.method;
-        row.insertCell(1).textContent = event.uri;
-        row.insertCell(2).textContent = `${event.status} / ${event.statusText}`;
-        row.insertCell(3).textContent = event.time;
-
-        row.addEventListener('click', () => selectRow(row, event));
-        events.unshift(event);
-    }
-
+    requestTableBody.addEventListener('click', (e) => {
+        const row = e.target.closest('tr');
+        if (row && row.dataset.index) {
+            const event = events[events.length - 1 - row.dataset.index];
+            selectRow(row, event);
+        }
+    });
 
     function selectRow(row, event) {
         // Remove 'selected' class from all rows
-        const rows = this.requestTableBody.getElementsByTagName('tr');
+        const rows = requestTableBody.getElementsByTagName('tr');
         for (let r of rows) {
             r.classList.remove('selected');
         }
@@ -199,6 +267,52 @@
         // Update details
         requestDetails.textContent = event.requestDetails;
         responseDetails.textContent = event.responseDetails;
+    }
+
+    function addEventToTable(event) {
+        if (rowIndex === 0 && requestTableBody.rows.length > 0) {
+            requestTableBody.deleteRow(0);
+        }
+        const row = requestTableBody.insertRow(0);
+        row.dataset.index = rowIndex++;
+
+        // First cell: {Method} {URI}
+        const c0 = row.insertCell(0);
+        const methodSpan = document.createElement('span');
+        methodSpan.textContent = event.method;
+        methodSpan.className = `method-${event.method.toLowerCase()}`;
+        c0.appendChild(methodSpan);
+
+        const uriSpan = document.createElement('span');
+        uriSpan.textContent = ` ${event.uri}`;
+        c0.appendChild(uriSpan);
+
+        // Second cell: {Status} {StatusText}
+        const c1 = row.insertCell(1);
+        const statusSpan = document.createElement('span');
+        statusSpan.textContent = `${event.status}`;
+
+        // Assign status code category class
+        const status = parseInt(event.status);
+        if (status >= 200 && status < 300) {
+            statusSpan.classList.add('status-2xx');
+        } else if (status >= 300 && status < 400) {
+            statusSpan.classList.add('status-3xx');
+        } else if (status >= 400 && status < 500) {
+            statusSpan.classList.add('status-4xx');
+        } else if (status >= 500) {
+            statusSpan.classList.add('status-5xx');
+        }
+
+        c1.appendChild(statusSpan);
+
+        const statusTextSpan = document.createElement('span');
+        statusTextSpan.textContent = ` ${event.statusText}`;
+        c1.appendChild(statusTextSpan);
+
+        // Third cell: {Time}
+        row.insertCell(2).textContent = event.time;
+        events.unshift(event);
     }
 
 </script>
