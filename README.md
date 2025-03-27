@@ -159,6 +159,7 @@ Will return the status codes `201`, `201`, `400` and responses `{ "id": 5 }`,
 
 ## Features
 
+- [x] embedded web server displays log of all requests/responses.  Uses [ngrok](https://ngrok.com) as inspiration.
 - [x] easy api specification similar to [HTTP Client](https://www.jetbrains.com/help/idea/http-client-in-product-code-editor.html)
 - [x] specify multiple api files from command line
 - [x] include external files
@@ -171,4 +172,4 @@ Will return the status codes `201`, `201`, `400` and responses `{ "id": 5 }`,
 
 ## Ideas
 
-- [ ] Embed web server on different port that displays log of all requests/responses.  Use [ngrok](https://ngrok.com) as inspiration.
+- [ ] completed last idea of embedded web server ... what else?
