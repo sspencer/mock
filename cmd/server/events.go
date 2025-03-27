@@ -14,20 +14,20 @@ import (
 //go:embed static/index.html
 var indexPage []byte
 
-// EventServer manages SSE connections and message broadcasting
-type EventServer struct {
+// eventServer manages SSE connections and message broadcasting
+type eventServer struct {
 	clients    map[chan string]struct{}
 	clientsMux sync.Mutex
 }
 
-func NewEventServer() *EventServer {
-	return &EventServer{
+func newEventServer() *eventServer {
+	return &eventServer{
 		clients: make(map[chan string]struct{}),
 	}
 }
 
-// RegisterClient adds a new client channel
-func (es *EventServer) RegisterClient() chan string {
+// registerClient adds a new client channel
+func (es *eventServer) registerClient() chan string {
 	es.clientsMux.Lock()
 	defer es.clientsMux.Unlock()
 
@@ -36,8 +36,8 @@ func (es *EventServer) RegisterClient() chan string {
 	return clientChan
 }
 
-// UnregisterClient removes a client channel
-func (es *EventServer) UnregisterClient(clientChan chan string) {
+// unregisterClient removes a client channel
+func (es *eventServer) unregisterClient(clientChan chan string) {
 	es.clientsMux.Lock()
 	defer es.clientsMux.Unlock()
 
@@ -47,8 +47,8 @@ func (es *EventServer) UnregisterClient(clientChan chan string) {
 	}
 }
 
-// Broadcast sends a message to all connected clients
-func (es *EventServer) Broadcast(message string) {
+// broadcast sends a message to all connected clients
+func (es *eventServer) broadcast(message string) {
 	es.clientsMux.Lock()
 	defer es.clientsMux.Unlock()
 
@@ -61,7 +61,7 @@ func (es *EventServer) Broadcast(message string) {
 	}
 }
 
-func (es *EventServer) indexHandler(w http.ResponseWriter, r *http.Request) {
+func (es *eventServer) indexHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	_, err := w.Write(indexPage)
 	if err != nil {
@@ -70,7 +70,7 @@ func (es *EventServer) indexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (es *EventServer) sseHandler(w http.ResponseWriter, r *http.Request) {
+func (es *eventServer) sseHandler(w http.ResponseWriter, r *http.Request) {
 	// Set headers for SSE
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -78,8 +78,8 @@ func (es *EventServer) sseHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	// Create client channel
-	clientChan := es.RegisterClient()
-	defer es.UnregisterClient(clientChan)
+	clientChan := es.registerClient()
+	defer es.unregisterClient(clientChan)
 
 	// Handle client disconnection
 	flusher, ok := w.(http.Flusher)
@@ -100,7 +100,7 @@ func (es *EventServer) sseHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (es *EventServer) startServer(cfg config) {
+func (es *eventServer) startServer(cfg config) {
 
 	mux := chi.NewRouter()
 	mux.MethodNotAllowed(methodNotAllowed)
@@ -114,6 +114,6 @@ func (es *EventServer) startServer(cfg config) {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	log.Printf("Serving admin on %s\n", cfg.eventsAddr)
+	log.Printf("Serving events on %s\n", cfg.eventsAddr)
 	log.Fatal(serve.ListenAndServe())
 }

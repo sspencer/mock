@@ -1,6 +1,10 @@
-### Return home page external html filea
+### Return home page external html file
 # @file=index.html
 GET /
+
+### Return home page external html file, specify path
+# @file=index.html
+GET /index.html
 
 ### Return external json file
 # @file=users.json

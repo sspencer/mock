@@ -297,7 +297,7 @@
         responseDetails.textContent = '\n';
     });
 
-    function selectRow(row, event) {
+    function selectRow(row, http) {
         // Remove 'selected' class from all rows
         const rows = requestTableBody.getElementsByTagName('tr');
         for (let r of rows) {
@@ -308,11 +308,11 @@
         row.classList.add('selected');
 
         // Update details
-        requestDetails.textContent = event.requestDetails;
-        responseDetails.textContent = event.responseDetails;
+        requestDetails.textContent = http.request.details;
+        responseDetails.textContent = http.response.details;
     }
 
-    function addEventToTable(event) {
+    function addEventToTable(http) {
         if (rowIndex === 0 && requestTableBody.rows.length > 0) {
             requestTableBody.deleteRow(0);
         }
@@ -322,21 +322,21 @@
         // First cell: {Method} {URI}
         const c0 = row.insertCell(0);
         const methodSpan = document.createElement('span');
-        methodSpan.textContent = event.method;
-        methodSpan.className = `method-${event.method.toLowerCase()}`;
+        methodSpan.textContent = http.request.method;
+        methodSpan.className = `method-${http.request.method.toLowerCase()}`;
         c0.appendChild(methodSpan);
 
-        const uriSpan = document.createElement('span');
-        uriSpan.textContent = ` ${event.uri}`;
-        c0.appendChild(uriSpan);
+        const urlSpan = document.createElement('span');
+        urlSpan.textContent = ` ${http.request.url}`;
+        c0.appendChild(urlSpan);
 
         // Second cell: {Status} {StatusText}
         const c1 = row.insertCell(1);
         const statusSpan = document.createElement('span');
-        statusSpan.textContent = `${event.status}`;
+        statusSpan.textContent = `${http.response.status}`;
 
         // Assign status code category class
-        const status = parseInt(event.status);
+        const status = parseInt(http.response.status);
         if (status >= 200 && status < 300) {
             statusSpan.classList.add('status-2xx');
         } else if (status >= 300 && status < 400) {
@@ -350,12 +350,12 @@
         c1.appendChild(statusSpan);
 
         const statusTextSpan = document.createElement('span');
-        statusTextSpan.textContent = ` ${event.statusText}`;
+        statusTextSpan.textContent = ` ${http.response.statusText}`;
         c1.appendChild(statusTextSpan);
 
         // Third cell: {Time}
-        row.insertCell(2).textContent = event.time;
-        events.unshift(event);
+        row.insertCell(2).textContent = http.response.time;
+        events.unshift(http);
     }
 
 </script>

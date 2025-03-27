@@ -8,8 +8,6 @@ import (
 	"net/http/httputil"
 	"strings"
 	"time"
-
-	"github.com/sspencer/mock/internal/colorlog"
 )
 
 // ResponseCapturingWriter is a custom ResponseWriter that captures the response data.
@@ -34,7 +32,7 @@ func (w *ResponseCapturingWriter) Write(data []byte) (int, error) {
 	return w.ResponseWriter.Write(data)
 }
 
-func (s *MockServer) ColorLogger(eventServer *EventServer) func(http.Handler) http.Handler {
+func (s *mockServer) colorLogger(eventServer *eventServer) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			cw := &ResponseCapturingWriter{
@@ -59,6 +57,7 @@ func (s *MockServer) ColorLogger(eventServer *EventServer) func(http.Handler) ht
 				reqBody = parts[1]
 			}
 
+			respBody := cw.Body.String()
 			respDetails := fmt.Sprintf("%s %d %s\nContent-Type: %s\nDate: %s\nContent-Length: %d\n\n%s\n",
 				r.Proto,
 				cw.StatusCode,
@@ -66,24 +65,29 @@ func (s *MockServer) ColorLogger(eventServer *EventServer) func(http.Handler) ht
 				cw.Header().Get("Content-Type"),
 				now.UTC().Format("Mon, 02 Jan 2006 15:04:05 MST"),
 				len(cw.Body.String()),
-				cw.Body.String())
+				respBody)
 
-			data := colorlog.HTTPLog{
-				Status:          cw.StatusCode,
-				StatusText:      http.StatusText(cw.StatusCode),
-				Time:            now.Format("15:04:05"),
-				Method:          r.Method,
-				Uri:             r.URL.String(),
-				RequestDetails:  reqDetails,
-				RequestBody:     reqBody,
-				ResponseBody:    cw.Body.String(),
-				ResponseDetails: respDetails,
-				ResponseHeader:  cw.Header(),
+			data := httpLog{
+				Request: httpRequestLog{
+					Header:  r.Header,
+					Method:  r.Method,
+					URL:     r.URL.String(),
+					Details: reqDetails,
+					Body:    reqBody,
+				},
+				Response: httpResponseLog{
+					Header:     cw.Header(),
+					Status:     cw.StatusCode,
+					StatusText: http.StatusText(cw.StatusCode),
+					Time:       now.Format("15:04:05"),
+					Details:    respDetails,
+					Body:       respBody,
+				},
 			}
 
 			jsonBody, _ := json.Marshal(data)
 
-			eventServer.Broadcast(string(jsonBody))
+			eventServer.broadcast(string(jsonBody))
 			s.logger(data)
 		})
 	}

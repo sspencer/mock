@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
+
 	"github.com/sspencer/mock/internal/data"
 )
 
@@ -25,7 +26,7 @@ func newWatcher(fn string) (*fsnotify.Watcher, error) {
 }
 
 // Watch for route changes (user edits routes file)
-func (s *MockServer) routesWatcher(incomingRoutes chan []*data.Endpoint) {
+func (s *mockServer) routesWatcher(incomingRoutes chan []*data.Endpoint) {
 	go func() {
 		for {
 			s.loadRoutes(<-incomingRoutes)
@@ -33,8 +34,8 @@ func (s *MockServer) routesWatcher(incomingRoutes chan []*data.Endpoint) {
 	}()
 }
 
-// watchFile monitors routes file, restarting MockServer on change
-func (s *MockServer) watchFile(fn string) {
+// watchFile monitors routes file, restarting mockServer on change
+func (s *mockServer) watchFile(fn string) {
 	ch := make(chan []*data.Endpoint)
 	go s.routesWatcher(ch)
 

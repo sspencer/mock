@@ -13,15 +13,13 @@ of VSCode's [REST Client](https://marketplace.visualstudio.com/items?itemName=hu
 
     make
 
-## Run / Develop
+## Run
 
     mock [flags] [input_file]
       -e int
         	events port (default 7778)
       -p int
         	port (default 7777)
-      -r	log request to stdout
-      -s	log response to stdout
   
 1. Mock API: `mock examples/user.http` or `cat my.http | mock` or even `mock < my.http`
 2. Serve Directory: `mock .`  NOTE: can't combine serving a directory with serving `.http` files.
@@ -128,8 +126,6 @@ and replaced in the body:
 * `${{sentence}}`
 * `${{paragraph}}`
 * `${{article}}`
-
-More may be added.
 
 ## Multiple Responses
 

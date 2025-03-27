@@ -1,8 +1,6 @@
-package colorlog
+package main
 
 import (
-	"bytes"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -21,7 +19,7 @@ var (
 	reset   = string([]byte{27, 91, 48, 109})
 )
 
-type HTTPLog struct {
+type httpLog2 struct {
 	Status          int         `json:"status"`
 	StatusText      string      `json:"statusText"`
 	Time            string      `json:"time"`
@@ -34,84 +32,56 @@ type HTTPLog struct {
 	ResponseDetails string      `json:"responseDetails"`
 }
 
-type LoggerFunc func(log HTTPLog)
+type httpRequestLog struct {
+	Header  http.Header `json:"header"`
+	Method  string      `json:"method"`
+	URL     string      `json:"url"`
+	Details string      `json:"details"`
+	Body    string      `json:"body"`
+}
+type httpResponseLog struct {
+	Header     http.Header `json:"header"`
+	Status     int         `json:"status"`
+	StatusText string      `json:"statusText"`
+	Time       string      `json:"time"`
+	Details    string      `json:"details"`
+	Body       string      `json:"body"`
+}
 
-func New(displayRequestBody, displayResponse bool) LoggerFunc {
+type httpLog struct {
+	Request  httpRequestLog  `json:"request"`
+	Response httpResponseLog `json:"response"`
+}
+
+type loggerFunc func(log httpLog)
+
+func colorlogNew() loggerFunc {
 	if isatty.IsTerminal(os.Stdout.Fd()) {
-		return colorlog(displayRequestBody, displayResponse)
+		return colorlog()
 	}
 
-	return monolog(displayRequestBody, displayResponse)
+	return monolog()
 }
 
-func logResponse(r HTTPLog) string {
-	var buffer bytes.Buffer
-
-	hdrs := 0
-	for k, v := range r.ResponseHeader {
-		hdrs++
-		val := ""
-		if len(v) > 0 {
-			val = v[0]
-		}
-		buffer.WriteString(fmt.Sprintf("%s: %s\n", k, val))
-	}
-
-	if hdrs > 0 {
-		buffer.WriteString("\n")
-	}
-
-	buffer.WriteString(r.ResponseBody)
-	return buffer.String()
-}
-
-func monolog(displayRequestBody, displayResponse bool) LoggerFunc {
-	return func(r HTTPLog) {
-		if displayRequestBody {
-			log.Printf(" %3d | %-7s %s\n%s\n",
-				r.Status,
-				r.Method,
-				r.Uri,
-				r.RequestDetails)
-		} else {
-			log.Printf(" %3d | %-7s %s\n%s\n",
-				r.Status,
-				r.Method,
-				r.Uri,
-				r.RequestDetails)
-		}
-
-		if displayResponse {
-			response := logResponse(r)
-			fmt.Printf("ResponseBody:\n%s", response)
-		}
+func monolog() loggerFunc {
+	return func(r httpLog) {
+		log.Printf(" %3d | %-7s %s\n",
+			r.Response.Status,
+			r.Request.Method,
+			r.Request.URL)
 	}
 }
 
-func colorlog(displayRequestBody, displayResponse bool) LoggerFunc {
-	return func(r HTTPLog) {
-		statusColor := colorForStatus(r.Status)
-		methodColor := colorForMethod(r.Method)
+func colorlog() loggerFunc {
+	return func(r httpLog) {
+		statusColor := colorForStatus(r.Response.Status)
+		methodColor := colorForMethod(r.Request.Method)
 		resetColor := reset
-		if displayRequestBody {
-			log.Printf("%s %3d %s %s %-7s %s %s\n%s\n",
-				statusColor, r.Status, resetColor,
-				methodColor, r.Method, resetColor,
-				r.Uri,
-				r.RequestDetails,
-			)
-		} else {
-			log.Printf("%s %3d %s %s %-7s %s %s\n",
-				statusColor, r.Status, resetColor,
-				methodColor, r.Method, resetColor,
-				r.Uri,
-			)
-		}
-
-		if displayResponse {
-			response := logResponse(r)
-			log.Printf("%s ResponseBody: %s\n%s\n", blue, resetColor, response)
-		}
+		log.Printf("%s %3d %s %s %-7s %s %s\n",
+			statusColor, r.Response.Status, resetColor,
+			methodColor, r.Request.Method, resetColor,
+			r.Request.URL,
+		)
 	}
 }
 
