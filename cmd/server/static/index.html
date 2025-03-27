@@ -7,7 +7,7 @@
     <style>
         * {
             box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: Tahoma, Geneva, Verdana, sans-serif;
             margin: 0;
             padding: 0;
         }
@@ -56,14 +56,20 @@
             height: 100%;
         }
 
-        .table-container {
-            flex: 1;
-            overflow-y: auto;
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
         }
 
         .table-label {
-            padding: 10px;
             font-weight: bold;
+        }
+
+        .table-container {
+            flex: 1;
+            overflow-y: auto;
         }
 
         table {
@@ -115,6 +121,21 @@
             overflow: auto;
             border: 1px solid #e0e0e0;
             resize: none;
+        }
+
+        .clear-button {
+            background-color: #fff;
+            border: 1px solid #e0e0e0;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8em;
+        }
+
+        .clear-button:hover {
+            color: #8c3545;
+            background-color: #ffe6e6;
+            border: 1px solid #f5c6cb;
         }
 
         .method-get {
@@ -174,8 +195,6 @@
             border: 1px solid #e04b4b;
             font-weight: bold;
         }
-
-
     </style>
 </head>
 <body>
@@ -183,7 +202,10 @@
     <div class="header">mock server</div>
     <div class="content">
         <div class="left-column">
-            <div class="table-label">All Requests</div>
+            <div class="table-header">
+                <div class="table-label">All Requests</div>
+                <button id="clearRequestsButton" class="clear-button">Clear Requests</button>
+            </div>
             <div class="table-container">
                 <table>
                     <thead>
@@ -220,6 +242,7 @@
     const requestTableBody = document.getElementById('requestTableBody');
     const requestDetails = document.getElementById('requestDetails');
     const responseDetails = document.getElementById('responseDetails');
+    const clearRequestsButton = document.getElementById('clearRequestsButton');
     const events = [];
     let source = new EventSource('/events');
     let rowIndex = 0;
@@ -252,6 +275,26 @@
             const event = events[events.length - 1 - row.dataset.index];
             selectRow(row, event);
         }
+    });
+
+    // New event listener for Clear Requests button
+    clearRequestsButton.addEventListener('click', () => {
+        // Clear the table body
+        requestTableBody.innerHTML = `
+            <tr>
+                <td colspan="3" style="text-align:center;">No requests available</td>
+            </tr>
+        `;
+
+        // Reset events array
+        events.length = 0;
+
+        // Reset row index
+        rowIndex = 0;
+
+        // Clear request and response details
+        requestDetails.textContent = '\n';
+        responseDetails.textContent = '\n';
     });
 
     function selectRow(row, event) {
