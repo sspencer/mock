@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "embed"
 	"io"
 	"log"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
 	"github.com/sspencer/mock/internal/colorlog"
 	"github.com/sspencer/mock/internal/data"
 )
@@ -15,13 +17,14 @@ import (
 // MockServer is the http server struct
 type MockServer struct {
 	*http.Server
-	logger colorlog.LoggerFunc
-	addr   string
+	logger      colorlog.LoggerFunc
+	addr        string
+	eventServer *EventServer
 	sync.Mutex
 }
 
 // newServer creates a http MockServer running on given port with handlers based on given routes.
-func newServer(cfg config) *MockServer {
+func newServer(es *EventServer, cfg config) *MockServer {
 	logger := colorlog.New(cfg.logRequest, cfg.logResponse)
 
 	notImplemented := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -30,31 +33,32 @@ func newServer(cfg config) *MockServer {
 
 	return &MockServer{
 		Server: &http.Server{
-			Addr:              cfg.addr,
+			Addr:              cfg.mockAddr,
 			Handler:           notImplemented,
 			ReadHeaderTimeout: 5 * time.Second,
 		},
-		logger: logger,
-		addr:   cfg.addr,
+		logger:      logger,
+		addr:        cfg.mockAddr,
+		eventServer: es,
 	}
 }
 
 // serve <stdin> or piped file as mock file input
-func newMockReader(cfg config, reader io.Reader) *MockServer {
+func newMockReader(es *EventServer, cfg config, reader io.Reader) *MockServer {
 	routes, err := data.GetEndpointsFromReader(reader)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 
-	server := newServer(cfg)
+	server := newServer(es, cfg)
 	server.loadRoutes(routes)
 
 	return server
 }
 
 // serve all files specified on command line as mock files
-func newMockFile(cfg config, fn string) *MockServer {
-	server := newServer(cfg)
+func newMockFile(es *EventServer, cfg config, fn string) *MockServer {
+	server := newServer(es, cfg)
 	server.watchFile(fn)
 	return server
 }
@@ -65,7 +69,7 @@ func (s *MockServer) loadRoutes(endpoints []*data.Endpoint) {
 	defer s.Unlock()
 
 	mux := chi.NewRouter()
-	mux.Use(s.ColorLogger())
+	mux.Use(s.ColorLogger(s.eventServer))
 	mux.MethodNotAllowed(methodNotAllowed)
 	mux.NotFound(methodNotFound)
 

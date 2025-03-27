@@ -113,7 +113,7 @@ func (p *parser) String() string {
 }
 
 // A route looks like this:
-//     ### Request Name          # parseNone
+//     ### RequestDetails Name          # parseNone
 //     # @status 200             # parseVariable
 //     POST /users               # parseRequest
 //     Content-Type: plain/text  # parseHeader

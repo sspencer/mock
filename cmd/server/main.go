@@ -12,48 +12,48 @@ import (
 )
 
 type config struct {
-	addr        string
+	mockAddr    string
+	eventsAddr  string
 	logRequest  bool
 	logResponse bool
 }
 
 func main() {
-	var serverPort int
+	var mockPort int
+	var adminPort int
 	var cfg config
 
 	flag.Usage = printUsageMessage
-	flag.IntVar(&serverPort, "p", 7777, "port")
+	flag.IntVar(&mockPort, "p", 7777, "port")
+	flag.IntVar(&adminPort, "e", 7778, "events port")
 	flag.BoolVar(&cfg.logRequest, "r", false, "log request")
 	flag.BoolVar(&cfg.logResponse, "s", false, "log response")
 	flag.Parse()
 
 	filename := filepath.Clean(flag.Arg(0))
-	cfg.addr = fmt.Sprintf(":%d", serverPort)
+	cfg.eventsAddr = fmt.Sprintf(":%d", adminPort)
+	cfg.mockAddr = fmt.Sprintf(":%d", mockPort)
+
+	es := NewEventServer()
+	go es.startServer(cfg)
 
 	if filename == "" {
-		err := serveReader(cfg)
-		if err != nil {
-			log.Fatal(err)
-		}
+		log.Fatal(startMockReader(es, cfg))
 	} else {
 		fi, err := os.Stat(filename)
 
 		if err == nil {
 			if fi.Mode().IsDir() {
-				err = serveDirectory(cfg, filename)
+				log.Fatal(startMockDir(cfg, filename)) // TODO add AdminServer (and a logger)
 			} else {
-				err = serveFile(cfg, filename)
+				log.Fatal(startMockFile(es, cfg, filename))
 			}
-		}
-
-		if err != nil {
-			log.Fatalln(err.Error())
 		}
 	}
 }
 
-// serveReader reads from mock file from <stdin>
-func serveReader(cfg config) error {
+// startMockReader reads from mock file from <stdin>
+func startMockReader(es *EventServer, cfg config) error {
 	// read input from stdin
 	info, err := os.Stdin.Stat()
 	if err != nil {
@@ -65,21 +65,21 @@ func serveReader(cfg config) error {
 		os.Exit(1)
 	}
 
-	mock := newMockReader(cfg, bufio.NewReader(os.Stdin))
+	mock := newMockReader(es, cfg, bufio.NewReader(os.Stdin))
 	return mock.Server.ListenAndServe()
 }
 
-// serveFile serves mock file passed in from command line
-func serveFile(cfg config, fn string) error {
-	mock := newMockFile(cfg, fn)
+// startMockFile serves mock file passed in from command line
+func startMockFile(es *EventServer, cfg config, fn string) error {
+	mock := newMockFile(es, cfg, fn)
 	return mock.Server.ListenAndServe()
 }
 
-// serveDirectory serves directory of standard html files
-func serveDirectory(cfg config, fn string) error {
+// startMockDir serves directory of standard html files
+func startMockDir(cfg config, fn string) error {
 	fn = strings.ReplaceAll(fn, " ", "\\ ")
-	log.Printf("Serving %q on localhost%s\n", fn, cfg.addr)
-	return http.ListenAndServe(cfg.addr, http.FileServer(http.Dir(fn)))
+	log.Printf("Serving %q on localhost%s\n", fn, cfg.mockAddr)
+	return http.ListenAndServe(cfg.mockAddr, http.FileServer(http.Dir(fn)))
 }
 
 func printUsageMessage() {

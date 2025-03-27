@@ -6,17 +6,6 @@ GET /
 # @file=users.json
 GET /users
 
-### Create static user
-# @status=201
-POST /users
-Content-Type: application/json
-
-{
-    "success": true,
-    "id": 1,
-    "name": "Bread Dough"
-}
-
 ### Create random user
 # @status=201
 POST /users

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mock Server</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        body, html {
+            height: 100%;
+            overflow: hidden;
+            font-size:16px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        .header {
+            background-color: #222;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            font-size: 1.1em;
+            font-weight: bold;
+        }
+        .content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            font-size: 0.8em;
+        }
+        .left-column {
+            width: 50%;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #e0e0e0;
+        }
+        .right-column {
+            width: 50%;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px; /* Spacing between request and response */
+            height: 100%;
+        }
+        .table-container {
+            flex: 1;
+            overflow-y: auto;
+        }
+        .table-label {
+            padding: 10px;
+            font-weight: bold;
+            background-color: #f4f4f4;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        tbody tr:hover {
+            background-color: #f1f1f1;
+            cursor: pointer;
+        }
+        tbody tr.selected {
+            background-color: #d0ebff;
+        }
+        .detail-label {
+            font-weight: bold;
+            margin-bottom: 2px;
+        }
+        .detail-section {
+            flex: 1; /* Makes both sections take equal vertical space */
+            display: flex;
+            flex-direction: column;
+        }
+        .detail-content {
+            flex: 1; /* Expands to fill the section */
+            background-color: #f0f0f0;
+            padding: 6px;
+            font-family: 'Courier New', Courier, monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow: auto;
+            border: 1px solid black; /* Creates a 12px gap between sections */
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">mock server</div>
+    <div class="content">
+        <div class="left-column">
+            <div class="table-label">All Requests</div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>Method</th>
+                        <th>Path</th>
+                        <th>Status</th>
+                        <th>Time</th>
+                    </tr>
+                    </thead>
+                    <tbody id="requestTableBody">
+                    <!-- Rows will be dynamically added here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="right-column">
+            <div class="detail-section">
+                <div class="detail-label">Request</div>
+                <div id="requestDetails" class="detail-content">
+                </div>
+            </div>
+            <div class="detail-section">
+                <div class="detail-label">Response</div>
+                <div id="responseDetails" class="detail-content">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const requestTableBody = document.getElementById('requestTableBody');
+    const requestDetails = document.getElementById('requestDetails');
+    const responseDetails = document.getElementById('responseDetails');
+    const events = [];
+    const source = new EventSource('/events');
+
+    source.onmessage = function(event) {
+        try {
+            const data = JSON.parse(event.data);
+            console.log(data);
+            addEventToTable(data);
+        } catch (e) {
+            console.error("Error parsing json", e);
+        }
+    };
+
+    source.onerror = function(error) {
+        //display.textContent = 'Connection closed';
+        // to disable reconnect attempts, remove comments below
+        //source.close();
+    };
+
+    requestTableBody.addEventListener('mouseover', (e) => {
+        if (e.target.tagName === 'TD') {
+            e.target.parentElement.classList.add('hover');
+        }
+    });
+
+    requestTableBody.addEventListener('mouseout', (e) => {
+        if (e.target.tagName === 'TD') {
+            e.target.parentElement.classList.remove('hover');
+        }
+    });
+
+    function addEventToTable(event) {
+        const row = this.requestTableBody.insertRow(0);
+        row.insertCell(0).textContent = event.method;
+        row.insertCell(1).textContent = event.uri;
+        row.insertCell(2).textContent = `${event.status} / ${event.statusText}`;
+        row.insertCell(3).textContent = event.time;
+
+        row.addEventListener('click', () => selectRow(row, event));
+        events.unshift(event);
+    }
+
+
+    function selectRow(row, event) {
+        // Remove 'selected' class from all rows
+        const rows = this.requestTableBody.getElementsByTagName('tr');
+        for (let r of rows) {
+            r.classList.remove('selected');
+        }
+
+        // Add 'selected' class to clicked row
+        row.classList.add('selected');
+
+        // Update details
+        requestDetails.textContent = event.requestDetails;
+        responseDetails.textContent = event.responseDetails;
+    }
+
+</script>
+</body>
+</html>

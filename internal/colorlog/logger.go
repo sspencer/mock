@@ -22,12 +22,16 @@ var (
 )
 
 type HTTPLog struct {
-	Status   int
-	Method   string
-	Uri      string
-	Body     string
-	Response string
-	Header   http.Header
+	Status          int         `json:"status"`
+	StatusText      string      `json:"statusText"`
+	Time            string      `json:"time"`
+	Method          string      `json:"method"`
+	Uri             string      `json:"uri"`
+	RequestDetails  string      `json:"requestDetails"`
+	RequestBody     string      `json:"requestBody"`
+	ResponseHeader  http.Header `json:"responseHeader"`
+	ResponseBody    string      `json:"responseBody"`
+	ResponseDetails string      `json:"responseDetails"`
 }
 
 type LoggerFunc func(log HTTPLog)
@@ -44,7 +48,7 @@ func logResponse(r HTTPLog) string {
 	var buffer bytes.Buffer
 
 	hdrs := 0
-	for k, v := range r.Header {
+	for k, v := range r.ResponseHeader {
 		hdrs++
 		val := ""
 		if len(v) > 0 {
@@ -57,7 +61,7 @@ func logResponse(r HTTPLog) string {
 		buffer.WriteString("\n")
 	}
 
-	buffer.WriteString(r.Response)
+	buffer.WriteString(r.ResponseBody)
 	return buffer.String()
 }
 
@@ -68,18 +72,18 @@ func monolog(displayRequestBody, displayResponse bool) LoggerFunc {
 				r.Status,
 				r.Method,
 				r.Uri,
-				r.Body)
+				r.RequestDetails)
 		} else {
 			log.Printf(" %3d | %-7s %s\n%s\n",
 				r.Status,
 				r.Method,
 				r.Uri,
-				r.Body)
+				r.RequestDetails)
 		}
 
 		if displayResponse {
 			response := logResponse(r)
-			fmt.Printf("Response:\n%s", response)
+			fmt.Printf("ResponseBody:\n%s", response)
 		}
 	}
 }
@@ -94,7 +98,7 @@ func colorlog(displayRequestBody, displayResponse bool) LoggerFunc {
 				statusColor, r.Status, resetColor,
 				methodColor, r.Method, resetColor,
 				r.Uri,
-				r.Body,
+				r.RequestDetails,
 			)
 		} else {
 			log.Printf("%s %3d %s %s %-7s %s %s\n",
@@ -106,7 +110,7 @@ func colorlog(displayRequestBody, displayResponse bool) LoggerFunc {
 
 		if displayResponse {
 			response := logResponse(r)
-			log.Printf("%s Response: %s\n%s\n", blue, resetColor, response)
+			log.Printf("%s ResponseBody: %s\n%s\n", blue, resetColor, response)
 		}
 	}
 }

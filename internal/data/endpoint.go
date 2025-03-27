@@ -54,6 +54,7 @@ func merge(apis []*route, globalVars map[string]string) []*Endpoint {
 
 	for _, t := range apis {
 		key := fmt.Sprintf("%s:%s", t.method, t.path)
+		//fmt.Println("key:", key)
 		resp := mockResponse{
 			status: t.status,
 			body:   t.body,
