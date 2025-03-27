@@ -146,12 +146,12 @@ For example (not actual format):
 
     ### response 2
     # @status=201
-    POST 201 /users
+    POST /users
     { "id": 6 }
 
     ### response 3
     # @status 201
-    POST 400 /users
+    POST /users
     { "id": 0 }
 
 Will return the status codes `201`, `201`, `400` and responses `{ "id": 5 }`, 
