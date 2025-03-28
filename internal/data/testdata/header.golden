@@ -1,1 +1,1 @@
-Get auth loaf: GET /bread/1 delay=0s status=200 header=89 body=0
+Get auth loaf: GET /bread/1 delay=0s status=200 header=87 body=0

@@ -116,10 +116,7 @@ func GetEndpointsFromFile(fn string) ([]*Endpoint, error) {
 
 	var closeErr error
 	defer func() {
-		err := r.Close()
-		if err != nil {
-			closeErr = err
-		}
+		closeErr = r.Close()
 	}()
 
 	routes, err := getEndpoints(r, path.Dir(fn), fn)

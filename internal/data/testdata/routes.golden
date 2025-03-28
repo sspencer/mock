@@ -1,2 +1,2 @@
-Get loaves: GET /bread/ delay=1s status=200 header=29 body=122
-Create loaf: POST /bread/ delay=2s status=201 header=29 body=55
+Get loaves: GET /bread/ delay=1s status=200 header=28 body=122
+Create loaf: POST /bread/ delay=2s status=201 header=28 body=55

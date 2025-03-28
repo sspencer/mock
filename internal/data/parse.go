@@ -186,7 +186,11 @@ func (p *parser) handleStateNone(line string, lineNum int) (parseState, error) {
 			value := strings.TrimSpace(tokens[2])
 
 			if name == "delay" {
-				p.defaultDelay, _ = time.ParseDuration(value)
+				if delay, err := time.ParseDuration(value); err == nil {
+					p.defaultDelay = delay
+				} else {
+					return stateNone, p.lineError("invalid duration, line %d: %s", lineNum, line)
+				}
 			}
 
 			p.globalVars[name] = value
@@ -250,7 +254,8 @@ func (p *parser) handleStateVariable(line string, lineNum int) (parseState, erro
 			}
 
 		default:
-			return stateNone, p.lineError("unrecognized variable, line %d: %s", lineNum, line)
+			msg := fmt.Sprintf("unrecognized variable %q", name)
+			return stateNone, p.lineError(msg+", line %d: %s. Did you mean one of: delay, status, or file?", lineNum, line)
 		}
 	}
 
@@ -279,7 +284,18 @@ func (p *parser) handleStateHeader(line string, lineNum int) (parseState, error)
 	}
 
 	tokens := strings.SplitN(line, ":", 2)
-	p.route.header[strings.ToLower(tokens[0])] = tokens[1]
+	if len(tokens) < 2 {
+		return stateHeader, p.lineError("malformed header, line %d: %s", lineNum, line)
+	}
+
+	headerName := strings.ToLower(tokens[0])
+	headerValue := strings.TrimSpace(tokens[1])
+
+	if headerName == "content-type" && headerValue == "" {
+		headerValue = defaultContentType
+	}
+
+	p.route.header[headerName] = headerValue
 
 	return stateHeader, nil
 }
@@ -295,6 +311,7 @@ func (p *parser) handleStateBody(line string, lineNum int) (parseState, error) {
 	return stateBody, nil
 }
 
+// appendRoute finalizes the current route by trimming body whitespace and appending it to the list of parsed routes.
 func (p *parser) appendRoute() {
 	if len(p.route.path) > 0 {
 		p.route.body = bytes.TrimSpace(p.route.body)
@@ -351,6 +368,8 @@ func (p *parser) getRequest(line string, lineNum int) (req *requestInfo, err err
 	return nil, p.lineError("unrecognized request, line %d: %s", lineNum, line)
 }
 
+// getVarParams extracts the first key-value pair from the query parameters of a given URI.
+// Returns the key and value as strings; empty strings if no parameters are found or on error.
 func getVarParams(uri string) (string, string) {
 	u, err := url.Parse(uri)
 	if err == nil {
@@ -362,6 +381,7 @@ func getVarParams(uri string) (string, string) {
 	return "", ""
 }
 
+// lineError generates an error message for a given line in the parsed file, optionally including the file name.
 func (p *parser) lineError(msg string, lineNum int, line string) error {
 	if p.fileName == "" {
 		return fmt.Errorf(msg, lineNum, line)
@@ -370,6 +390,7 @@ func (p *parser) lineError(msg string, lineNum int, line string) error {
 	return fmt.Errorf("file %q, "+msg, p.fileName, lineNum, line)
 }
 
+// isHTTPMethod checks if the provided string corresponds to a valid HTTP method (e.g., GET, POST, PUT, etc.).
 func (p *parser) isHTTPMethod(m string) bool {
 	switch strings.ToUpper(m) {
 	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch, http.MethodHead, http.MethodOptions:
@@ -392,6 +413,8 @@ func (p *parser) isHTTPPath(u string) bool {
 	return len(urlPath) != 0 && urlPath[0:1] == "/"
 }
 
+// cleanPath sanitizes and normalizes a given URI by escaping path segments and converting placeholders into braces.
+// Returns the cleaned URI or an error if the input cannot be parsed.
 func (p *parser) cleanPath(uri string) (string, error) {
 	u, err := url.Parse(uri)
 	if err != nil {

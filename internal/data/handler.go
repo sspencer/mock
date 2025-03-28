@@ -37,21 +37,16 @@ func (e *Endpoint) Handle() http.HandlerFunc {
 }
 
 func (e *Endpoint) getNextResponse() mockResponse {
-	e.RLock()
-	index := e.index
-	e.RUnlock()
+	e.Lock()
+	defer e.Unlock()
 
+	index := e.index
 	if index >= len(e.responses) {
 		index = 0
 	}
-
-	resp := e.responses[index]
-
-	e.Lock()
 	e.index = index + 1
-	e.Unlock()
 
-	return resp
+	return e.responses[index]
 }
 
 func (e *Endpoint) writeHTTPResponse(w http.ResponseWriter, r *http.Request, path string, resp mockResponse, getVar string) {
