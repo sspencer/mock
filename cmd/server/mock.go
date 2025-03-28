@@ -50,17 +50,18 @@ func newMockReader(es *eventServer, cfg config, reader io.Reader) *mockServer {
 		log.Fatalln(err.Error())
 	}
 
-	server := newServer(es, cfg)
-	server.loadRoutes(routes)
+	s := newServer(es, cfg)
+	s.loadRoutes(routes)
 
-	return server
+	return s
 }
 
 // serve all files specified on command line as mock files
 func newMockFile(es *eventServer, cfg config, fn string) *mockServer {
-	server := newServer(es, cfg)
-	server.watchFile(fn)
-	return server
+	s := newServer(es, cfg)
+	s.parseRoutes(fn)
+	watchFile(fn, s.parseRoutes)
+	return s
 }
 
 func newMockDir(es *eventServer, cfg config, fn string) *mockServer {
@@ -86,13 +87,23 @@ func (s *mockServer) loadRoutes(endpoints []*data.Endpoint) {
 	mux.MethodNotAllowed(methodNotAllowed)
 	mux.NotFound(methodNotFound)
 
-	log.Printf("Serving routes on %s\n", s.addr)
+	log.Printf("Serving mock routes on %s\n", s.addr)
 
 	for _, e := range endpoints {
-		log.Printf("    mounting %-6s %s\n", e.Method, e.Path)
+		log.Printf("  => %-6s   %s\n", e.Method, e.Path)
 		mux.MethodFunc(e.Method, e.Path, e.Handle())
 	}
 
 	log.Println("--------------------------------")
 	s.Handler = mux
+}
+
+func (s *mockServer) parseRoutes(fn string) {
+	routes, err := data.GetEndpointsFromFile(fn)
+	if err != nil {
+		log.Println(err.Error())
+		return
+	}
+
+	s.loadRoutes(routes)
 }
