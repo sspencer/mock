@@ -2,6 +2,7 @@
 # @file=index.html
 GET /
 
+
 ### Return home page external html file, specify path
 # @file=index.html
 GET /index.html
@@ -111,7 +112,7 @@ Content-Type: application/json
 
 {
     "status": "ok",
-    "uptime": "13:33  up 8 days, 33 mins"
+    "uptime": "13:34  up 8 days, 33 mins"
 }
 
 ### Return a page after a delay
