@@ -25,13 +25,11 @@ func main() {
 	flag.Usage = printUsageMessage
 	flag.IntVar(&mockPort, "p", 7777, "port")
 	flag.IntVar(&eventsPort, "e", 7778, "events port")
-	//flag.BoolVar(&cfg.logRequest, "r", false, "log request to stdout")
-	//flag.BoolVar(&cfg.logResponse, "s", false, "log response to stdout")
 	flag.Parse()
 
-	filename := ""
+	fn := ""
 	if len(flag.Arg(0)) > 0 {
-		filename = filepath.Clean(flag.Arg(0))
+		fn = filepath.Clean(flag.Arg(0))
 	}
 
 	cfg.eventsAddr = fmt.Sprintf(":%d", eventsPort)
@@ -40,18 +38,26 @@ func main() {
 	es := newEventServer()
 	go es.startServer(cfg)
 
-	if filename == "" {
+	if fn == "" {
 		log.Fatal(startMockReader(es, cfg))
 	} else {
-		fi, err := os.Stat(filename)
+		fi, err := os.Stat(fn)
 
 		if err == nil {
 			if fi.Mode().IsDir() {
-				log.Fatal(startMockDir(es, cfg, filename))
+				log.Fatal(startMockDir(es, cfg, fn))
+			} else if fi.Mode().IsRegular() {
+				log.Fatal(startMockFile(es, cfg, fn))
 			} else {
-				log.Fatal(startMockFile(es, cfg, filename))
+				fmt.Printf("File %q is an unknown file type\n", fn)
 			}
+		} else if os.IsNotExist(err) {
+			fmt.Printf("File %q does not exist\n", fn)
+		} else {
+			fmt.Println(err.Error())
 		}
+
+		os.Exit(1)
 	}
 }
 
