@@ -80,6 +80,7 @@ func init() {
 		"phone":        fake.Phone().Number,
 		"bool":         fake.Boolean().Bool,
 		"uuid":         fake.UUID().V4,
+		"guid":         fake.UUID().V4,
 		"timestamp":    fakeTimestamp(),
 		"isoTimestamp": fakeISOTimestamp(),
 		"integer":      fake.UInt16,
@@ -91,23 +92,27 @@ func init() {
 	}
 }
 
-func substituteParams(values url.Values) func([]byte) []byte {
-	vars := make(map[string]string)
+func substitute(values url.Values, body []byte) []byte {
+
+	// convert {{$var}} to {{var}}
+	body = dollarReplacerRegex.ReplaceAll(body, []byte("{{${1}}}"))
+
+	// randomly select amongst multiple values
+	paramMap := make(map[string]string)
 	for name, value := range values {
-		k := fmt.Sprintf("{{%s}}", name)
-		vars[k] = value[rand.IntN(len(value))]
+		paramMap["{{"+name+"}}"] = value[rand.IntN(len(value))]
 	}
 
-	return func(k []byte) []byte {
-		if val, ok := vars[string(k)]; ok {
+	// substitute params
+	body = replacerRegex.ReplaceAllFunc(body, func(k []byte) []byte {
+		if val, ok := paramMap[string(k)]; ok {
 			return []byte(val)
 		}
 
 		return k
-	}
-}
+	})
 
-func substituteVars(body []byte) []byte {
+	// substitute {{global paramMap}} and {{funcs}}
 	tmpl, err := template.New("test").Funcs(funcMap).Parse(string(body))
 	if err != nil {
 		log.Printf("substitute var parsing: %s", err)
@@ -122,11 +127,7 @@ func substituteVars(body []byte) []byte {
 		log.Printf("substitute var execution: %s", err)
 		return body
 	}
+
 	w.Flush()
 	return b.Bytes()
-}
-
-// convert {{$var}} to {{var}}
-func replaceVarDollars(body []byte) []byte {
-	return dollarReplacerRegex.ReplaceAll(body, []byte("{{${1}}}"))
 }

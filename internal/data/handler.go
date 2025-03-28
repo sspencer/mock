@@ -52,12 +52,6 @@ func (e *Endpoint) writeHTTPResponse(w http.ResponseWriter, r *http.Request, pat
 		time.Sleep(resp.delay)
 	}
 
-	for n, v := range resp.header {
-		w.Header().Add(n, v)
-	}
-
-	w.WriteHeader(resp.status)
-
 	// replace {{params}} and {{variables}} in body
 	subVars := make(url.Values)
 
@@ -93,16 +87,15 @@ func (e *Endpoint) writeHTTPResponse(w http.ResponseWriter, r *http.Request, pat
 		}
 	}
 
-	// replace {{$var}} with {{var}} otherwise tmpl Funcs replacement won't work
-	out := replaceVarDollars(resp.body)
+	// replace Header values with global variables
+	for hdrName, hdrValue := range resp.header {
+		w.Header().Add(hdrName, string(substitute(subVars, []byte(hdrValue))))
+	}
 
-	// replace global variables and path params into body
-	out = replacerRegex.ReplaceAllFunc(out, substituteParams(subVars))
+	w.WriteHeader(resp.status)
 
-	// replaced mapped functions like {{uuid}} into body
-	out = substituteVars(out)
+	_, err := w.Write(substitute(subVars, resp.body))
 
-	_, err := w.Write(out)
 	if err != nil {
 		log.Println(err.Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

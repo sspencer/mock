@@ -1,12 +1,17 @@
 @delay = 100ms
-@message = Hello There Dear World
+@message = In a Bottle
+@ab = 123abc456def789-LAX
+@cd = Zenyatta Mondatta
 
 ### Get with full url
 GET http://localhost:8080/user/:id
 Content-Type: application/json
+AB-RAY: {{$ab}}
+X-Request-ID: {{guid}}_{{id}}
 
 {
-    "id": {{$id}},
+    "cd": "{{cd}}",
+    "id": {{id}},
     "name": "{{$name}}",
     "email": "{{$email}}",
     "delay": "{{$delay}}",
