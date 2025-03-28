@@ -114,6 +114,6 @@ func (es *eventServer) startServer(cfg config) {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	log.Printf("Serving events on %s\n", cfg.eventsAddr)
+	log.Printf("Serving request logger on %s\n", cfg.eventsAddr)
 	log.Fatal(serve.ListenAndServe())
 }
