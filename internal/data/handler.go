@@ -25,7 +25,7 @@ func (e *Endpoint) Handle() http.HandlerFunc {
 		for key, values := range queryParams {
 			value := values[rand.IntN(len(values))]
 			getVar := getVarKey(key, value)
-			if m, ok := e.varmap[getVar]; ok {
+			if m, ok := e.localVars[getVar]; ok {
 				e.writeHTTPResponse(w, r, e.Path, m, getVar)
 				return
 			}
@@ -40,13 +40,11 @@ func (e *Endpoint) getNextResponse() mockResponse {
 	e.Lock()
 	defer e.Unlock()
 
-	index := e.index
-	if index >= len(e.responses) {
-		index = 0
-	}
-	e.index = index + 1
+	index := e.index % len(e.responses)
+	response := e.responses[index]
+	e.index++
 
-	return e.responses[index]
+	return response
 }
 
 func (e *Endpoint) writeHTTPResponse(w http.ResponseWriter, r *http.Request, path string, resp mockResponse, getVar string) {
@@ -63,12 +61,12 @@ func (e *Endpoint) writeHTTPResponse(w http.ResponseWriter, r *http.Request, pat
 	// replace {{params}} and {{variables}} in body
 	subVars := make(url.Values)
 
-	// 1. add global vars
+	// 1. add global localVars
 	for name, val := range e.globalVars {
 		subVars[name] = []string{val}
 	}
 
-	// 2. add vars from path
+	// 2. add localVars from path
 	items := strings.Split(path, "/")
 	for _, item := range items {
 		if strings.HasPrefix(item, "{") && strings.HasSuffix(item, "}") {

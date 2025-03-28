@@ -6,7 +6,6 @@ import (
 	"os"
 	"path"
 	"regexp"
-	"strings"
 	"sync"
 	"time"
 )
@@ -22,7 +21,7 @@ type Endpoint struct {
 	Path       string
 	index      int
 	responses  []mockResponse
-	varmap     map[string]mockResponse
+	localVars  map[string]mockResponse
 	globalVars map[string]string
 	sync.RWMutex
 }
@@ -34,27 +33,12 @@ type mockResponse struct {
 	body   []byte
 }
 
-func (e *Endpoint) String() string {
-	var b strings.Builder
-	nr := len(e.responses)
-	for i, resp := range e.responses {
-		contentType := resp.header["content-type"]
-		fmt.Fprintf(&b, " %3d | %-6s %-28s | %-24s | %4d bytes | %s", resp.status, e.Method, e.Path, contentType, len(resp.body), resp.delay)
-		if nr > 1 && i < nr-1 {
-			fmt.Fprintln(&b)
-		}
-	}
-
-	return b.String()
-}
-
 // Combine duplicate routes (method/path) into an Endpoint with one or more responses
 func merge(apis []*route, globalVars map[string]string) []*Endpoint {
 	m := make(map[string]*Endpoint)
 
 	for _, t := range apis {
 		key := fmt.Sprintf("%s:%s", t.method, t.path)
-		//fmt.Println("key:", key)
 		resp := mockResponse{
 			status: t.status,
 			body:   t.body,
@@ -67,7 +51,7 @@ func merge(apis []*route, globalVars map[string]string) []*Endpoint {
 				Method:     t.method,
 				Path:       t.path,
 				responses:  make([]mockResponse, 0),
-				varmap:     make(map[string]mockResponse),
+				localVars:  make(map[string]mockResponse),
 				globalVars: globalVars,
 			}
 		}
@@ -75,7 +59,7 @@ func merge(apis []*route, globalVars map[string]string) []*Endpoint {
 		m[key].responses = append(m[key].responses, resp)
 		varKey := getVarKey(t.uriKey, t.uriVal)
 		if varKey != "" {
-			m[key].varmap[varKey] = resp
+			m[key].localVars[varKey] = resp
 		}
 	}
 
@@ -113,17 +97,13 @@ func GetEndpointsFromFile(fn string) ([]*Endpoint, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	var closeErr error
 	defer func() {
-		closeErr = r.Close()
+		if cerr := r.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
 	}()
 
 	routes, err := getEndpoints(r, path.Dir(fn), fn)
-	if closeErr != nil {
-		return nil, closeErr
-	}
-
 	return routes, err
 }
 
