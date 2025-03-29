@@ -101,11 +101,11 @@ with `content-type: "text/html; charset=utf-8"`.
 HTTP Client plugins only highlight JSON bodies if the content-type
 is specified.
 
-### Body Variables
+### Variables
 
-Besides replacing path variables in the body e.g. `{{id}}`, the following
+Besides replacing path variables in the body or header e.g. `{{id}}`, the following
 variables will be dynamically generated with [faker](https://github.com/jaswdr/faker)
-and replaced in the body:
+and replaced in the body.  The dollar sign is optional.
  
 * `{{$name}}`
 * `{{$firstName}}`
@@ -115,17 +115,18 @@ and replaced in the body:
 * `{{$phone}}`
 * `{{$url}}`
 * `{{$file}}`
-* `${{server}}`
-* `${{hash}}`
-* `${{bool}}`
-* `${{integer}}`
-* `${{float}}`
-* `${{uuid}}`
-* `${{timestamp}}`
-* `${{isoTimestamp}}`
-* `${{sentence}}`
-* `${{paragraph}}`
-* `${{article}}`
+* `{{$server}}`
+* `{{$hash}}`
+* `{{$bool}}`
+* `{{$integer}}`
+* `{{$float}}`
+* `{{$guid}}`
+* `{{$uuid}}`
+* `{{$timestamp}}`
+* `{{$isoTimestamp}}`
+* `{{$sentence}}`
+* `{{$paragraph}}`
+* `{{$article}}`
 
 ## Multiple Responses
 
