@@ -5,15 +5,10 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
-)
-
-var (
-	dollarReplacerRegex = regexp.MustCompile(`{{\s*\$([a-zA-Z_]\w*)\s*}}`)
 )
 
 // Handle returns a HTTP handler method for the given endpoint.

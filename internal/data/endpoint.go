@@ -1,18 +1,13 @@
 package data
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"path"
-	"regexp"
 	"sync"
 	"time"
-)
-
-var (
-	// replace {{params}} in body
-	replacerRegex = regexp.MustCompile(`\{\{[^}]+}}`)
 )
 
 // Endpoint represents the mocked route and can have one or more responses.
@@ -71,14 +66,13 @@ func merge(apis []*route, globalVars map[string]string) []*Endpoint {
 	return routes
 }
 
-func getVarKey(k, v string) string {
-	if k == "" {
-		return ""
-	} else if v == "" {
-		return k
-	}
-
-	return fmt.Sprintf("%s=%s", k, v)
+// getVarKey creates a key for looking up responses by GET parameters.
+func getVarKey(key, value string) string {
+	var buf bytes.Buffer
+	buf.WriteString(key)
+	buf.WriteString("=")
+	buf.WriteString(value)
+	return buf.String()
 }
 
 // GetEndpointsFromReader parses a reader from <stdin> or similar
