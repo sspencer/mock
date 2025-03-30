@@ -29,7 +29,7 @@ of VSCode's [REST Client](https://marketplace.visualstudio.com/items?itemName=hu
    
 If you're interested in developing `mock` *itself*, simply start `mock` with:
 
-    go run cmd/main.go examples/user.api
+    go run cmd/main.go examples/user.http
 
 ## Response File
 
