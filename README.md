@@ -174,4 +174,4 @@ Will return the status codes `201`, `201`, `400` and responses `{ "id": 5 }`,
 
 ## Ideas
 
-- [ ] completed last idea of embedded web server ... what else?
+- [ ] edit mock http file in api events page
