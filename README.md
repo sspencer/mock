@@ -2,7 +2,10 @@
 
 Mock creates an HTTP server with *mocked* routes specified from a local file.  
 It allows for rapid development and testing of (REST) API clients.  The routes 
-are dynamically configured from a watched file.
+are dynamically configured from a watched file.  Mock also hosts a event page
+that logs all web traffic:
+
+![API Requests Logger](docs/events.png)
 
 For added flexibility, Mock optionally serves a specified directory.
 
