@@ -87,7 +87,10 @@ func (s *mockServer) colorLogger(eventServer *eventServer) func(http.Handler) ht
 
 			jsonBody, _ := json.Marshal(data)
 
-			eventServer.broadcast(string(jsonBody))
+			if eventServer != nil {
+				eventServer.broadcast(string(jsonBody))
+			}
+
 			s.logger(data)
 		})
 	}

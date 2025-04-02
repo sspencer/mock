@@ -24,7 +24,7 @@ func main() {
 
 	flag.Usage = printUsageMessage
 	flag.IntVar(&mockPort, "p", 7777, "port")
-	flag.IntVar(&eventsPort, "e", 7778, "events port")
+	flag.IntVar(&eventsPort, "e", 0, "events port (defaults to 0, disabling event server)")
 	flag.Parse()
 
 	fn := ""
@@ -32,11 +32,14 @@ func main() {
 		fn = filepath.Clean(flag.Arg(0))
 	}
 
+	var es *eventServer
 	cfg.eventsAddr = fmt.Sprintf(":%d", eventsPort)
 	cfg.mockAddr = fmt.Sprintf(":%d", mockPort)
 
-	es := newEventServer()
-	go es.startServer(cfg)
+	if eventsPort != 0 {
+		es = newEventServer()
+		go es.startServer(cfg)
+	}
 
 	if fn == "" {
 		log.Fatal(startMockReader(es, cfg))
