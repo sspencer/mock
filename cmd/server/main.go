@@ -89,7 +89,7 @@ func startStaticServer(cfg config, fn string) error {
 }
 
 func printUsageMessage() {
-	message := "Start mock mockServer with mock file, directory or <stdin>.\nmock [flags] [input_file]"
+	message := "Start mock server with REST Client file, directory or <stdin>.\nmock [flags] [input_file]"
 	fmt.Fprintln(os.Stderr, message)
 	flag.PrintDefaults()
 }

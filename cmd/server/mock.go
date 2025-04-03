@@ -82,8 +82,7 @@ func (s *mockServer) mockRoutes(endpoints []*data.Endpoint) {
 	mux.HandleFunc(s.logPath+"/fav.ico", s.iconHandler)
 	mux.HandleFunc(s.logPath+"/events", s.sseHandler)
 
-	log.Printf("Serving mock routes on %s\n", s.addr)
-
+	log.Printf("Serving mock routes on %s, logged at http://localhost%s%s/\n", s.addr, s.addr, s.logPath)
 	for _, e := range endpoints {
 		log.Printf("  => %-6s   %s\n", e.Method, e.Path)
 		mux.MethodFunc(e.Method, e.Path, e.Handle())

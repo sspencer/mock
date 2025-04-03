@@ -2,8 +2,7 @@
 
 Mock creates an HTTP server with *mocked* routes specified from a local file.  
 It allows for rapid development and testing of (REST) API clients.  The routes 
-are dynamically configured from a watched file.  Mock also hosts a event page
-that logs all web traffic:
+are dynamically configured from a watched file.  Mock hosts a log of all requests under [http://localhost:7777/mock/](http://localhost:7777/mock/).
 
 ![API Requests Logger](docs/events.png)
 
@@ -18,11 +17,13 @@ of VSCode's [REST Client](https://marketplace.visualstudio.com/items?itemName=hu
 
 ## Run
 
+    $ mock --help
+    Start mock server with REST Client file, directory or <stdin>.
     mock [flags] [input_file]
-      -e int
-        	events port (default 7778)
+      -l string
+            URL path to view the request log (default "/mock")
       -p int
-        	port (default 7777)
+            port (default 7777)
   
 1. Mock API: `mock examples/user.http` or `cat my.http | mock` or even `mock < my.http`
 2. Serve Directory: `mock .`  NOTE: can't combine serving a directory with serving `.http` files.
