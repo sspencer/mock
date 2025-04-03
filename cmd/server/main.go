@@ -70,13 +70,20 @@ func startStdinServer(cfg config) error {
 		os.Exit(1)
 	}
 
-	s := newStdinServer(cfg, bufio.NewReader(os.Stdin))
+	s, err := newStdinServer(cfg, bufio.NewReader(os.Stdin))
+	if err != nil {
+		return err
+	}
+
 	return s.ListenAndServe()
 }
 
 // startFileServer serves mock file passed in from command line
 func startFileServer(cfg config, fn string) error {
-	s := newFileServer(cfg, fn)
+	s, err := newFileServer(cfg, fn)
+	if err != nil {
+		return err
+	}
 	return s.ListenAndServe()
 }
 

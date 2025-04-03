@@ -38,24 +38,28 @@ func newServer(cfg config) *mockServer {
 }
 
 // serve <stdin> or piped file as mock file input
-func newStdinServer(cfg config, reader io.Reader) *mockServer {
+func newStdinServer(cfg config, reader io.Reader) (*mockServer, error) {
 	routes, err := data.GetEndpointsFromReader(reader)
 	if err != nil {
-		log.Fatalln(err.Error())
+		return nil, err
 	}
 
 	s := newServer(cfg)
 	s.mockRoutes(routes)
 
-	return s
+	return s, nil
 }
 
 // serve all files specified on command line as mock files
-func newFileServer(cfg config, fn string) *mockServer {
+func newFileServer(cfg config, fn string) (*mockServer, error) {
 	s := newServer(cfg)
 	s.parseRoutes(fn)
-	watchFile(fn, s.parseRoutes)
-	return s
+	err := watchFile(fn, s.parseRoutes)
+	if err != nil {
+		return nil, err
+	}
+
+	return s, nil
 }
 
 // newStaticServer serves static directory for convenience, no mocking at all
