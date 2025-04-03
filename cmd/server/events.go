@@ -14,6 +14,9 @@ import (
 //go:embed static/index.html
 var indexPage []byte
 
+//go:embed static/favicon.ico
+var favIcon []byte
+
 // eventServer manages SSE connections and message broadcasting
 type eventServer struct {
 	clients    map[chan string]struct{}
@@ -70,6 +73,15 @@ func (es *eventServer) indexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (es *eventServer) iconHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/x-icon")
+	_, err := w.Write(favIcon)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+}
+
 func (es *eventServer) sseHandler(w http.ResponseWriter, r *http.Request) {
 	// Set headers for SSE
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -106,6 +118,7 @@ func (es *eventServer) startServer(cfg config) {
 	mux.MethodNotAllowed(methodNotAllowed)
 	mux.NotFound(methodNotFound)
 	mux.HandleFunc("/", es.indexHandler)
+	mux.HandleFunc("/mock.ico", es.iconHandler)
 	mux.HandleFunc("/events", es.sseHandler)
 
 	serve := &http.Server{
