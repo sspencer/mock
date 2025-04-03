@@ -32,7 +32,7 @@ func (w *ResponseCapturingWriter) Write(data []byte) (int, error) {
 	return w.ResponseWriter.Write(data)
 }
 
-func (s *mockServer) colorLogger(eventServer *eventServer) func(http.Handler) http.Handler {
+func (s *mockServer) requestLogger(logger loggerFunc) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			cw := &ResponseCapturingWriter{
@@ -87,11 +87,11 @@ func (s *mockServer) colorLogger(eventServer *eventServer) func(http.Handler) ht
 
 			jsonBody, _ := json.Marshal(data)
 
-			if eventServer != nil {
-				eventServer.broadcast(string(jsonBody))
+			if eventSrv != nil {
+				eventSrv.broadcast(string(jsonBody))
 			}
 
-			s.logger(data)
+			logger(data)
 		})
 	}
 }

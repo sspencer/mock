@@ -1,4 +1,3 @@
-@delay = 100ms
 @message = In a Bottle
 @ab = 123abc456def789-LAX
 @cd = Zenyatta Mondatta

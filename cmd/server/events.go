@@ -19,43 +19,58 @@ var favIcon []byte
 
 // eventServer manages SSE connections and message broadcasting
 type eventServer struct {
+	*http.Server
 	clients    map[chan string]struct{}
 	clientsMux sync.Mutex
 }
 
-func newEventServer() *eventServer {
-	return &eventServer{
+func newEventServer(cfg config) *eventServer {
+	s := &eventServer{
+		Server: &http.Server{
+			Addr:              cfg.eventsAddr,
+			ReadHeaderTimeout: 5 * time.Second,
+		},
 		clients: make(map[chan string]struct{}),
 	}
+
+	mux := chi.NewRouter()
+	mux.MethodNotAllowed(methodNotAllowed)
+	mux.NotFound(methodNotFound)
+	mux.HandleFunc("/", s.indexHandler)
+	mux.HandleFunc("/mock.ico", s.iconHandler)
+	mux.HandleFunc("/events", s.sseHandler)
+	s.Handler = mux
+
+	return s
 }
 
 // registerClient adds a new client channel
-func (es *eventServer) registerClient() chan string {
-	es.clientsMux.Lock()
-	defer es.clientsMux.Unlock()
+func (s *eventServer) registerClient() chan string {
+	s.clientsMux.Lock()
+	defer s.clientsMux.Unlock()
 
 	clientChan := make(chan string)
-	es.clients[clientChan] = struct{}{}
+	s.clients[clientChan] = struct{}{}
 	return clientChan
 }
 
 // unregisterClient removes a client channel
-func (es *eventServer) unregisterClient(clientChan chan string) {
-	es.clientsMux.Lock()
-	defer es.clientsMux.Unlock()
+func (s *eventServer) unregisterClient(clientChan chan string) {
+	s.clientsMux.Lock()
+	defer s.clientsMux.Unlock()
 
-	if _, ok := es.clients[clientChan]; ok {
+	if _, ok := s.clients[clientChan]; ok {
 		close(clientChan)
-		delete(es.clients, clientChan)
+		delete(s.clients, clientChan)
 	}
 }
 
 // broadcast sends a message to all connected clients
-func (es *eventServer) broadcast(message string) {
-	es.clientsMux.Lock()
-	defer es.clientsMux.Unlock()
+func (s *eventServer) broadcast(message string) {
+	s.clientsMux.Lock()
+	defer s.clientsMux.Unlock()
 
-	for clientChan := range es.clients {
+	for clientChan := range s.clients {
 		select {
 		case clientChan <- message:
 		default:
@@ -64,7 +79,7 @@ func (es *eventServer) broadcast(message string) {
 	}
 }
 
-func (es *eventServer) indexHandler(w http.ResponseWriter, r *http.Request) {
+func (s *eventServer) indexHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	_, err := w.Write(indexPage)
 	if err != nil {
@@ -73,7 +88,7 @@ func (es *eventServer) indexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (es *eventServer) iconHandler(w http.ResponseWriter, r *http.Request) {
+func (s *eventServer) iconHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "image/x-icon")
 	_, err := w.Write(favIcon)
 	if err != nil {
@@ -82,7 +97,7 @@ func (es *eventServer) iconHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (es *eventServer) sseHandler(w http.ResponseWriter, r *http.Request) {
+func (s *eventServer) sseHandler(w http.ResponseWriter, r *http.Request) {
 	// Set headers for SSE
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -90,8 +105,8 @@ func (es *eventServer) sseHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	// Create client channel
-	clientChan := es.registerClient()
-	defer es.unregisterClient(clientChan)
+	clientChan := s.registerClient()
+	defer s.unregisterClient(clientChan)
 
 	// Handle client disconnection
 	flusher, ok := w.(http.Flusher)
@@ -110,23 +125,4 @@ func (es *eventServer) sseHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-}
-
-func (es *eventServer) startServer(cfg config) {
-
-	mux := chi.NewRouter()
-	mux.MethodNotAllowed(methodNotAllowed)
-	mux.NotFound(methodNotFound)
-	mux.HandleFunc("/", es.indexHandler)
-	mux.HandleFunc("/mock.ico", es.iconHandler)
-	mux.HandleFunc("/events", es.sseHandler)
-
-	serve := &http.Server{
-		Addr:              cfg.eventsAddr,
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-
-	log.Printf("Serving request logger on %s\n", cfg.eventsAddr)
-	log.Fatal(serve.ListenAndServe())
 }

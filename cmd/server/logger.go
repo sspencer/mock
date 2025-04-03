@@ -19,19 +19,6 @@ var (
 	reset   = string([]byte{27, 91, 48, 109})
 )
 
-type httpLog2 struct {
-	Status          int         `json:"status"`
-	StatusText      string      `json:"statusText"`
-	Time            string      `json:"time"`
-	Method          string      `json:"method"`
-	Uri             string      `json:"uri"`
-	RequestDetails  string      `json:"requestDetails"`
-	RequestBody     string      `json:"requestBody"`
-	ResponseHeader  http.Header `json:"responseHeader"`
-	ResponseBody    string      `json:"responseBody"`
-	ResponseDetails string      `json:"responseDetails"`
-}
-
 type httpRequestLog struct {
 	Header  http.Header `json:"header"`
 	Method  string      `json:"method"`
@@ -39,6 +26,7 @@ type httpRequestLog struct {
 	Details string      `json:"details"`
 	Body    string      `json:"body"`
 }
+
 type httpResponseLog struct {
 	Header     http.Header `json:"header"`
 	Status     int         `json:"status"`
@@ -55,7 +43,7 @@ type httpLog struct {
 
 type loggerFunc func(log httpLog)
 
-func colorlogNew() loggerFunc {
+func newLogger() loggerFunc {
 	if isatty.IsTerminal(os.Stdout.Fd()) {
 		return colorlog()
 	}
