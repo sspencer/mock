@@ -17,27 +17,23 @@ import (
 // mockServer is the http server struct
 type mockServer struct {
 	*http.Server
-	//logger loggerFunc
-	addr string
+	addr       string
+	logPath    string
+	clients    map[chan string]struct{}
+	clientsMux sync.Mutex
 	sync.Mutex
 }
 
 // newServer creates an http mockServer running on given port with handlers based on given routes.
 func newServer(cfg config) *mockServer {
-	//logger := newLogger()
-
-	notImplemented := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotImplemented)
-	})
-
 	return &mockServer{
 		Server: &http.Server{
 			Addr:              cfg.mockAddr,
-			Handler:           notImplemented,
 			ReadHeaderTimeout: 5 * time.Second,
 		},
-		//logger: logger,
-		addr: cfg.mockAddr,
+		clients: make(map[chan string]struct{}),
+		addr:    cfg.mockAddr,
+		logPath: cfg.logPath,
 	}
 }
 
@@ -49,7 +45,7 @@ func newStdinServer(cfg config, reader io.Reader) *mockServer {
 	}
 
 	s := newServer(cfg)
-	s.loadRoutes(routes)
+	s.mockRoutes(routes)
 
 	return s
 }
@@ -62,6 +58,7 @@ func newFileServer(cfg config, fn string) *mockServer {
 	return s
 }
 
+// newStaticServer serves static directory for convenience, no mocking at all
 func newStaticServer(cfg config, fn string) *mockServer {
 	fn = strings.ReplaceAll(fn, " ", "\\ ")
 
@@ -75,15 +72,15 @@ func newStaticServer(cfg config, fn string) *mockServer {
 	return s
 }
 
-// loadRoutes reloads all routes handled by the mockServer
-func (s *mockServer) loadRoutes(endpoints []*data.Endpoint) {
-	s.Lock()
-	defer s.Unlock()
-
+// mockRoutes reloads all routes handled by the mockServer
+func (s *mockServer) mockRoutes(endpoints []*data.Endpoint) {
 	mux := chi.NewRouter()
-	mux.Use(s.requestLogger(newLogger()))
 	mux.MethodNotAllowed(methodNotAllowed)
 	mux.NotFound(methodNotFound)
+	mux.Use(s.requestLogger(newLogger()))
+	mux.HandleFunc(s.logPath+"/", s.indexHandler)
+	mux.HandleFunc(s.logPath+"/fav.ico", s.iconHandler)
+	mux.HandleFunc(s.logPath+"/events", s.sseHandler)
 
 	log.Printf("Serving mock routes on %s\n", s.addr)
 
@@ -93,7 +90,9 @@ func (s *mockServer) loadRoutes(endpoints []*data.Endpoint) {
 	}
 
 	log.Println("--------------------------------")
+	s.Lock()
 	s.Handler = mux
+	s.Unlock()
 }
 
 func (s *mockServer) parseRoutes(fn string) {
@@ -103,5 +102,5 @@ func (s *mockServer) parseRoutes(fn string) {
 		return
 	}
 
-	s.loadRoutes(routes)
+	s.mockRoutes(routes)
 }

@@ -19,7 +19,6 @@ X-Request-ID: {{guid}}_{{id}}
 
 ### Create user
 # @status = 201
-# @delay = 250ms
 POST http://localhost:8080/user
 Content-Type: application/json
 

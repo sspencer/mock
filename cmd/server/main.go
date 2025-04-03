@@ -10,30 +10,24 @@ import (
 	"strings"
 )
 
-var eventSrv *eventServer
-
 type config struct {
-	mockAddr   string
-	eventsAddr string
+	mockAddr string
+	logPath  string
 }
 
 func main() {
 	var mockPort int
-	var eventsPort int
+	var logPath string
 	var cfg config
 
 	flag.Usage = printUsageMessage
 	flag.IntVar(&mockPort, "p", 7777, "port")
-	flag.IntVar(&eventsPort, "e", 0, "events port (defaults to 0, disabling event server)")
+	flag.StringVar(&logPath, "l", "/mock", "URL path to view the request log")
+
 	flag.Parse()
 
-	cfg.eventsAddr = fmt.Sprintf(":%d", eventsPort)
 	cfg.mockAddr = fmt.Sprintf(":%d", mockPort)
-
-	if eventsPort != 0 {
-		log.Printf("Serving request logger on %s\n", cfg.eventsAddr)
-		go startEventsServer(cfg)
-	}
+	cfg.logPath = normalizeMountPath(logPath)
 
 	fn := ""
 	if len(flag.Arg(0)) > 0 {
@@ -61,11 +55,6 @@ func main() {
 
 		os.Exit(1)
 	}
-}
-
-func startEventsServer(cfg config) {
-	eventSrv = newEventServer(cfg)
-	log.Fatal(eventSrv.ListenAndServe())
 }
 
 // startStdinServer reads from mock file from <stdin>
@@ -103,4 +92,19 @@ func printUsageMessage() {
 	message := "Start mock mockServer with mock file, directory or <stdin>.\nmock [flags] [input_file]"
 	fmt.Fprintln(os.Stderr, message)
 	flag.PrintDefaults()
+}
+
+// normalizeMountPath ensures the path begins with and does not end with a forward slash
+func normalizeMountPath(path string) string {
+	// Add leading slash if missing
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+
+	// Strip all trailing slashes
+	for strings.HasSuffix(path, "/") && len(path) > 1 {
+		path = path[:len(path)-1]
+	}
+
+	return path
 }

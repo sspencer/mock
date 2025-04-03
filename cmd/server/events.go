@@ -5,10 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"sync"
-	"time"
-
-	"github.com/go-chi/chi/v5"
 )
 
 //go:embed static/index.html
@@ -17,35 +13,8 @@ var indexPage []byte
 //go:embed static/favicon.ico
 var favIcon []byte
 
-// eventServer manages SSE connections and message broadcasting
-type eventServer struct {
-	*http.Server
-	clients    map[chan string]struct{}
-	clientsMux sync.Mutex
-}
-
-func newEventServer(cfg config) *eventServer {
-	s := &eventServer{
-		Server: &http.Server{
-			Addr:              cfg.eventsAddr,
-			ReadHeaderTimeout: 5 * time.Second,
-		},
-		clients: make(map[chan string]struct{}),
-	}
-
-	mux := chi.NewRouter()
-	mux.MethodNotAllowed(methodNotAllowed)
-	mux.NotFound(methodNotFound)
-	mux.HandleFunc("/", s.indexHandler)
-	mux.HandleFunc("/mock.ico", s.iconHandler)
-	mux.HandleFunc("/events", s.sseHandler)
-	s.Handler = mux
-
-	return s
-}
-
 // registerClient adds a new client channel
-func (s *eventServer) registerClient() chan string {
+func (s *mockServer) registerClient() chan string {
 	s.clientsMux.Lock()
 	defer s.clientsMux.Unlock()
 
@@ -55,7 +24,7 @@ func (s *eventServer) registerClient() chan string {
 }
 
 // unregisterClient removes a client channel
-func (s *eventServer) unregisterClient(clientChan chan string) {
+func (s *mockServer) unregisterClient(clientChan chan string) {
 	s.clientsMux.Lock()
 	defer s.clientsMux.Unlock()
 
@@ -66,7 +35,7 @@ func (s *eventServer) unregisterClient(clientChan chan string) {
 }
 
 // broadcast sends a message to all connected clients
-func (s *eventServer) broadcast(message string) {
+func (s *mockServer) broadcast(message string) {
 	s.clientsMux.Lock()
 	defer s.clientsMux.Unlock()
 
@@ -79,7 +48,7 @@ func (s *eventServer) broadcast(message string) {
 	}
 }
 
-func (s *eventServer) indexHandler(w http.ResponseWriter, r *http.Request) {
+func (s *mockServer) indexHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	_, err := w.Write(indexPage)
 	if err != nil {
@@ -88,7 +57,7 @@ func (s *eventServer) indexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *eventServer) iconHandler(w http.ResponseWriter, r *http.Request) {
+func (s *mockServer) iconHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "image/x-icon")
 	_, err := w.Write(favIcon)
 	if err != nil {
@@ -97,7 +66,7 @@ func (s *eventServer) iconHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *eventServer) sseHandler(w http.ResponseWriter, r *http.Request) {
+func (s *mockServer) sseHandler(w http.ResponseWriter, r *http.Request) {
 	// Set headers for SSE
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")

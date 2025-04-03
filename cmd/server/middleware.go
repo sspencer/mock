@@ -35,6 +35,13 @@ func (w *ResponseCapturingWriter) Write(data []byte) (int, error) {
 func (s *mockServer) requestLogger(logger loggerFunc) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// short circuit upon seeing '/mock', the configurable
+			// mount path for displaying web requests
+			if strings.HasPrefix(r.URL.Path, s.logPath) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			cw := &ResponseCapturingWriter{
 				ResponseWriter: w,
 				StatusCode:     http.StatusOK,
@@ -87,9 +94,7 @@ func (s *mockServer) requestLogger(logger loggerFunc) func(http.Handler) http.Ha
 
 			jsonBody, _ := json.Marshal(data)
 
-			if eventSrv != nil {
-				eventSrv.broadcast(string(jsonBody))
-			}
+			s.broadcast(string(jsonBody))
 
 			logger(data)
 		})
