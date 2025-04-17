@@ -13,6 +13,9 @@ var indexPage []byte
 //go:embed static/favicon.ico
 var favIcon []byte
 
+//go:embed static/style.css
+var styleCSS []byte
+
 // registerClient adds a new client channel
 func (s *mockServer) registerClient() chan string {
 	s.clientsMux.Lock()
@@ -60,6 +63,15 @@ func (s *mockServer) indexHandler(w http.ResponseWriter, r *http.Request) {
 func (s *mockServer) iconHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "image/x-icon")
 	_, err := w.Write(favIcon)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+}
+
+func (s *mockServer) styleHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/css")
+	_, err := w.Write(styleCSS)
 	if err != nil {
 		log.Println(err)
 		return

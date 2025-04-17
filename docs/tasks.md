@@ -43,7 +43,8 @@ This document contains a detailed list of actionable improvement tasks for the M
 
 ## UI Improvements
 
-- [ ] Redesign the web UI with a more modern look and feel
+- [x] Redesign the web UI with a more modern look and feel
+- [x] Separate out the CSS from the web page
 - [ ] Add a dashboard with server statistics and metrics
 - [ ] Implement a request/response inspector with syntax highlighting
 - [ ] Add support for editing mock definitions directly in the UI
