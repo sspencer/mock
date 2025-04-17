@@ -51,7 +51,7 @@ func (s *mockServer) broadcast(message string) {
 	}
 }
 
-func (s *mockServer) indexHandler(w http.ResponseWriter, r *http.Request) {
+func (s *mockServer) indexHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	_, err := w.Write(indexPage)
 	if err != nil {
@@ -60,7 +60,7 @@ func (s *mockServer) indexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *mockServer) iconHandler(w http.ResponseWriter, r *http.Request) {
+func (s *mockServer) iconHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "image/x-icon")
 	_, err := w.Write(favIcon)
 	if err != nil {
@@ -69,7 +69,7 @@ func (s *mockServer) iconHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *mockServer) styleHandler(w http.ResponseWriter, r *http.Request) {
+func (s *mockServer) styleHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/css")
 	_, err := w.Write(styleCSS)
 	if err != nil {

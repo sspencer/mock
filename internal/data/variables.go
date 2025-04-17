@@ -87,6 +87,6 @@ func substitute(values url.Values, body []byte) []byte {
 		return body
 	}
 
-	w.Flush()
+	_ = w.Flush()
 	return b.Bytes()
 }

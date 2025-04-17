@@ -27,7 +27,7 @@ const (
 
 // parse @variable = value
 var (
-	variableRegex = regexp.MustCompile(`@\s*([a-zA-Z][\w]*)\s*=\s*(.+)`)
+	variableRegex = regexp.MustCompile(`@\s*([a-zA-Z]\w*)\s*=\s*(.+)`)
 )
 
 // route representation during parse, with just a single response.
