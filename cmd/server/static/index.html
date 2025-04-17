@@ -7,6 +7,38 @@
     <link rel="shortcut icon" href="fav.ico" type="image/x-icon" />
     <title>Mock Server</title>
     <style>
+        :root {
+            /* Light mode (default) */
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --header-bg: #222;
+            --header-text: white;
+            --border-color: #e0e0e0;
+            --table-hover: #f1f1f1;
+            --table-selected: #d0ebff;
+            --button-bg: #fff;
+            --button-border: #e0e0e0;
+            --detail-bg: #f0f0f0;
+            --detail-border: #e0e0e0;
+            --table-border: #ddd;
+        }
+
+        [data-theme="dark"] {
+            /* Dark mode */
+            --bg-color: #121212;
+            --text-color: #e0e0e0;
+            --header-bg: #000000;
+            --header-text: #ffffff;
+            --border-color: #444;
+            --table-hover: #2a2a2a;
+            --table-selected: #1a3a5a;
+            --button-bg: #333;
+            --button-border: #555;
+            --detail-bg: #2a2a2a;
+            --detail-border: #444;
+            --table-border: #444;
+        }
+
         * {
             box-sizing: border-box;
             font-family: Tahoma, Geneva, Verdana, sans-serif;
@@ -18,6 +50,9 @@
             height: 100%;
             overflow: hidden;
             font-size: 16px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: background-color 0.3s ease, color 0.3s ease;
         }
 
         .container {
@@ -27,12 +62,25 @@
         }
 
         .header {
-            background-color: #222;
-            color: white;
+            background-color: var(--header-bg);
+            color: var(--header-text);
             padding: 12px;
             text-align: center;
             font-size: 1.1em;
             font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .theme-toggle {
+            position: absolute;
+            right: 15px;
+            cursor: pointer;
+            background: none;
+            border: none;
+            color: var(--header-text);
+            font-size: 1.2em;
         }
 
         .content {
@@ -47,7 +95,7 @@
             display: flex;
             flex-direction: column;
             padding: 0 6px 0 6px;
-            border-right: 1px solid #e0e0e0;
+            border-right: 1px solid var(--border-color);
         }
 
         .right-column {
@@ -71,12 +119,13 @@
         }
 
         .clear-button {
-            background-color: #fff;
-            border: 1px solid #e0e0e0;
+            background-color: var(--button-bg);
+            border: 1px solid var(--button-border);
             padding: 5px 10px;
             border-radius: 4px;
             cursor: pointer;
             font-size: 0.8em;
+            color: var(--text-color);
         }
 
         .clear-button:hover {
@@ -96,18 +145,18 @@
         }
 
         th, td {
-            border: 1px solid #ddd;
+            border: 1px solid var(--table-border);
             padding: 8px;
             text-align: left;
         }
 
         tbody tr:hover {
-            background-color: #f1f1f1;
+            background-color: var(--table-hover);
             cursor: pointer;
         }
 
         tbody tr.selected {
-            background-color: #d0ebff;
+            background-color: var(--table-selected);
         }
 
         .detail-label {
@@ -131,16 +180,17 @@
 
         .detail-content {
             flex: 1;
-            background-color: #f0f0f0;
+            background-color: var(--detail-bg);
             padding: 6px;
             font-family: 'Courier New', Courier, monospace;
             white-space: pre-wrap;
             word-wrap: break-word;
             overflow: auto;
-            border: 1px solid #e0e0e0;
+            border: 1px solid var(--detail-border);
             resize: none;
         }
 
+        /* HTTP Method styles with dark mode support */
         .method-get {
             background-color: #e6f3ff;
             color: #0056b3;
@@ -171,6 +221,33 @@
             font-weight: bold;
         }
 
+        /* Dark mode method styles */
+        [data-theme="dark"] .method-get {
+            background-color: #0a3055;
+            color: #66b0ff;
+        }
+
+        [data-theme="dark"] .method-post {
+            background-color: #0a3a0a;
+            color: #66cc66;
+        }
+
+        [data-theme="dark"] .method-put {
+            background-color: #3a2a0a;
+            color: #ffcc66;
+        }
+
+        [data-theme="dark"] .method-patch {
+            background-color: #2a0a3a;
+            color: #cc66ff;
+        }
+
+        [data-theme="dark"] .method-delete {
+            background-color: #3a0a0a;
+            color: #ff6666;
+        }
+
+        /* Status code styles */
         .status-2xx {
             color: #28a745;
             background-color: #d4edda;
@@ -198,11 +275,39 @@
             border: 1px solid #e04b4b;
             font-weight: bold;
         }
+
+        /* Dark mode status styles */
+        [data-theme="dark"] .status-2xx {
+            color: #98e5a6;
+            background-color: #0a2a15;
+            border: 1px solid #1a4a25;
+        }
+
+        [data-theme="dark"] .status-3xx {
+            color: #ffdb4d;
+            background-color: #2a2000;
+            border: 1px solid #4a3a00;
+        }
+
+        [data-theme="dark"] .status-4xx {
+            color: #ff8080;
+            background-color: #2a0a0a;
+            border: 1px solid #4a1a1a;
+        }
+
+        [data-theme="dark"] .status-5xx {
+            color: white;
+            background-color: #aa2222;
+            border: 1px solid #cc3333;
+        }
     </style>
 </head>
 <body>
 <div class="container">
-    <div class="header">mock server</div>
+    <div class="header">
+        mock server
+        <button id="themeToggle" class="theme-toggle">🌙</button>
+    </div>
     <div class="content">
         <div class="left-column">
             <div class="table-header">
@@ -242,6 +347,43 @@
 </div>
 
 <script>
+    // Theme switching functionality
+    const themeToggle = document.getElementById('themeToggle');
+    const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+
+    // Function to set the theme
+    function setTheme(theme) {
+        if (theme === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            themeToggle.textContent = '☀️'; // Sun emoji for light mode toggle
+            localStorage.setItem('theme', 'dark');
+        } else {
+            document.documentElement.removeAttribute('data-theme');
+            themeToggle.textContent = '🌙'; // Moon emoji for dark mode toggle
+            localStorage.setItem('theme', 'light');
+        }
+    }
+
+    // Check for saved theme preference or use the system preference
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+        setTheme('dark');
+    } else if (savedTheme === 'light') {
+        setTheme('light');
+    } else if (prefersDarkScheme.matches) {
+        setTheme('dark');
+    }
+
+    // Toggle theme when button is clicked
+    themeToggle.addEventListener('click', () => {
+        if (document.documentElement.getAttribute('data-theme') === 'dark') {
+            setTheme('light');
+        } else {
+            setTheme('dark');
+        }
+    });
+
+    // Main application code
     const requestTableBody = document.getElementById('requestTableBody');
     const requestDetails = document.getElementById('requestDetails');
     const responseDetails = document.getElementById('responseDetails');

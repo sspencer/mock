@@ -49,7 +49,7 @@ This document contains a detailed list of actionable improvement tasks for the M
 - [ ] Add support for editing mock definitions directly in the UI
 - [ ] Implement a request builder for testing endpoints
 - [ ] Add visualization of request/response flows
-- [ ] Implement dark mode support
+- [x] Implement dark mode support
 - [ ] Add responsive design for mobile devices
 - [ ] Implement user preferences for UI customization
 - [ ] Add keyboard shortcuts for common operations
