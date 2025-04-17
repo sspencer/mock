@@ -10,38 +10,54 @@
         :root {
             /* Light mode (default) */
             --bg-color: #ffffff;
-            --text-color: #000000;
-            --header-bg: #222;
+            --text-color: #333333;
+            --header-bg: #4a6fa5;
             --header-text: white;
             --border-color: #e0e0e0;
-            --table-hover: #f1f1f1;
-            --table-selected: #d0ebff;
+            --table-hover: #f5f9ff;
+            --table-selected: #e1f0ff;
             --button-bg: #fff;
             --button-border: #e0e0e0;
-            --detail-bg: #f0f0f0;
+            --button-hover-bg: #f5f5f5;
+            --detail-bg: #f8f9fa;
             --detail-border: #e0e0e0;
-            --table-border: #ddd;
+            --table-border: #eaeaea;
+            --table-header-bg: #f5f7fa;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+            --card-bg: #ffffff;
+            --accent-color: #4a6fa5;
+            --accent-hover: #3a5a8a;
+            --danger-color: #dc3545;
+            --danger-hover: #bd2130;
         }
 
         [data-theme="dark"] {
             /* Dark mode */
             --bg-color: #121212;
             --text-color: #e0e0e0;
-            --header-bg: #000000;
+            --header-bg: #1a2c42;
             --header-text: #ffffff;
-            --border-color: #444;
-            --table-hover: #2a2a2a;
+            --border-color: #2c2c2c;
+            --table-hover: #1e2a38;
             --table-selected: #1a3a5a;
-            --button-bg: #333;
-            --button-border: #555;
-            --detail-bg: #2a2a2a;
-            --detail-border: #444;
-            --table-border: #444;
+            --button-bg: #2d2d2d;
+            --button-border: #3d3d3d;
+            --button-hover-bg: #3d3d3d;
+            --detail-bg: #1e1e1e;
+            --detail-border: #2c2c2c;
+            --table-border: #2c2c2c;
+            --table-header-bg: #1a1a1a;
+            --shadow-color: rgba(0, 0, 0, 0.3);
+            --card-bg: #1e1e1e;
+            --accent-color: #5a8dd6;
+            --accent-hover: #4a7dc6;
+            --danger-color: #e05260;
+            --danger-hover: #d03545;
         }
 
         * {
             box-sizing: border-box;
-            font-family: Tahoma, Geneva, Verdana, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
             margin: 0;
             padding: 0;
         }
@@ -52,102 +68,150 @@
             font-size: 16px;
             background-color: var(--bg-color);
             color: var(--text-color);
-            transition: background-color 0.3s ease, color 0.3s ease;
+            transition: all 0.3s ease;
+            line-height: 1.5;
         }
 
         .container {
             display: flex;
             flex-direction: column;
             height: 100%;
+            background-color: var(--bg-color);
         }
 
         .header {
             background-color: var(--header-bg);
             color: var(--header-text);
-            padding: 12px;
+            padding: 16px 20px;
             text-align: center;
-            font-size: 1.1em;
-            font-weight: bold;
+            font-size: 1.2em;
+            font-weight: 600;
             display: flex;
             justify-content: center;
             align-items: center;
+            box-shadow: 0 2px 8px var(--shadow-color);
+            position: relative;
+            z-index: 10;
+            letter-spacing: 0.5px;
         }
 
         .theme-toggle {
             position: absolute;
-            right: 15px;
+            right: 20px;
             cursor: pointer;
             background: none;
             border: none;
             color: var(--header-text);
             font-size: 1.2em;
+            transition: transform 0.2s ease;
+        }
+
+        .theme-toggle:hover {
+            transform: scale(1.1);
         }
 
         .content {
             display: flex;
             flex: 1;
             overflow: hidden;
-            font-size: 0.8em;
+            font-size: 0.9em;
+            padding: 0;
+            background-color: var(--bg-color);
         }
 
         .left-column {
             width: 50%;
             display: flex;
             flex-direction: column;
-            padding: 0 6px 0 6px;
+            padding: 16px;
             border-right: 1px solid var(--border-color);
+            background-color: var(--bg-color);
         }
 
         .right-column {
             width: 50%;
-            padding: 10px 12px;
+            padding: 16px;
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 16px;
             height: 100%;
+            background-color: var(--bg-color);
         }
 
         .table-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 10px 0 10px 10px;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px var(--shadow-color);
         }
 
         .table-label {
-            font-weight: bold;
+            font-weight: 600;
+            font-size: 1.1em;
+            color: var(--accent-color);
         }
 
         .clear-button {
             background-color: var(--button-bg);
             border: 1px solid var(--button-border);
-            padding: 5px 10px;
-            border-radius: 4px;
+            padding: 8px 16px;
+            border-radius: 6px;
             cursor: pointer;
-            font-size: 0.8em;
+            font-size: 0.9em;
             color: var(--text-color);
+            transition: all 0.2s ease;
+            font-weight: 500;
         }
 
         .clear-button:hover {
-            color: #8c3545;
-            background-color: #ffe6e6;
-            border: 1px solid #f5c6cb;
+            color: var(--danger-color);
+            background-color: var(--button-hover-bg);
+            border-color: var(--danger-color);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px var(--shadow-color);
         }
 
         .table-container {
             flex: 1;
             overflow-y: auto;
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px var(--shadow-color);
+            margin-bottom: 16px;
         }
 
         table {
             width: 100%;
-            border-collapse: collapse;
+            border-collapse: separate;
+            border-spacing: 0;
+            border-radius: 8px;
+            overflow: hidden;
         }
 
-        th, td {
-            border: 1px solid var(--table-border);
-            padding: 8px;
+        th {
+            background-color: var(--table-header-bg);
+            color: var(--accent-color);
+            font-weight: 600;
+            padding: 12px 16px;
             text-align: left;
+            border-bottom: 2px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        td {
+            padding: 10px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--table-border);
+        }
+
+        tbody tr {
+            transition: background-color 0.2s ease, transform 0.3s ease, opacity 0.3s ease, border-left 0.2s ease;
         }
 
         tbody tr:hover {
@@ -157,17 +221,24 @@
 
         tbody tr.selected {
             background-color: var(--table-selected);
+            border-left: 3px solid var(--accent-color);
         }
 
         .detail-label {
-            font-weight: bold;
-            margin-bottom: 2px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--accent-color);
+            font-size: 1.1em;
         }
 
         .detail-section {
             display: flex;
             flex-direction: column;
             min-height: 0;
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px var(--shadow-color);
+            padding: 16px;
         }
 
         .detail-section:first-child {
@@ -181,124 +252,147 @@
         .detail-content {
             flex: 1;
             background-color: var(--detail-bg);
-            padding: 6px;
+            padding: 12px;
             font-family: 'Courier New', Courier, monospace;
             white-space: pre-wrap;
             word-wrap: break-word;
             overflow: auto;
             border: 1px solid var(--detail-border);
+            border-radius: 6px;
             resize: none;
+            margin-top: 4px;
+            line-height: 1.5;
+            transition: opacity 0.3s ease;
         }
 
         /* HTTP Method styles with dark mode support */
+        .method-get, .method-post, .method-put, .method-patch, .method-delete {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.85em;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+            margin-right: 8px;
+            min-width: 60px;
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+
         .method-get {
-            background-color: #e6f3ff;
-            color: #0056b3;
-            font-weight: bold;
+            background-color: #e1f5fe;
+            color: #0277bd;
         }
 
         .method-post {
-            background-color: #e6ffe6;
-            color: #006400;
-            font-weight: bold;
+            background-color: #e8f5e9;
+            color: #2e7d32;
         }
 
         .method-put {
-            background-color: #fff3e6;
-            color: #8b4513;
-            font-weight: bold;
+            background-color: #fff8e1;
+            color: #ff8f00;
         }
 
         .method-patch {
-            background-color: #f0e6ff;
-            color: #4b0082;
-            font-weight: bold;
+            background-color: #f3e5f5;
+            color: #7b1fa2;
         }
 
         .method-delete {
-            background-color: #ffe6e6;
-            color: #8b0000;
-            font-weight: bold;
+            background-color: #ffebee;
+            color: #c62828;
         }
 
         /* Dark mode method styles */
         [data-theme="dark"] .method-get {
-            background-color: #0a3055;
-            color: #66b0ff;
+            background-color: #01579b;
+            color: #e1f5fe;
         }
 
         [data-theme="dark"] .method-post {
-            background-color: #0a3a0a;
-            color: #66cc66;
+            background-color: #1b5e20;
+            color: #e8f5e9;
         }
 
         [data-theme="dark"] .method-put {
-            background-color: #3a2a0a;
-            color: #ffcc66;
+            background-color: #e65100;
+            color: #fff8e1;
         }
 
         [data-theme="dark"] .method-patch {
-            background-color: #2a0a3a;
-            color: #cc66ff;
+            background-color: #4a148c;
+            color: #f3e5f5;
         }
 
         [data-theme="dark"] .method-delete {
-            background-color: #3a0a0a;
-            color: #ff6666;
+            background-color: #b71c1c;
+            color: #ffebee;
         }
 
         /* Status code styles */
+        .status-2xx, .status-3xx, .status-4xx, .status-5xx {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.85em;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+            margin-right: 8px;
+            min-width: 40px;
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+
         .status-2xx {
-            color: #28a745;
-            background-color: #d4edda;
-            border: 1px solid #c3e6cb;
-            font-weight: bold;
+            color: #1b5e20;
+            background-color: #e8f5e9;
+            border: 1px solid #c8e6c9;
         }
 
         .status-3xx {
-            color: #ffc107;
-            background-color: #fff3cd;
-            border: 1px solid #ffeeba;
-            font-weight: bold;
+            color: #e65100;
+            background-color: #fff8e1;
+            border: 1px solid #ffecb3;
         }
 
         .status-4xx {
-            color: #dc3545;
-            background-color: #f8d7da;
-            border: 1px solid #f5c6cb;
-            font-weight: bold;
+            color: #c62828;
+            background-color: #ffebee;
+            border: 1px solid #ffcdd2;
         }
 
         .status-5xx {
             color: white;
-            background-color: #ff6b6b;
-            border: 1px solid #e04b4b;
-            font-weight: bold;
+            background-color: #d32f2f;
+            border: 1px solid #c62828;
         }
 
         /* Dark mode status styles */
         [data-theme="dark"] .status-2xx {
-            color: #98e5a6;
-            background-color: #0a2a15;
-            border: 1px solid #1a4a25;
+            color: #c8e6c9;
+            background-color: #1b5e20;
+            border: 1px solid #2e7d32;
         }
 
         [data-theme="dark"] .status-3xx {
-            color: #ffdb4d;
-            background-color: #2a2000;
-            border: 1px solid #4a3a00;
+            color: #ffecb3;
+            background-color: #e65100;
+            border: 1px solid #ef6c00;
         }
 
         [data-theme="dark"] .status-4xx {
-            color: #ff8080;
-            background-color: #2a0a0a;
-            border: 1px solid #4a1a1a;
+            color: #ffcdd2;
+            background-color: #c62828;
+            border: 1px solid #d32f2f;
         }
 
         [data-theme="dark"] .status-5xx {
             color: white;
-            background-color: #aa2222;
-            border: 1px solid #cc3333;
+            background-color: #b71c1c;
+            border: 1px solid #c62828;
         }
     </style>
 </head>
@@ -424,22 +518,38 @@
 
     // New event listener for Clear Requests button
     clearRequestsButton.addEventListener('click', () => {
-        // Clear the table body
-        requestTableBody.innerHTML = `
-            <tr>
-                <td colspan="3" style="text-align:center;">No requests available</td>
-            </tr>
-        `;
+        // Animate rows before clearing
+        const rows = requestTableBody.getElementsByTagName('tr');
 
-        // Reset events array
-        events.length = 0;
+        // If there are rows to clear
+        if (rows.length > 0 && rows[0].cells.length > 1) {
+            // Fade out all rows
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                row.style.opacity = '0';
+                row.style.transform = 'translateY(10px)';
+            }
 
-        // Reset row index
-        rowIndex = 0;
+            // Wait for animation to complete before clearing
+            setTimeout(() => {
+                // Clear the table body
+                requestTableBody.innerHTML = `
+                    <tr>
+                        <td colspan="3" style="text-align:center;">No requests available</td>
+                    </tr>
+                `;
 
-        // Clear request and response details
-        requestDetails.textContent = '\n';
-        responseDetails.textContent = '\n';
+                // Reset events array
+                events.length = 0;
+
+                // Reset row index
+                rowIndex = 0;
+            }, 300);
+        }
+
+        // Clear request and response details with fade effect
+        fadeOutAndUpdate(requestDetails, '\n');
+        fadeOutAndUpdate(responseDetails, '\n');
     });
 
     function selectRow(row, http) {
@@ -449,12 +559,23 @@
             r.classList.remove('selected');
         }
 
-        // Add 'selected' class to clicked row
-        row.classList.add('selected');
+        // Add 'selected' class to clicked row with a slight delay for animation
+        setTimeout(() => {
+            row.classList.add('selected');
+        }, 10);
 
-        // Update details
-        requestDetails.textContent = http.request.details;
-        responseDetails.textContent = http.response.details;
+        // Update details with a fade effect
+        fadeOutAndUpdate(requestDetails, http.request.details);
+        fadeOutAndUpdate(responseDetails, http.response.details);
+    }
+
+    function fadeOutAndUpdate(element, newContent) {
+        // Simple fade effect for content updates
+        element.style.opacity = '0';
+        setTimeout(() => {
+            element.textContent = newContent;
+            element.style.opacity = '1';
+        }, 150);
     }
 
     function addEventToTable(http) {
@@ -463,6 +584,10 @@
         }
         const row = requestTableBody.insertRow(0);
         row.dataset.index = rowIndex++;
+
+        // Add animation for new rows
+        row.style.opacity = '0';
+        row.style.transform = 'translateY(-10px)';
 
         // First cell: {Method} {URI}
         const c0 = row.insertCell(0);
@@ -501,6 +626,12 @@
         // Third cell: {Time}
         row.insertCell(2).textContent = http.response.time;
         events.unshift(http);
+
+        // Animate the new row
+        setTimeout(() => {
+            row.style.opacity = '1';
+            row.style.transform = 'translateY(0)';
+        }, 10);
     }
 
 </script>
