@@ -2,9 +2,12 @@ package main
 
 import (
 	_ "embed"
+	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +22,7 @@ type mockServer struct {
 	*http.Server
 	addr       string
 	logPath    string
+	staticFS   fs.FS
 	clients    map[chan string]struct{}
 	clientsMux sync.Mutex
 	sync.Mutex
@@ -31,9 +35,10 @@ func newServer(cfg config) *mockServer {
 			Addr:              cfg.mockAddr,
 			ReadHeaderTimeout: 5 * time.Second,
 		},
-		clients: make(map[chan string]struct{}),
-		addr:    cfg.mockAddr,
-		logPath: cfg.logPath,
+		clients:  make(map[chan string]struct{}),
+		addr:     cfg.mockAddr,
+		logPath:  cfg.logPath,
+		staticFS: cfg.staticFS,
 	}
 }
 
@@ -82,9 +87,7 @@ func (s *mockServer) mockRoutes(endpoints []*data.Endpoint) {
 	mux.MethodNotAllowed(methodNotAllowed)
 	mux.NotFound(methodNotFound)
 	mux.Use(s.requestLogger(newLogger()))
-	mux.HandleFunc(s.logPath+"/", s.indexHandler)
-	mux.HandleFunc(s.logPath+"/fav.ico", s.iconHandler)
-	mux.HandleFunc(s.logPath+"/style.css", s.styleHandler)
+	mux.Handle(s.logPath+"/*", http.StripPrefix("/mock/", http.FileServer(http.FS(s.staticFS))))
 	mux.HandleFunc(s.logPath+"/events", s.sseHandler)
 
 	log.Printf("Serving mock routes on %s, logged at http://localhost%s%s/\n", s.addr, s.addr, s.logPath)
@@ -97,6 +100,25 @@ func (s *mockServer) mockRoutes(endpoints []*data.Endpoint) {
 	s.Lock()
 	s.Handler = mux
 	s.Unlock()
+}
+
+func stripPrefix(prefix string, h http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Printf("url: %s, prefix: %s\n", r.URL.Path, prefix)
+		p := strings.TrimPrefix(r.URL.Path, prefix)
+		rp := strings.TrimPrefix(r.URL.RawPath, prefix)
+		if len(p) < len(r.URL.Path) && (r.URL.RawPath == "" || len(rp) < len(r.URL.RawPath)) {
+			r2 := new(http.Request)
+			*r2 = *r
+			r2.URL = new(url.URL)
+			*r2.URL = *r.URL
+			r2.URL.Path = p
+			r2.URL.RawPath = rp
+			h.ServeHTTP(w, r2)
+		} else {
+			http.NotFound(w, r)
+		}
+	}
 }
 
 func (s *mockServer) parseRoutes(fn string) {

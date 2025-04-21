@@ -2,17 +2,23 @@ package main
 
 import (
 	"bufio"
+	"embed"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
+//go:embed static/*
+var embeddedFiles embed.FS
+
 type config struct {
 	mockAddr string
 	logPath  string
+	staticFS fs.FS
 }
 
 func main() {
@@ -26,6 +32,12 @@ func main() {
 
 	flag.Parse()
 
+	staticFS, err := fs.Sub(embeddedFiles, "static")
+	if err != nil {
+		log.Fatalf("failed to prepare embedded filesystem: %v", err)
+	}
+
+	cfg.staticFS = staticFS
 	cfg.mockAddr = fmt.Sprintf(":%d", mockPort)
 	cfg.logPath = normalizeMountPath(logPath)
 
