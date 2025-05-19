@@ -1,6 +1,6 @@
 # mock - http server
 
-Mock creates an HTTP server with *mocked* routes specified from a local file.  
+Mock creates an HTTP server with *mocked* routes specified from a local file. 
 It allows for rapid development and testing of (REST) API clients.  The routes 
 are dynamically configured from a watched file.  Mock hosts a log of all requests under [http://localhost:7777/mock/](http://localhost:7777/mock/).
 
