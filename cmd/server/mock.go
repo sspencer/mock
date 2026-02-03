@@ -15,7 +15,8 @@ import (
 	"github.com/sspencer/mock/internal/data"
 )
 
-// mockServer is the http server struct
+// mockServer is the HTTP server struct.
+// It manages routes, clients for SSE, and static files.
 type mockServer struct {
 	*http.Server
 	addr       string
@@ -26,8 +27,9 @@ type mockServer struct {
 	sync.Mutex
 }
 
-// newServer creates an http mockServer running on given port with handlers based on given routes.
-func newServer(cfg config) *mockServer {
+// newServer creates a new mock server instance.
+// It initializes the HTTP server with configuration.
+func newServer(cfg Config) *mockServer {
 	return &mockServer{
 		Server: &http.Server{
 			Addr:              cfg.mockAddr,
@@ -40,8 +42,9 @@ func newServer(cfg config) *mockServer {
 	}
 }
 
-// serve <stdin> or piped file as mock file input
-func newStdinServer(cfg config, reader io.Reader) (*mockServer, error) {
+// newStdinServer creates a server that reads routes from stdin.
+// It parses the input and sets up routes.
+func newStdinServer(cfg Config, reader io.Reader) (*mockServer, error) {
 	routes, err := data.GetEndpointsFromReader(reader)
 	if err != nil {
 		return nil, err
@@ -49,37 +52,35 @@ func newStdinServer(cfg config, reader io.Reader) (*mockServer, error) {
 
 	s := newServer(cfg)
 	s.mockRoutes(routes)
-
 	return s, nil
 }
 
-// serve all files specified on command line as mock files
-func newFileServer(cfg config, fn string) (*mockServer, error) {
+// newFileServer creates a server that reads routes from a file.
+// It watches the file for changes and reloads routes.
+func newFileServer(cfg Config, fn string) (*mockServer, error) {
 	s := newServer(cfg)
 	s.parseRoutes(fn)
 	err := watchFile(fn, s.parseRoutes)
 	if err != nil {
 		return nil, err
 	}
-
 	return s, nil
 }
 
-// newStaticServer serves static directory for convenience, no mocking at all
-func newStaticServer(cfg config, fn string) *mockServer {
+// newStaticServer creates a server that serves static files.
+// It does not support mocking; only file serving.
+func newStaticServer(cfg Config, fn string) *mockServer {
 	fn = strings.ReplaceAll(fn, " ", "\\ ")
-
 	s := newServer(cfg)
 	mux := chi.NewRouter()
 	mux.Use(s.requestLogger(newLogger()))
-
 	mux.Handle("/*", http.StripPrefix("/", http.FileServer(http.Dir(fn))))
 	s.Handler = mux
-
 	return s
 }
 
-// mockRoutes reloads all routes handled by the mockServer
+// mockRoutes sets up the routes on the server.
+// It adds logging, static file serving, and SSE endpoints.
 func (s *mockServer) mockRoutes(endpoints []*data.Endpoint) {
 	mux := chi.NewRouter()
 	mux.MethodNotAllowed(methodNotAllowed)
@@ -91,7 +92,7 @@ func (s *mockServer) mockRoutes(endpoints []*data.Endpoint) {
 	log.Printf("Serving mock routes on %s, logged at http://localhost%s%s/\n", s.addr, s.addr, s.logPath)
 	for _, e := range endpoints {
 		log.Printf("  => %-6s   %s\n", e.Method, e.Path)
-		mux.MethodFunc(e.Method, e.Path, e.Handle())
+		mux.MethodFunc(e.Method, e.Path, e.Handle)
 	}
 
 	log.Println("--------------------------------")
@@ -100,12 +101,13 @@ func (s *mockServer) mockRoutes(endpoints []*data.Endpoint) {
 	s.Unlock()
 }
 
+// parseRoutes parses routes from a file and updates the server.
+// It is called on file changes.
 func (s *mockServer) parseRoutes(fn string) {
 	routes, err := data.GetEndpointsFromFile(fn)
 	if err != nil {
 		log.Println(err.Error())
 		return
 	}
-
 	s.mockRoutes(routes)
 }

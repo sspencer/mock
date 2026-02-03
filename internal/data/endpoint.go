@@ -4,13 +4,21 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
+	"math/rand/v2"
+	"net/http"
+	"net/url"
 	"os"
 	"path"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
-// Endpoint represents the mocked route and can have one or more responses.
+// Endpoint represents a mocked route and can have one or more responses.
+// It supports path variables, query parameters, and dynamic responses.
 type Endpoint struct {
 	Method     string
 	Path       string
@@ -21,6 +29,7 @@ type Endpoint struct {
 	sync.RWMutex
 }
 
+// mockResponse holds the details of a single response for an endpoint.
 type mockResponse struct {
 	status int
 	header map[string]string
@@ -28,7 +37,92 @@ type mockResponse struct {
 	body   []byte
 }
 
-// Combine duplicate routes (method/path) into an Endpoint with one or more responses
+// Handler is an interface for handling HTTP requests.
+// It allows for pluggable response strategies (e.g., random, sequential).
+type Handler interface {
+	Handle(w http.ResponseWriter, r *http.Request)
+}
+
+// Endpoint implements the Handler interface.
+// Handle processes the request and writes the appropriate response.
+func (e *Endpoint) Handle(w http.ResponseWriter, r *http.Request) {
+	queryParams := r.URL.Query()
+
+	// First, check for GET parameter matches
+	for key, values := range queryParams {
+		value := values[rand.IntN(len(values))] // Assuming rand is imported
+		getVar := getVarKey(key, value)
+		if m, ok := e.localVars[getVar]; ok {
+			e.writeHTTPResponse(w, r, e.Path, m, getVar)
+			return
+		}
+	}
+
+	// Otherwise, cycle through responses
+	e.writeHTTPResponse(w, r, e.Path, e.getNextResponse(), "")
+}
+
+// getNextResponse returns the next response in a round-robin fashion.
+// It uses a mutex for thread safety.
+func (e *Endpoint) getNextResponse() mockResponse {
+	e.Lock()
+	defer e.Unlock()
+
+	index := e.index % len(e.responses)
+	response := e.responses[index]
+	e.index++
+	return response
+}
+
+// writeHTTPResponse writes the response to the HTTP writer.
+// It handles delays, substitutions, and headers.
+func (e *Endpoint) writeHTTPResponse(w http.ResponseWriter, r *http.Request, path string, resp mockResponse, getVar string) {
+	if resp.delay > 0 {
+		time.Sleep(resp.delay)
+	}
+
+	// Prepare substitution variables
+	subVars := make(url.Values)
+	for name, val := range e.globalVars {
+		subVars[name] = []string{val}
+	}
+
+	// Add path variables
+	items := strings.Split(path, "/")
+	for _, item := range items {
+		if strings.HasPrefix(item, "{") && strings.HasSuffix(item, "}") {
+			key := item[1 : len(item)-1]
+			value := chi.URLParam(r, key) // Assuming chi is imported
+			subVars[key] = []string{value}
+		}
+	}
+
+	// Add delay and query params
+	subVars["delay"] = []string{resp.delay.String()}
+	for k, v := range r.URL.Query() {
+		arr := strings.SplitN(getVar, "=", 2)
+		if len(arr) == 2 && arr[0] == k {
+			subVars[k] = []string{arr[1]}
+		} else {
+			subVars[k] = v
+		}
+	}
+
+	// Substitute headers
+	for hdrName, hdrValue := range resp.header {
+		w.Header().Add(hdrName, string(substitute(subVars, []byte(hdrValue))))
+	}
+
+	w.WriteHeader(resp.status)
+	_, err := w.Write(substitute(subVars, resp.body))
+	if err != nil {
+		log.Println(err.Error()) // Assuming log is imported
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+	}
+}
+
+// merge combines duplicate routes into endpoints.
+// It groups by method and path, handling multiple responses.
 func merge(apis []*route, globalVars map[string]string) []*Endpoint {
 	m := make(map[string]*Endpoint)
 
@@ -66,7 +160,7 @@ func merge(apis []*route, globalVars map[string]string) []*Endpoint {
 	return routes
 }
 
-// getVarKey creates a key for looking up responses by GET parameters.
+// getVarKey creates a key for variable-based responses.
 func getVarKey(key, value string) string {
 	var buf bytes.Buffer
 	buf.WriteString(key)
@@ -75,17 +169,18 @@ func getVarKey(key, value string) string {
 	return buf.String()
 }
 
-// GetEndpointsFromReader parses a reader from <stdin> or similar
+// GetEndpointsFromReader parses endpoints from an io.Reader.
+// It gets the current directory for file references.
 func GetEndpointsFromReader(r io.Reader) (routes []*Endpoint, err error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		return nil, err
 	}
-
 	return getEndpoints(r, dir, "")
 }
 
-// GetEndpointsFromFile parses the *.http file(s).
+// GetEndpointsFromFile parses endpoints from a file.
+// It uses the file's directory for relative paths.
 func GetEndpointsFromFile(fn string) ([]*Endpoint, error) {
 	r, err := os.Open(fn)
 	if err != nil {
@@ -101,11 +196,11 @@ func GetEndpointsFromFile(fn string) ([]*Endpoint, error) {
 	return routes, err
 }
 
+// getEndpoints is a helper that parses and merges routes.
 func getEndpoints(r io.Reader, dir, fn string) (routes []*Endpoint, err error) {
-	p := newParser(dir, fn)
-	if err := p.parse(r); err != nil {
+	p := NewParser(dir, fn) // Updated to use new interface
+	if err := p.Parse(r); err != nil {
 		return nil, err
 	}
-
-	return merge(p.routes, p.globalVars), nil
+	return p.GetRoutes(), nil
 }

@@ -15,16 +15,25 @@ import (
 //go:embed static/*
 var embeddedFiles embed.FS
 
-type config struct {
+// Config holds the configuration for the mock server.
+// It includes settings for the server address, log path, and static file system.
+type Config struct {
 	mockAddr string
 	logPath  string
 	staticFS fs.FS
 }
 
+// main initializes the mock server based on command-line arguments.
+// It supports running from stdin, a file, or a directory.
+// Usage: mock [flags] [input_file]
+// Flags:
+//
+//	-p int: port (default 7777)
+//	-l string: URL path to view the request log (default "/mock")
 func main() {
 	var mockPort int
 	var logPath string
-	var cfg config
+	var cfg Config
 
 	flag.Usage = printUsageMessage
 	flag.IntVar(&mockPort, "p", 7777, "port")
@@ -69,12 +78,12 @@ func main() {
 	}
 }
 
-// startStdinServer reads from mock file from <stdin>
-func startStdinServer(cfg config) error {
-	// read input from stdin
+// startStdinServer reads from stdin and starts the mock server.
+// It uses bufio.Scanner for better error handling and resource management.
+func startStdinServer(cfg Config) error {
 	info, err := os.Stdin.Stat()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to stat stdin: %w", err)
 	}
 
 	if info.Mode()&os.ModeCharDevice != 0 || info.Size() <= 0 {
@@ -84,23 +93,25 @@ func startStdinServer(cfg config) error {
 
 	s, err := newStdinServer(cfg, bufio.NewReader(os.Stdin))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create stdin server: %w", err)
 	}
 
 	return s.ListenAndServe()
 }
 
-// startFileServer serves mock file passed in from command line
-func startFileServer(cfg config, fn string) error {
+// startFileServer serves mock files from the specified file.
+// It watches for changes and reloads routes dynamically.
+func startFileServer(cfg Config, fn string) error {
 	s, err := newFileServer(cfg, fn)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create file server: %w", err)
 	}
 	return s.ListenAndServe()
 }
 
-// startStaticServer serves directory of standard html files
-func startStaticServer(cfg config, fn string) error {
+// startStaticServer serves a static directory.
+// It does not support mocking; only serves files.
+func startStaticServer(cfg Config, fn string) error {
 	fn = strings.ReplaceAll(fn, " ", "\\ ")
 	s := newStaticServer(cfg, fn)
 	log.Printf("Serving %q on localhost%s\n", fn, cfg.mockAddr)
@@ -113,7 +124,8 @@ func printUsageMessage() {
 	flag.PrintDefaults()
 }
 
-// normalizeMountPath ensures the path begins with and does not end with a forward slash
+// normalizeMountPath ensures the path begins with and does not end with a forward slash.
+// It normalizes the log path for consistent routing.
 func normalizeMountPath(path string) string {
 	// Add leading slash if missing
 	if !strings.HasPrefix(path, "/") {

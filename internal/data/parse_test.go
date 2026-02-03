@@ -28,15 +28,18 @@ func TestParser(t *testing.T) {
 				t.Fatal("error reading source file:", err)
 			}
 
-			sp := newParser("testdata", "")
+			sp := NewParser("testdata", "")
 
 			var output string
-			err = sp.parse(source)
+			err = sp.Parse(source)
 
 			if err != nil {
 				output = err.Error()
 			} else {
-				output = sp.String()
+				// Type assert to access String() method on concrete parser type
+				if p, ok := sp.(*parser); ok {
+					output = p.String()
+				}
 			}
 
 			gold := filepath.Join("testdata", testName+".golden")
