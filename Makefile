@@ -27,6 +27,9 @@ update:
 
 clean:
 	rm -f $(BINARY)
+	rm -f fake
+	rm -f server
+
 
 mod:
 	go mod tidy
