@@ -11,3 +11,5 @@ lint.txt
 /.vscode
 /dump.rdb
 /qodana.yaml
+server
+fake

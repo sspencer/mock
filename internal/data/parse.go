@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"mime"
 	"net/http"
 	"net/url"
@@ -188,8 +187,7 @@ func (p *parser) handleStateVariable(line string, lineNum int) (parseState, erro
 			p.route.header["content-type"] = mime.TypeByExtension(path.Ext(fn))
 			body, err := os.ReadFile(fn)
 			if err != nil {
-				log.Println(err.Error())
-				return stateNone, p.lineError("could not read file, line %d: %s", lineNum, line)
+				return stateNone, p.lineError(fmt.Sprintf("could not read file %q: %v", fn, err), lineNum, line)
 			}
 			p.route.body = body
 		default:

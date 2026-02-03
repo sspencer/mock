@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -31,7 +30,7 @@ func watchFile(fn string, fileChanger fileChanged) error {
 	}
 
 	if st.IsDir() {
-		return errors.New(fmt.Sprintf("%q is a directory, not a file", fn))
+		return fmt.Errorf("%q is a directory, not a file", fn)
 	}
 
 	// Watch the directory, not the fn itself.

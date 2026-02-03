@@ -86,7 +86,7 @@ func TestRequestLogger_SkipsLogPath(t *testing.T) {
 	}
 
 	loggerCalled := false
-	testLogger := func(log httpLog) {
+	testLogger := func(log HTTPLog) {
 		loggerCalled = true
 	}
 
@@ -119,8 +119,8 @@ func TestRequestLogger_CapturesRequest(t *testing.T) {
 		clients: make(map[chan string]struct{}),
 	}
 
-	var capturedLog httpLog
-	testLogger := func(log httpLog) {
+	var capturedLog HTTPLog
+	testLogger := func(log HTTPLog) {
 		capturedLog = log
 	}
 
@@ -173,7 +173,7 @@ func TestRequestLogger_MultipleRequests(t *testing.T) {
 	}
 
 	logCount := 0
-	testLogger := func(log httpLog) {
+	testLogger := func(log HTTPLog) {
 		logCount++
 	}
 
@@ -206,8 +206,8 @@ func TestRequestLogger_DifferentMethods(t *testing.T) {
 
 	for _, method := range methods {
 		t.Run(method, func(t *testing.T) {
-			var capturedLog httpLog
-			testLogger := func(log httpLog) {
+			var capturedLog HTTPLog
+			testLogger := func(log HTTPLog) {
 				capturedLog = log
 			}
 

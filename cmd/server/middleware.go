@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"strings"
@@ -74,15 +75,15 @@ func (s *mockServer) requestLogger(logger loggerFunc) func(http.Handler) http.Ha
 				len(cw.Body.String()),
 				respBody)
 
-			data := httpLog{
-				Request: httpRequestLog{
+			data := HTTPLog{
+				Request: HTTPRequestLog{
 					Header:  r.Header,
 					Method:  r.Method,
 					URL:     r.URL.String(),
 					Details: reqDetails,
 					Body:    reqBody,
 				},
-				Response: httpResponseLog{
+				Response: HTTPResponseLog{
 					Header:     cw.Header(),
 					Status:     cw.StatusCode,
 					StatusText: http.StatusText(cw.StatusCode),
@@ -92,7 +93,11 @@ func (s *mockServer) requestLogger(logger loggerFunc) func(http.Handler) http.Ha
 				},
 			}
 
-			jsonBody, _ := json.Marshal(data)
+			jsonBody, err := json.Marshal(data)
+			if err != nil {
+				log.Printf("failed to marshal log data: %v", err)
+				return
+			}
 
 			s.broadcast(string(jsonBody))
 

@@ -106,7 +106,7 @@ func (s *mockServer) mockRoutes(endpoints []*data.Endpoint) {
 func (s *mockServer) parseRoutes(fn string) {
 	routes, err := data.GetEndpointsFromFile(fn)
 	if err != nil {
-		log.Println(err.Error())
+		log.Printf("failed to parse routes from %q: %v", fn, err)
 		return
 	}
 	s.mockRoutes(routes)

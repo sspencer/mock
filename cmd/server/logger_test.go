@@ -63,12 +63,12 @@ func TestMonolog(t *testing.T) {
 	logger := monolog()
 
 	// Test that it doesn't panic
-	testLog := httpLog{
-		Request: httpRequestLog{
+	testLog := HTTPLog{
+		Request: HTTPRequestLog{
 			Method: "GET",
 			URL:    "/test",
 		},
-		Response: httpResponseLog{
+		Response: HTTPResponseLog{
 			Status: 200,
 		},
 	}
@@ -81,12 +81,12 @@ func TestColorlog(t *testing.T) {
 	logger := colorlog()
 
 	// Test that it doesn't panic
-	testLog := httpLog{
-		Request: httpRequestLog{
+	testLog := HTTPLog{
+		Request: HTTPRequestLog{
 			Method: "GET",
 			URL:    "/test",
 		},
-		Response: httpResponseLog{
+		Response: HTTPResponseLog{
 			Status: 200,
 		},
 	}
@@ -104,12 +104,12 @@ func TestNewLogger(t *testing.T) {
 	}
 
 	// Test that the returned function works
-	testLog := httpLog{
-		Request: httpRequestLog{
+	testLog := HTTPLog{
+		Request: HTTPRequestLog{
 			Method: "POST",
 			URL:    "/api/test",
 		},
-		Response: httpResponseLog{
+		Response: HTTPResponseLog{
 			Status: 201,
 		},
 	}
@@ -118,9 +118,9 @@ func TestNewLogger(t *testing.T) {
 	logger(testLog)
 }
 
-func TestHttpLogStructs(t *testing.T) {
+func TestHTTPLogStructs(t *testing.T) {
 	// Test that the structs can be instantiated
-	reqLog := httpRequestLog{
+	reqLog := HTTPRequestLog{
 		Header:  http.Header{"Content-Type": []string{"application/json"}},
 		Method:  "GET",
 		URL:     "/test",
@@ -128,7 +128,7 @@ func TestHttpLogStructs(t *testing.T) {
 		Body:    "body",
 	}
 
-	respLog := httpResponseLog{
+	respLog := HTTPResponseLog{
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Status:     200,
 		StatusText: "OK",
@@ -137,12 +137,12 @@ func TestHttpLogStructs(t *testing.T) {
 		Body:       "body",
 	}
 
-	log := httpLog{
+	log := HTTPLog{
 		Request:  reqLog,
 		Response: respLog,
 	}
 
 	if log.Request.Method != "GET" {
-		t.Error("httpLog struct not working correctly")
+		t.Error("HTTPLog struct not working correctly")
 	}
 }

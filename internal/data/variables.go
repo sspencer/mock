@@ -87,6 +87,9 @@ func substitute(values url.Values, body []byte) []byte {
 		return body
 	}
 
-	_ = w.Flush()
+	if err := w.Flush(); err != nil {
+		log.Printf("failed to flush template output: %v", err)
+		return body
+	}
 	return b.Bytes()
 }
