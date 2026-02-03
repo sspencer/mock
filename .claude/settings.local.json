@@ -5,7 +5,8 @@
       "Bash(go tool cover:*)",
       "Bash(ls:*)",
       "Bash(go build:*)",
-      "Bash(go vet:*)"
+      "Bash(go vet:*)",
+      "Bash(go version:*)"
     ]
   }
 }

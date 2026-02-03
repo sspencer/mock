@@ -10,7 +10,7 @@ func (s *mockServer) registerClient() chan string {
 	s.clientsMux.Lock()
 	defer s.clientsMux.Unlock()
 
-	clientChan := make(chan string)
+	clientChan := make(chan string, 100) // Buffer 100 messages to reduce drops
 	s.clients[clientChan] = struct{}{}
 	return clientChan
 }

@@ -15,10 +15,10 @@ type fileChanged func(string)
 // Watch a file, but instead of watching the file directly watch
 // the parent directory. This solves various issues where files are frequently
 // renamed (vim) when editors saving them.
-func watchFile(fn string, fileChanger fileChanged) error {
+func watchFile(fn string, fileChanger fileChanged) (*fsnotify.Watcher, error) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Start listening for events.
@@ -26,20 +26,23 @@ func watchFile(fn string, fileChanger fileChanged) error {
 
 	st, err := os.Lstat(fn)
 	if err != nil {
-		return err
+		w.Close() // Clean up on error
+		return nil, err
 	}
 
 	if st.IsDir() {
-		return fmt.Errorf("%q is a directory, not a file", fn)
+		w.Close() // Clean up on error
+		return nil, fmt.Errorf("%q is a directory, not a file", fn)
 	}
 
 	// Watch the directory, not the fn itself.
 	err = w.Add(filepath.Dir(fn))
 	if err != nil {
-		return err
+		w.Close() // Clean up on error
+		return nil, err
 	}
 
-	return nil
+	return w, nil // Return watcher for cleanup
 }
 
 func fileLoop(w *fsnotify.Watcher, fn string, fileChanger fileChanged) {

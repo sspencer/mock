@@ -52,7 +52,13 @@ func (e *Endpoint) Handle(w http.ResponseWriter, r *http.Request) {
 	for key, values := range queryParams {
 		value := values[rand.IntN(len(values))] // Assuming rand is imported
 		getVar := getVarKey(key, value)
-		if m, ok := e.localVars[getVar]; ok {
+
+		// Use RLock for safe read access to localVars
+		e.RLock()
+		m, ok := e.localVars[getVar]
+		e.RUnlock()
+
+		if ok {
 			e.writeHTTPResponse(w, r, e.Path, m, getVar)
 			return
 		}
@@ -83,9 +89,13 @@ func (e *Endpoint) writeHTTPResponse(w http.ResponseWriter, r *http.Request, pat
 
 	// Prepare substitution variables
 	subVars := make(url.Values)
+
+	// Use RLock to safely read globalVars
+	e.RLock()
 	for name, val := range e.globalVars {
 		subVars[name] = []string{val}
 	}
+	e.RUnlock()
 
 	// Add path variables
 	items := strings.Split(path, "/")
@@ -136,12 +146,18 @@ func merge(apis []*route, globalVars map[string]string) []*Endpoint {
 		}
 
 		if _, ok := m[key]; !ok {
+			// Deep copy globalVars for each endpoint to prevent shared state
+			globalVarsCopy := make(map[string]string, len(globalVars))
+			for k, v := range globalVars {
+				globalVarsCopy[k] = v
+			}
+
 			m[key] = &Endpoint{
 				Method:     t.method,
 				Path:       t.path,
 				responses:  make([]mockResponse, 0),
 				localVars:  make(map[string]mockResponse),
-				globalVars: globalVars,
+				globalVars: globalVarsCopy,
 			}
 		}
 

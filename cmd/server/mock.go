@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/go-chi/chi/v5"
 
 	"github.com/sspencer/mock/internal/data"
@@ -24,13 +25,19 @@ type mockServer struct {
 	staticFS   fs.FS
 	clients    map[chan string]struct{}
 	clientsMux sync.Mutex
-	sync.Mutex
+
+	// Handler routing indirection for safe hot-swap
+	handler    http.Handler
+	handlerMux sync.RWMutex
+
+	// Watcher for cleanup on shutdown
+	watcher *fsnotify.Watcher
 }
 
 // newServer creates a new mock server instance.
 // It initializes the HTTP server with configuration.
 func newServer(cfg Config) *mockServer {
-	return &mockServer{
+	s := &mockServer{
 		Server: &http.Server{
 			Addr:              cfg.mockAddr,
 			ReadHeaderTimeout: 5 * time.Second,
@@ -40,6 +47,21 @@ func newServer(cfg Config) *mockServer {
 		logPath:  cfg.logPath,
 		staticFS: cfg.staticFS,
 	}
+
+	// Set up handler indirection wrapper for safe hot-swap
+	s.Server.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.handlerMux.RLock()
+		handler := s.handler
+		s.handlerMux.RUnlock()
+
+		if handler != nil {
+			handler.ServeHTTP(w, r)
+		} else {
+			http.NotFound(w, r)
+		}
+	})
+
+	return s
 }
 
 // newStdinServer creates a server that reads routes from stdin.
@@ -60,10 +82,13 @@ func newStdinServer(cfg Config, reader io.Reader) (*mockServer, error) {
 func newFileServer(cfg Config, fn string) (*mockServer, error) {
 	s := newServer(cfg)
 	s.parseRoutes(fn)
-	err := watchFile(fn, s.parseRoutes)
+
+	watcher, err := watchFile(fn, s.parseRoutes)
 	if err != nil {
 		return nil, err
 	}
+	s.watcher = watcher // Store for cleanup
+
 	return s, nil
 }
 
@@ -75,7 +100,7 @@ func newStaticServer(cfg Config, fn string) *mockServer {
 	mux := chi.NewRouter()
 	mux.Use(s.requestLogger(newLogger()))
 	mux.Handle("/*", http.StripPrefix("/", http.FileServer(http.Dir(fn))))
-	s.Handler = mux
+	s.handler = mux
 	return s
 }
 
@@ -96,9 +121,9 @@ func (s *mockServer) mockRoutes(endpoints []*data.Endpoint) {
 	}
 
 	log.Println("--------------------------------")
-	s.Lock()
-	s.Handler = mux
-	s.Unlock()
+	s.handlerMux.Lock()
+	s.handler = mux
+	s.handlerMux.Unlock()
 }
 
 // parseRoutes parses routes from a file and updates the server.
@@ -110,4 +135,13 @@ func (s *mockServer) parseRoutes(fn string) {
 		return
 	}
 	s.mockRoutes(routes)
+}
+
+// Close cleans up resources, including the file watcher.
+// This enables graceful shutdown.
+func (s *mockServer) Close() error {
+	if s.watcher != nil {
+		return s.watcher.Close()
+	}
+	return nil
 }
