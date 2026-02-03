@@ -1,0 +1,69 @@
+# global var overrides default strategy which should be ???
+@strategy = random
+
+### Strategies
+GET /strategy
+Content-Type: application/json
+
+{
+  "random":     "1,1,2,1,1,2,2,2,1,2,2,2,1,1",
+  "cycle":      "1,2,1,2,1,2,1,2,1,2,1,2,1,2",
+  "sequential": "1,2,2,2,2,2,2,2,2,2,2,2,2,2"
+}
+
+### Default Strategy 1
+GET /default
+Content-Type: application/json
+
+{ "n":  1 }
+
+### Default Strategy 2
+GET /default
+Content-Type: application/json
+
+{ "n":  2 }
+
+### Random Strategy 1
+# @strategy=random
+GET /random
+Content-Type: application/json
+
+{ "n":  1 }
+
+### Random Strategy 2
+# @strategy=random
+GET /random
+Content-Type: application/json
+
+{ "n":  2 }
+
+### Cycle Strategy 1
+# @strategy=cycle
+GET /cycle
+Content-Type: application/json
+
+{ "n":  1 }
+
+### Cycle Strategy 2
+# @strategy=cycle
+GET /cycle
+Content-Type: application/json
+
+{ "n":  2 }
+
+### Sequential Strategy 1
+# @strategy=sequential
+GET /sequential
+Content-Type: application/json
+
+{ "n":  1 }
+
+### Sequential Strategy 2
+# @strategy=sequential
+GET /sequential
+Content-Type: application/json
+
+{ "n":  2 }
+
+
+
