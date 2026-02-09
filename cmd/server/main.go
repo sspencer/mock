@@ -112,7 +112,6 @@ func startFileServer(cfg Config, fn string) error {
 // startStaticServer serves a static directory.
 // It does not support mocking; only serves files.
 func startStaticServer(cfg Config, fn string) error {
-	fn = strings.ReplaceAll(fn, " ", "\\ ")
 	s := newStaticServer(cfg, fn)
 	log.Printf("Serving %q on localhost%s\n", fn, cfg.mockAddr)
 	return s.ListenAndServe()

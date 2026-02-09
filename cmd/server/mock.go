@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -95,12 +94,13 @@ func newFileServer(cfg Config, fn string) (*mockServer, error) {
 // newStaticServer creates a server that serves static files.
 // It does not support mocking; only file serving.
 func newStaticServer(cfg Config, fn string) *mockServer {
-	fn = strings.ReplaceAll(fn, " ", "\\ ")
 	s := newServer(cfg)
 	mux := chi.NewRouter()
 	mux.Use(s.requestLogger(newLogger()))
 	mux.Handle("/*", http.StripPrefix("/", http.FileServer(http.Dir(fn))))
+	s.handlerMux.Lock()
 	s.handler = mux
+	s.handlerMux.Unlock()
 	return s
 }
 

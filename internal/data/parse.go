@@ -350,7 +350,10 @@ func getVarParams(uri string) (string, string) {
 	if err == nil {
 		values := u.Query()
 		for key, value := range values {
-			return key, value[0]
+			if len(value) > 0 {
+				return key, value[0]
+			}
+			return key, ""
 		}
 	}
 	return "", ""

@@ -15,6 +15,19 @@ of VSCode's [REST Client](https://marketplace.visualstudio.com/items?itemName=hu
 
     make
 
+## Pre-commit Hooks
+
+This project uses [pre-commit](https://pre-commit.com/) to ensure code quality.
+
+To install the hooks:
+
+    pre-commit install
+
+The hooks include:
+- standard formatting and linting (via `go fmt`, `go vet`, and `golangci-lint`)
+- automated testing (via `go test`)
+- common file checks (trailing whitespace, EOF, etc.)
+
 ## Run
 
     $ mock --help
