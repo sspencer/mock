@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"math/rand/v2"
 	"net/http"
 	"net/url"
@@ -98,8 +99,8 @@ func (e *Endpoint) writeHTTPResponse(w http.ResponseWriter, r *http.Request, pat
 	e.RUnlock()
 
 	// Add path variables
-	items := strings.Split(path, "/")
-	for _, item := range items {
+	items := strings.SplitSeq(path, "/")
+	for item := range items {
 		if strings.HasPrefix(item, "{") && strings.HasSuffix(item, "}") {
 			key := item[1 : len(item)-1]
 			value := chi.URLParam(r, key) // Assuming chi is imported
@@ -148,9 +149,7 @@ func merge(apis []*route, globalVars map[string]string) []*Endpoint {
 		if _, ok := m[key]; !ok {
 			// Deep copy globalVars for each endpoint to prevent shared state
 			globalVarsCopy := make(map[string]string, len(globalVars))
-			for k, v := range globalVars {
-				globalVarsCopy[k] = v
-			}
+			maps.Copy(globalVarsCopy, globalVars)
 
 			m[key] = &Endpoint{
 				Method:     t.method,

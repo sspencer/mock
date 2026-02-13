@@ -410,12 +410,12 @@ type route struct {
 
 // String returns a debug representation of the route.
 func (r *route) String() string {
-	hdr := ""
+	var hdr strings.Builder
 	for n, v := range r.header {
-		hdr += n + v
+		hdr.WriteString(n + v)
 	}
 	return fmt.Sprintf("%s: %s %s delay=%s status=%d header=%d body=%d",
-		r.name, r.method, r.path, r.delay, r.status, len(hdr), len(r.body))
+		r.name, r.method, r.path, r.delay, r.status, len(hdr.String()), len(r.body))
 }
 
 // String returns a string representation of all routes.

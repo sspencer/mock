@@ -185,7 +185,7 @@ func TestRequestLogger_MultipleRequests(t *testing.T) {
 	wrappedHandler := middleware(handler)
 
 	// Make multiple requests
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		req := httptest.NewRequest("GET", "/test", nil)
 		w := httptest.NewRecorder()
 		wrappedHandler.ServeHTTP(w, req)

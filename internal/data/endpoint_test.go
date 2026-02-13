@@ -520,7 +520,7 @@ func TestEndpointConcurrency(t *testing.T) {
 	done := make(chan bool)
 
 	// Spawn multiple goroutines accessing getNextResponse
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		go func() {
 			ep.getNextResponse()
 			done <- true
@@ -528,7 +528,7 @@ func TestEndpointConcurrency(t *testing.T) {
 	}
 
 	// Wait for all to complete
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		<-done
 	}
 

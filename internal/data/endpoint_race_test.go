@@ -25,7 +25,7 @@ func TestEndpointConcurrentAccess(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Spawn 1000 concurrent requests
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		wg.Add(1)
 		go func(iteration int) {
 			defer wg.Done()

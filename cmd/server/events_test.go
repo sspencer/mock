@@ -112,7 +112,7 @@ func TestBroadcast_MultipleClients(t *testing.T) {
 	numClients := 5
 	channels := make([]chan string, numClients)
 	server.clientsMux.Lock()
-	for i := 0; i < numClients; i++ {
+	for i := range numClients {
 		channels[i] = make(chan string, 1)
 		server.clients[channels[i]] = struct{}{}
 	}
@@ -153,7 +153,7 @@ func TestBroadcast_BlockedClient(t *testing.T) {
 
 	// Fill the channel buffer (unbuffered, so first send will block)
 	// The broadcast should skip this client rather than blocking
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		server.broadcast("message")
 	}
 
@@ -178,7 +178,7 @@ func TestConcurrentClientOperations(t *testing.T) {
 
 	// Concurrently register clients
 	wg.Add(numGoroutines)
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		go func() {
 			defer wg.Done()
 			ch := server.registerClient()
@@ -206,7 +206,7 @@ func TestConcurrentBroadcast(t *testing.T) {
 	// Register some clients
 	numClients := 3
 	channels := make([]chan string, numClients)
-	for i := 0; i < numClients; i++ {
+	for i := range numClients {
 		channels[i] = server.registerClient()
 	}
 
@@ -215,7 +215,7 @@ func TestConcurrentBroadcast(t *testing.T) {
 	numMessages := 10
 
 	wg.Add(numMessages)
-	for i := 0; i < numMessages; i++ {
+	for i := range numMessages {
 		go func(msg int) {
 			defer wg.Done()
 			server.broadcast("message")
