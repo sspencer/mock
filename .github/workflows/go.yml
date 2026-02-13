@@ -5,27 +5,27 @@ name: Go
 
 on:
   push:
-    branches: [ "master" ]
+    branches: ["master"]
   pull_request:
-    branches: [ "master" ]
+    branches: ["master"]
 
 jobs:
-
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '1.25'
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.25"
 
-    - name: Install dependencies
-      run: go get .
-        
-    - name: Build
-      run: go build -v ./...
+      - name: Install dependencies
+        run: go get .
+        working-directory: ./cmd/server
 
-    - name: Test
-      run: go test -v ./...
+      - name: Build
+        run: go build -v ./cmd/server
+
+      - name: Test
+        run: go test -v ./...
