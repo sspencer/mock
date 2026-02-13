@@ -151,7 +151,7 @@ For example (not actual format):
     { "id": 6 }
 
     ### response 3
-    # @status 201
+    # @status 400
     POST /users
     { "id": 0 }
 
