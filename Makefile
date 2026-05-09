@@ -1,29 +1,33 @@
-ifeq ($(GOPATH),)
-GOPATH := ~/go
+GO ?= go
+APP_NAME := mock
+APP_MAIN := .
+PKG := ./...
+SRC := $(shell find . -name '*.go' -not -path './.git/*')
+GOBIN ?= $(shell $(GO) env GOBIN)
+ifeq ($(GOBIN),)
+GOBIN := $(shell $(GO) env GOPATH)/bin
 endif
+BINARY := $(GOBIN)/$(APP_NAME)
 
-SRC=$(shell find . -name '*.go')
-PKG=$(shell go list ./...)
+.PHONY: all build fmt vet update clean mod test docker run lint dockerize
 
-APP_NAME=mock
-APP_MAIN=.
-BINARY=${GOPATH}/bin/${APP_NAME}
+all: fmt vet test build
 
-all: fmt vet $(BINARY)
+build: $(BINARY)
 
 $(BINARY): $(SRC)
-	CGO_ENABLED=0 go build -o ${BINARY} ${APP_MAIN}
+	CGO_ENABLED=0 $(GO) build -o $(BINARY) $(APP_MAIN)
 
 fmt:
-	go fmt $(PKG)
+	$(GO) fmt $(PKG)
 
 vet:
-	go vet $(PKG)
+	$(GO) vet $(PKG)
 
 update:
 	@echo updating go.mod packages
-	go get -u -v ./...
-	go mod tidy
+	$(GO) get -u -v ./...
+	$(GO) mod tidy
 
 clean:
 	rm -f $(BINARY)
@@ -32,10 +36,10 @@ clean:
 
 
 mod:
-	go mod tidy
+	$(GO) mod tidy
 
 test:
-	go test ./...
+	$(GO) test ./...
 
 docker:
 	docker build -t test .

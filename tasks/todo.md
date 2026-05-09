@@ -1,5 +1,19 @@
 # Mock HTTP Server
 
+## Makefile Review
+
+- [x] Inspect current Makefile targets against the repository layout.
+- [x] Update reliability issues with minimal target changes.
+- [x] Run Makefile verification targets.
+- [x] Record review results.
+
+## Makefile Review Results
+
+- Added phony target declarations so command targets do not conflict with same-named files.
+- Switched Go commands through a configurable `GO` variable and derived the install directory from `go env`, instead of hardcoding a `~/go` fallback.
+- Added an explicit `build` target and made `all` run `fmt`, `vet`, `test`, and `build`.
+- Verified with `make test`, `make vet`, `make all`, and `make -B build`.
+
 ## GitHub Action Review
 
 - [x] Check for checked-in GitHub Actions workflow files.
