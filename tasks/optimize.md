@@ -313,3 +313,17 @@ This order fixes user-visible reliability first, then resource safety, then main
 - Browser verification at `/mock/` confirmed desktop event rows render and no debug logs are emitted.
 - Browser verification at `390x844` confirmed mobile rows retain `Time`, status code, and `Request`.
 - Browser verification confirmed the Clear button restores the empty state row.
+
+### Step 8: CI Parity With Local Checks
+
+**Status:** Complete.
+
+**Performed:**
+
+- Updated `.github/workflows/go.yml` to use `make all` as the single verification command.
+- Enabled setup-go caching explicitly.
+- Removed separate build and test commands that did not run formatting or vet.
+
+**Verification:**
+
+- `make all`

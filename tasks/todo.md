@@ -22,7 +22,7 @@
 - [x] Step 5: Tighten parser rules around variables and request lines.
 - [x] Step 6: Split `mockhttp/server.go` by responsibility.
 - [x] Step 7: Improve UI event handling and mobile usability.
-- [ ] Step 8: Strengthen CI to match local checks.
+- [x] Step 8: Strengthen CI to match local checks.
 - [ ] Step 9: Add route indexing only if benchmarking justifies it.
 
 ## Optimization Implementation Review
@@ -47,6 +47,8 @@
 - Verified Step 6 with `gofmt`, `git diff --check`, `go test ./...`, and `go vet ./...`.
 - Step 7 removed SSE debug logging, replaced the clear-button `innerHTML` reset with DOM construction, and kept request paths visible on mobile.
 - Verified Step 7 with `go test ./...`, `go vet ./...`, and browser checks for desktop rows, mobile rows, and Clear behavior.
+- Step 8 updated GitHub Actions to run `make all`, matching the local format, vet, test, and build gate.
+- Verified Step 8 with `make all`.
 
 ## Docker Startup Diagnosis
 
