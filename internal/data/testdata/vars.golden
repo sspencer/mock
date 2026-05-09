@@ -1,1 +1,0 @@
-Delete loaf: DELETE /bread/1 delay=1s status=204 header=36 body=0

@@ -2,18 +2,10 @@
 
 Mock creates an HTTP server with _mocked_ routes specified from a local file.
 It allows for rapid development and testing of (REST) API clients. The routes
-are dynamically configured from a watched file. Mock hosts a log of all requests under [http://localhost:7777/mock/](http://localhost:7777/mock/).
+are specified in a HTTP like format and both requests and resonses are logged
+via standard out and a [web interface](http://localhost:8080/mock/).
 
 ![API Requests Logger](docs/events.png)
-
-For added flexibility, Mock optionally serves a specified directory.
-
-The format of the file is very similar (compatible) to the client specification
-of VSCode's [REST Client](https://marketplace.visualstudio.com/items?itemName=humao.rest-client) / IntelliJ's [HTTP Client](https://www.jetbrains.com/help/idea/http-client-in-product-code-editor.html#creating-http-request-files).
-
-## Build/Install
-
-    make
 
 ## Run
 
@@ -23,7 +15,7 @@ of VSCode's [REST Client](https://marketplace.visualstudio.com/items?itemName=hu
       -l string
             URL path to view the request log (default "/mock")
       -p int
-            port (default 7777)
+            port (default 8080)
 
 1. Mock API: `mock examples/user.http` or `cat my.http | mock` or even `mock < my.http`
 2. Serve Directory: `mock .` NOTE: can't combine serving a directory with serving `.http` files.
@@ -73,11 +65,11 @@ In general, syntax is:
 
 Variables are specified after `###`, are optional, and are defined one per line.
 
-1. `# @delay=500ms` delays response (defaults to 0, golang duration syntax)
-2. `# @status=201` defines http status code (defaults to 200)
-3. `# @file=index.html` specifies body from external file (defaults to unspecified)
+1. `# $delay=500ms` delays response (defaults to 0, golang duration syntax)
+2. `# $status=201` defines http status code (defaults to 200)
+3. `# $file=index.html` specifies body from external file (defaults to unspecified)
 
-### Global Variables
+### [TODO] Global Variables
 
 May specify global variables that can then be substituted in responses
 with `{{$name}}`. This are usually specified at the top of the file.
@@ -132,7 +124,7 @@ and replaced in the body. The dollar sign is optional.
 - `{{$paragraph}}`
 - `{{$article}}`
 
-## Multiple Responses
+## [TODO] Multiple Responses
 
 The same Method and Path can be specified. Each duplicate Method / Path adds
 a new response to the entry. As you request the same API, different responses
@@ -166,12 +158,7 @@ Will return the status codes `201`, `201`, `400` and responses `{ "id": 5 }`,
 - [x] specify multiple api files from command line
 - [x] include external files
 - [x] path variables
-- [x] autoload file changes
 - [x] multiple responses per Method / Path
 - [x] dockerized
 - [x] add {{$body}} variables similar to what http client supports
 - [x] Use Go lang text templates instead of ReplaceAll()
-
-## Ideas
-
-- [ ] edit mock http file in api events page

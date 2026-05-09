@@ -9,35 +9,44 @@
     <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-<div class="container">
-    <div class="header">
-        mock server
-        <button id="themeToggle" class="theme-toggle">🌙</button>
-    </div>
-    <div class="content">
-        <div class="left-column">
-            <div class="table-header">
-                <div class="table-label">All Requests</div>
-                <button id="clearRequestsButton" class="clear-button">Clear Requests</button>
+<main class="app-shell">
+    <header class="topbar">
+        <div>
+            <p class="eyebrow">Live HTTP traffic</p>
+            <h1>Mock server</h1>
+        </div>
+        <button id="themeToggle" class="theme-toggle" aria-label="Toggle color theme">Dark</button>
+    </header>
+
+    <section class="workspace" aria-label="Request log workspace">
+        <section class="request-panel" aria-label="All requests">
+            <div class="panel-header">
+                <div>
+                    <p class="eyebrow">Requests</p>
+                    <h2>All activity</h2>
+                </div>
+                <button id="clearRequestsButton" class="clear-button">Clear</button>
             </div>
-            <div class="table-container">
+
+            <div class="table-container" aria-live="polite">
                 <table>
                     <thead>
                     <tr>
-                        <th>Path</th>
+                        <th>Request</th>
                         <th>Status</th>
                         <th>Time</th>
                     </tr>
                     </thead>
                     <tbody id="requestTableBody">
                     <tr>
-                        <td colspan="3" style="text-align:center;">No requests available</td>
+                        <td colspan="3" class="empty-state">No requests yet</td>
                     </tr>
                     </tbody>
                 </table>
             </div>
-        </div>
-        <div class="right-column">
+        </section>
+
+        <section class="detail-panel" aria-label="Request and response details">
             <div class="detail-section">
                 <div class="detail-label">Request</div>
                 <div id="requestDetails" class="detail-content">
@@ -48,9 +57,9 @@
                 <div id="responseDetails" class="detail-content">
                 </div>
             </div>
-        </div>
-    </div>
-</div>
+        </section>
+    </section>
+</main>
 
 <script>
     // Theme switching functionality
@@ -61,11 +70,11 @@
     function setTheme(theme) {
         if (theme === 'dark') {
             document.documentElement.setAttribute('data-theme', 'dark');
-            themeToggle.textContent = '☀️'; // Sun emoji for light mode toggle
+            themeToggle.textContent = 'Light';
             localStorage.setItem('theme', 'dark');
         } else {
             document.documentElement.removeAttribute('data-theme');
-            themeToggle.textContent = '🌙'; // Moon emoji for dark mode toggle
+            themeToggle.textContent = 'Dark';
             localStorage.setItem('theme', 'light');
         }
     }
@@ -147,7 +156,7 @@
                 // Clear the table body
                 requestTableBody.innerHTML = `
                     <tr>
-                        <td colspan="3" style="text-align:center;">No requests available</td>
+                        <td colspan="3" class="empty-state">No requests yet</td>
                     </tr>
                 `;
 

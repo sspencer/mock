@@ -1,0 +1,16 @@
+          --- Chord Tones ---
+
+Chord       Major       Minor       7th
+-------     -------     -------     ----
+C           C,E,G       C,Eb,G      Bb
+D           D,F#,A      D,F,A       C
+E           E,G#,B      E,G,B       D
+F           F,A,C       F,Ab,C      Eb
+G           G,B,D       G,Bb,D      F
+A           A,C#,E      A,C,E       G
+B           B,D#,F#     B,D,F#      A
+
+Major chord - made up of the 1,3, and 5 note in that key's scale
+Minor chord - flat the 3rd note of the scale
+Augmented chord - sharp the 5th note of the scale
+7th - flat the 7th note of the scale

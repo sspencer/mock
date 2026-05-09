@@ -1,8 +1,0 @@
-### Create loaf
-# @status=201
-post /bread
-Content-Type: application/json
-
-{
-  "name": "value"
-}

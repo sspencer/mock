@@ -6,7 +6,7 @@ SRC=$(shell find . -name '*.go')
 PKG=$(shell go list ./...)
 
 APP_NAME=mock
-APP_MAIN=./cmd/server
+APP_MAIN=.
 BINARY=${GOPATH}/bin/${APP_NAME}
 
 all: fmt vet $(BINARY)

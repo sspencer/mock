@@ -1,1 +1,0 @@
-Delete equal loaf: DELETE /bread/2 delay=500ms status=200 header=36 body=0

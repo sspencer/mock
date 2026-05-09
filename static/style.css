@@ -1,0 +1,340 @@
+:root {
+    --bg: #f7f7f5;
+    --surface: #ffffff;
+    --surface-muted: #f1f1ee;
+    --text: #191919;
+    --muted: #77746e;
+    --border: #dedbd4;
+    --border-strong: #c9c5bc;
+    --accent: #2563eb;
+    --accent-soft: #e9efff;
+    --danger: #c2410c;
+    --shadow: 0 18px 50px rgba(25, 25, 25, 0.08);
+    --mono: "SFMono-Regular", "Roboto Mono", "Cascadia Code", "Liberation Mono", Menlo, monospace;
+    color-scheme: light;
+}
+
+[data-theme="dark"] {
+    --bg: #10100f;
+    --surface: #181817;
+    --surface-muted: #222220;
+    --text: #f3f2ee;
+    --muted: #a5a198;
+    --border: #302f2b;
+    --border-strong: #45423d;
+    --accent: #7aa2ff;
+    --accent-soft: rgba(122, 162, 255, 0.14);
+    --danger: #fb923c;
+    --shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+    color-scheme: dark;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    height: 100%;
+}
+
+body {
+    margin: 0;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+}
+
+button,
+table {
+    font: inherit;
+}
+
+button {
+    cursor: pointer;
+}
+
+.app-shell {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100%;
+    padding: 28px;
+    gap: 20px;
+}
+
+.topbar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.eyebrow {
+    margin: 0 0 5px;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+h1,
+h2 {
+    margin: 0;
+    letter-spacing: 0;
+}
+
+h1 {
+    font-size: clamp(1.65rem, 3vw, 2.35rem);
+    line-height: 1.05;
+    font-weight: 650;
+}
+
+h2 {
+    font-size: 1.02rem;
+    font-weight: 650;
+}
+
+.theme-toggle,
+.clear-button {
+    min-height: 36px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    padding: 0 14px;
+    font-size: 0.86rem;
+    font-weight: 600;
+    transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.theme-toggle:hover,
+.clear-button:hover {
+    border-color: var(--border-strong);
+    background: var(--surface-muted);
+}
+
+.clear-button:hover {
+    color: var(--danger);
+}
+
+.workspace {
+    display: grid;
+    grid-template-columns: minmax(360px, 0.9fr) minmax(440px, 1.1fr);
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+}
+
+.request-panel,
+.detail-panel {
+    min-width: 0;
+    min-height: 0;
+}
+
+.request-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    border-right: 1px solid var(--border);
+}
+
+.detail-panel {
+    display: grid;
+    grid-template-rows: minmax(0, 0.9fr) minmax(0, 1.1fr);
+}
+
+.panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 80px;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border);
+}
+
+.table-container {
+    min-height: 0;
+    overflow: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: color-mix(in srgb, var(--surface) 92%, var(--surface-muted));
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 18px;
+    text-align: left;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+td {
+    border-bottom: 1px solid var(--border);
+    padding: 12px 18px;
+    color: var(--text);
+    vertical-align: middle;
+}
+
+td:first-child {
+    max-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+tbody tr {
+    transition: background-color 140ms ease, opacity 220ms ease, transform 220ms ease;
+}
+
+tbody tr:hover {
+    background: var(--surface-muted);
+    cursor: pointer;
+}
+
+tbody tr.selected {
+    background: var(--accent-soft);
+    box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.empty-state {
+    height: 120px;
+    color: var(--muted);
+    text-align: center;
+}
+
+.detail-section {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+    padding: 18px 20px 20px;
+}
+
+.detail-section + .detail-section {
+    border-top: 1px solid var(--border);
+}
+
+.detail-label {
+    margin-bottom: 12px;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.detail-content {
+    min-height: 0;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-muted);
+    color: var(--text);
+    padding: 16px;
+    font-family: var(--mono);
+    font-size: 0.84rem;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    transition: opacity 160ms ease;
+}
+
+.method-get,
+.method-post,
+.method-put,
+.method-patch,
+.method-delete,
+.status-2xx,
+.status-3xx,
+.status-4xx,
+.status-5xx {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 48px;
+    min-height: 24px;
+    margin-right: 10px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--surface);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.method-post,
+.status-2xx {
+    border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.status-4xx,
+.status-5xx,
+.method-delete {
+    color: var(--danger);
+}
+
+@media (max-width: 980px) {
+    body {
+        overflow: auto;
+    }
+
+    .app-shell {
+        min-height: 100%;
+        height: auto;
+        padding: 18px;
+    }
+
+    .workspace {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(300px, 45vh) minmax(520px, 1fr);
+        overflow: visible;
+    }
+
+    .request-panel {
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+    }
+}
+
+@media (max-width: 640px) {
+    .topbar,
+    .panel-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .theme-toggle,
+    .clear-button {
+        width: 100%;
+    }
+
+    th,
+    td {
+        padding-inline: 12px;
+    }
+
+    th:nth-child(3),
+    td:nth-child(3) {
+        display: none;
+    }
+}
