@@ -1,5 +1,33 @@
 # Mock HTTP Server
 
+## GitHub Action Review
+
+- [x] Check for checked-in GitHub Actions workflow files.
+- [x] Inspect CI-relevant project commands and current repository shape.
+- [x] Run local verification matching likely CI behavior.
+- [x] Record review findings and residual risks.
+
+## GitHub Action Review Results
+
+- No GitHub Actions workflow is present in the repository: `.github/` does not exist and `git ls-files '.github/**'` returns no files.
+- Local CI-equivalent checks pass with Go 1.26.3: `go test ./...`, `make test`, and `make all`.
+- Because no workflow is checked in, there is no GitHub Action that can currently run on pushes or pull requests for this repository.
+- If CI is expected, add `.github/workflows/ci.yml` to run at least `go test ./...`; `make all` is also currently healthy if format, vet, and build should be enforced.
+
+## GitHub Action Verification
+
+- [x] Read the newly added workflow.
+- [x] Compare workflow commands to the current repository layout and Go version.
+- [x] Fix workflow drift that would break CI.
+- [x] Run local verification for the workflow-equivalent commands.
+- [x] Record final review results.
+
+## GitHub Action Verification Results
+
+- The added workflow would have failed because it pinned Go 1.25 while `go.mod` requires Go 1.26, and it ran dependency/build commands against `./cmd/server`, which does not exist in the current repository.
+- Updated `.github/workflows/go.yml` to use `actions/checkout@v4`, `actions/setup-go@v5`, `go-version-file: go.mod`, `go build -v ./...`, and `go test -v ./...`.
+- Verified locally with `go build -v ./...`, `go test -v ./...`, `go vet ./...`, and `make all`.
+
 ## Configurable HTTP Port
 
 - [x] Add a `-p` command-line flag with a default of `8080`.
