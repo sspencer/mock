@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -40,7 +41,12 @@ func main() {
 	}
 	printMethods(os.Stdout, methods)
 
-	handler := newHandler(methods, logger, *mount, "static")
+	staticFS, err := staticFileSystem()
+	if err != nil {
+		logger.Error("failed to load static files", "error", err)
+		os.Exit(1)
+	}
+	handler := newHandler(methods, logger, *mount, staticFS)
 	server := &http.Server{
 		Addr:              listenAddress(*port),
 		Handler:           handler,
@@ -81,7 +87,7 @@ func stdinIsTerminal(file *os.File) bool {
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
-func newHandler(methods []restclient.Method, logger *slog.Logger, mount string, staticDir string) http.Handler {
+func newHandler(methods []restclient.Method, logger *slog.Logger, mount string, staticFS fs.FS) http.Handler {
 	mockServer := mockhttp.New(methods, logger)
 	mountPath := normalizeMountPath(mount)
 
@@ -91,7 +97,7 @@ func newHandler(methods []restclient.Method, logger *slog.Logger, mount string, 
 		http.Redirect(w, r, mountRoot, http.StatusMovedPermanently)
 	})
 	mux.HandleFunc(mountRoot+"events", mockServer.ServeEvents)
-	mux.Handle(mountRoot, http.StripPrefix(mountRoot, http.FileServer(http.Dir(staticDir))))
+	mux.Handle(mountRoot, http.StripPrefix(mountRoot, http.FileServer(http.FS(staticFS))))
 	mux.Handle("/", mockServer)
 	return mux
 }

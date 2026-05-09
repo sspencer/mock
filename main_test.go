@@ -168,7 +168,7 @@ ok
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	handler := newHandler(methods, slog.New(slog.NewTextHandler(io.Discard, nil)), "admin", staticDir)
+	handler := newHandler(methods, slog.New(slog.NewTextHandler(io.Discard, nil)), "admin", os.DirFS(staticDir))
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/admin/", nil))
@@ -191,6 +191,32 @@ ok
 	}
 }
 
+func TestHandlerServesEmbeddedStaticFiles(t *testing.T) {
+	methods, err := restclient.Parse("test.http", strings.NewReader(`### User
+GET /users
+
+ok
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	staticFS, err := staticFileSystem()
+	if err != nil {
+		t.Fatalf("staticFileSystem() error = %v", err)
+	}
+	handler := newHandler(methods, slog.New(slog.NewTextHandler(io.Discard, nil)), "mock", staticFS)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/mock/", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("static status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if body := response.Body.String(); !strings.Contains(body, "<title>Mock Server</title>") {
+		t.Fatalf("static body = %q, want embedded dashboard HTML", body)
+	}
+}
+
 func TestHandlerStreamsRequestEventsUnderConfiguredMount(t *testing.T) {
 	staticDir := t.TempDir()
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### User
@@ -201,7 +227,7 @@ ok
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	handler := newHandler(methods, slog.New(slog.NewTextHandler(io.Discard, nil)), "admin", staticDir)
+	handler := newHandler(methods, slog.New(slog.NewTextHandler(io.Discard, nil)), "admin", os.DirFS(staticDir))
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/users", nil))

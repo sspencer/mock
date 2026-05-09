@@ -1,5 +1,36 @@
 # Mock HTTP Server
 
+## Optimization Plan Analysis
+
+- [x] Inspect Go package structure, tests, docs, and static UI.
+- [x] Identify discrepancies and senior-level improvement opportunities.
+- [x] Create `tasks/optimize.md` with staged minimal-change recommendations.
+- [x] Review the generated plan for specificity and low-risk sequencing.
+
+## Optimization Plan Analysis Review
+
+- Created `tasks/optimize.md` with a nine-step optimization plan focused on portability, memory safety, cancellation behavior, parser correctness, package organization, UI polish, CI parity, and optional matching performance.
+- Kept every step scoped to minimal file changes and included verification guidance for each step.
+- Verified the current code baseline with `go test ./...` and `go vet ./...`; both pass.
+
+## Optimization Implementation
+
+- [x] Step 1: Embed request-log UI assets so installed binaries serve `/mock/` without a working-directory dependency.
+- [ ] Step 2: Bound logged request and response bodies.
+- [ ] Step 3: Make configured response delays cancellation-aware.
+- [ ] Step 4: Report file-backed response failures clearly.
+- [ ] Step 5: Tighten parser rules around variables and request lines.
+- [ ] Step 6: Split `mockhttp/server.go` by responsibility.
+- [ ] Step 7: Improve UI event handling and mobile usability.
+- [ ] Step 8: Strengthen CI to match local checks.
+- [ ] Step 9: Add route indexing only if benchmarking justifies it.
+
+## Optimization Implementation Review
+
+- Step 1 added embedded static assets through `assets.go` and changed `newHandler` to accept `fs.FS`.
+- Added an embedded dashboard test while preserving temporary filesystem injection for mount-path tests.
+- Verified Step 1 with `go test ./...`, `go vet ./...`, and a live `go run . -p 18085 examples/user.http` check where `/mock/` and `/users/42` both returned `200`.
+
 ## Docker Startup Diagnosis
 
 - [x] Check Docker client and daemon connectivity.
