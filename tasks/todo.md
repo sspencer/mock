@@ -21,7 +21,7 @@
 - [x] Step 4: Report file-backed response failures clearly.
 - [x] Step 5: Tighten parser rules around variables and request lines.
 - [x] Step 6: Split `mockhttp/server.go` by responsibility.
-- [ ] Step 7: Improve UI event handling and mobile usability.
+- [x] Step 7: Improve UI event handling and mobile usability.
 - [ ] Step 8: Strengthen CI to match local checks.
 - [ ] Step 9: Add route indexing only if benchmarking justifies it.
 
@@ -45,6 +45,8 @@
 - Step 6 split `mockhttp/server.go` into focused files for matching, rendering, event streaming, and detail capture.
 - Kept the exported `mockhttp` API unchanged and avoided behavior changes.
 - Verified Step 6 with `gofmt`, `git diff --check`, `go test ./...`, and `go vet ./...`.
+- Step 7 removed SSE debug logging, replaced the clear-button `innerHTML` reset with DOM construction, and kept request paths visible on mobile.
+- Verified Step 7 with `go test ./...`, `go vet ./...`, and browser checks for desktop rows, mobile rows, and Clear behavior.
 
 ## Docker Startup Diagnosis
 

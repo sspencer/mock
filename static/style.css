@@ -455,11 +455,29 @@ tbody tr.selected {
 
     th,
     td {
-        padding-inline: 12px;
+        padding-inline: 8px;
     }
 
-    th:nth-child(3),
-    td:nth-child(3) {
+    th:nth-child(1),
+    td:nth-child(1) {
+        width: 78px;
+    }
+
+    th:nth-child(2),
+    td:nth-child(2) {
+        width: 58px;
+    }
+
+    .status-text {
         display: none;
+    }
+
+    .method-get,
+    .method-post,
+    .method-put,
+    .method-patch,
+    .method-delete {
+        min-width: 44px;
+        margin-right: 6px;
     }
 }

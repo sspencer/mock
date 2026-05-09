@@ -104,13 +104,12 @@
     const responseDetails = document.getElementById('responseDetails');
     const clearRequestsButton = document.getElementById('clearRequestsButton');
     const events = [];
-    let source = new EventSource('events');
+    const source = new EventSource('events');
     let rowIndex = 0;
 
     source.onmessage = function (event) {
         try {
             const data = JSON.parse(event.data);
-            console.log(data);
             addEventToTable(data);
         } catch (e) {
             console.error("Error parsing json", e);
@@ -151,19 +150,9 @@
                 row.style.transform = 'translateY(10px)';
             }
 
-            // Wait for animation to complete before clearing
             setTimeout(() => {
-                // Clear the table body
-                requestTableBody.innerHTML = `
-                    <tr>
-                        <td colspan="3" class="empty-state">No requests yet</td>
-                    </tr>
-                `;
-
-                // Reset events array
+                renderEmptyState();
                 events.length = 0;
-
-                // Reset row index
                 rowIndex = 0;
             }, 300);
         }
@@ -197,6 +186,15 @@
             element.textContent = newContent;
             element.style.opacity = '1';
         }, 150);
+    }
+
+    function renderEmptyState() {
+        requestTableBody.replaceChildren();
+        const row = requestTableBody.insertRow();
+        const cell = row.insertCell();
+        cell.colSpan = 3;
+        cell.className = 'empty-state';
+        cell.textContent = 'No requests yet';
     }
 
     function addEventToTable(http) {
@@ -235,6 +233,7 @@
         c1.appendChild(statusSpan);
 
         const statusTextSpan = document.createElement('span');
+        statusTextSpan.className = 'status-text';
         statusTextSpan.textContent = ` ${http.response.statusText}`;
         c1.appendChild(statusTextSpan);
 
