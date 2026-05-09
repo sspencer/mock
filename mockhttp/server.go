@@ -1,6 +1,7 @@
 package mockhttp
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -37,6 +38,9 @@ type Server struct {
 var placeholderPattern = regexp.MustCompile(`\{\{\$([A-Za-z_][A-Za-z0-9_]*)}}`)
 
 const maxRequestEvents = 200
+const maxLoggedBodyBytes = 64 * 1024
+
+var truncatedBodyMarker = fmt.Sprintf("[body truncated after %d bytes]", maxLoggedBodyBytes)
 
 type RequestEvent struct {
 	Request  EventRequest  `json:"request"`
@@ -379,8 +383,10 @@ func randomHex(size int) string {
 
 type responseCapture struct {
 	http.ResponseWriter
-	status int
-	body   strings.Builder
+	status        int
+	body          strings.Builder
+	bodyBytes     int
+	bodyTruncated bool
 }
 
 func newResponseCapture(w http.ResponseWriter) *responseCapture {
@@ -401,9 +407,24 @@ func (w *responseCapture) Write(body []byte) (int, error) {
 	}
 	n, err := w.ResponseWriter.Write(body)
 	if n > 0 {
-		w.body.Write(body[:n])
+		w.bodyBytes += n
+		w.captureBody(body[:n])
 	}
 	return n, err
+}
+
+func (w *responseCapture) captureBody(body []byte) {
+	remaining := maxLoggedBodyBytes - w.body.Len()
+	if remaining <= 0 {
+		w.bodyTruncated = true
+		return
+	}
+	if len(body) > remaining {
+		w.body.Write(body[:remaining])
+		w.bodyTruncated = true
+		return
+	}
+	w.body.Write(body)
 }
 
 func (w *responseCapture) statusCode() int {
@@ -413,25 +434,58 @@ func (w *responseCapture) statusCode() int {
 	return w.status
 }
 
-func (w *responseCapture) bodyString() string {
-	return w.body.String()
+func (w *responseCapture) loggedBody() loggedBody {
+	return loggedBody{text: w.body.String(), truncated: w.bodyTruncated}
 }
 
-func readRequestBody(r *http.Request) string {
-	if r.Body == nil {
-		return ""
+func (w *responseCapture) bodyLength() int {
+	return w.bodyBytes
+}
+
+type loggedBody struct {
+	text      string
+	truncated bool
+}
+
+func (b loggedBody) empty() bool {
+	return b.text == "" && !b.truncated
+}
+
+func (b loggedBody) detailsText() string {
+	if !b.truncated {
+		return b.text
 	}
-	body, err := io.ReadAll(r.Body)
+	if b.text == "" {
+		return truncatedBodyMarker
+	}
+	return b.text + "\n\n" + truncatedBodyMarker
+}
+
+type replayBody struct {
+	io.Reader
+	io.Closer
+}
+
+func readRequestBody(r *http.Request) loggedBody {
+	if r.Body == nil {
+		return loggedBody{}
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxLoggedBodyBytes+1))
 	if err != nil {
 		r.Body = io.NopCloser(strings.NewReader(""))
-		return ""
+		return loggedBody{}
 	}
-	s := string(body)
-	r.Body = io.NopCloser(strings.NewReader(s))
-	return s
+	r.Body = replayBody{
+		Reader: io.MultiReader(bytes.NewReader(body), r.Body),
+		Closer: r.Body,
+	}
+	if len(body) <= maxLoggedBodyBytes {
+		return loggedBody{text: string(body)}
+	}
+	return loggedBody{text: string(body[:maxLoggedBodyBytes]), truncated: true}
 }
 
-func (s *Server) logRequest(r *http.Request, requestBody string, response *responseCapture, status int, methodName string, arrivedAt time.Time, elapsed time.Duration) {
+func (s *Server) logRequest(r *http.Request, requestBody loggedBody, response *responseCapture, status int, methodName string, arrivedAt time.Time, elapsed time.Duration) {
 	s.publishRequest(newRequestEvent(r, requestBody, response, status, arrivedAt, elapsed))
 
 	logger := s.logger
@@ -497,7 +551,7 @@ func writeEvent(w io.Writer, event RequestEvent) bool {
 	return err == nil
 }
 
-func newRequestEvent(r *http.Request, requestBody string, response *responseCapture, status int, arrivedAt time.Time, elapsed time.Duration) RequestEvent {
+func newRequestEvent(r *http.Request, requestBody loggedBody, response *responseCapture, status int, arrivedAt time.Time, elapsed time.Duration) RequestEvent {
 	return RequestEvent{
 		Request: EventRequest{
 			Method:  r.Method,
@@ -518,7 +572,7 @@ func formatRequestTime(t time.Time) string {
 	return t.Local().Format("15:04:05")
 }
 
-func requestDetails(r *http.Request, body string) string {
+func requestDetails(r *http.Request, body loggedBody) string {
 	var details strings.Builder
 	fmt.Fprintf(&details, "%s %s %s\n", r.Method, r.URL.RequestURI(), r.Proto)
 	if r.Host != "" {
@@ -534,8 +588,8 @@ func requestDetails(r *http.Request, body string) string {
 	}
 	writeSortedHeaders(&details, headers)
 
-	if body != "" {
-		fmt.Fprintf(&details, "\n%s", body)
+	if !body.empty() {
+		fmt.Fprintf(&details, "\n%s", body.detailsText())
 	}
 	return strings.TrimRight(details.String(), "\n")
 }
@@ -544,18 +598,18 @@ func responseDetails(r *http.Request, response *responseCapture, status int) str
 	var details strings.Builder
 	fmt.Fprintf(&details, "%s %d %s\n", r.Proto, status, statusText(status))
 
-	body := response.bodyString()
+	body := response.loggedBody()
 	headers := response.Header().Clone()
 	if headers.Get("Date") == "" {
 		headers.Set("Date", time.Now().UTC().Format(http.TimeFormat))
 	}
-	if body != "" && headers.Get("Content-Length") == "" {
-		headers.Set("Content-Length", strconv.Itoa(len(body)))
+	if response.bodyLength() > 0 && headers.Get("Content-Length") == "" {
+		headers.Set("Content-Length", strconv.Itoa(response.bodyLength()))
 	}
 	writeSortedHeaders(&details, headers)
 
-	if body != "" {
-		fmt.Fprintf(&details, "\n%s", body)
+	if !body.empty() {
+		fmt.Fprintf(&details, "\n%s", body.detailsText())
 	}
 	return strings.TrimRight(details.String(), "\n")
 }

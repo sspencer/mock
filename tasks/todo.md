@@ -16,7 +16,7 @@
 ## Optimization Implementation
 
 - [x] Step 1: Embed request-log UI assets so installed binaries serve `/mock/` without a working-directory dependency.
-- [ ] Step 2: Bound logged request and response bodies.
+- [x] Step 2: Bound logged request and response bodies.
 - [ ] Step 3: Make configured response delays cancellation-aware.
 - [ ] Step 4: Report file-backed response failures clearly.
 - [ ] Step 5: Tighten parser rules around variables and request lines.
@@ -30,6 +30,9 @@
 - Step 1 added embedded static assets through `assets.go` and changed `newHandler` to accept `fs.FS`.
 - Added an embedded dashboard test while preserving temporary filesystem injection for mount-path tests.
 - Verified Step 1 with `go test ./...`, `go vet ./...`, and a live `go run . -p 18085 examples/user.http` check where `/mock/` and `/users/42` both returned `200`.
+- Step 2 added bounded body previews for request-log details, preserved full client responses, and replayed sampled request bytes back into `r.Body`.
+- Added tests for truncating oversized request and response event details.
+- Verified Step 2 with `go test ./...` and `go vet ./...`.
 
 ## Docker Startup Diagnosis
 

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -174,6 +175,78 @@ Content-Type: application/json
 		if !strings.Contains(event.Response.Details, want) {
 			t.Fatalf("response details = %q, want to contain %q", event.Response.Details, want)
 		}
+	}
+}
+
+func TestServerTruncatesLargeRequestBodiesInEvents(t *testing.T) {
+	methods, err := restclient.Parse("test.http", strings.NewReader(`### Upload
+POST /upload
+Content-Type: text/plain
+
+ok
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	body := strings.Repeat("a", maxLoggedBodyBytes+10)
+
+	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	request := httptest.NewRequest(http.MethodPost, "/upload", strings.NewReader(body))
+	response := httptest.NewRecorder()
+
+	server.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if len(server.events) != 1 {
+		t.Fatalf("events length = %d, want 1", len(server.events))
+	}
+	details := server.events[0].Request.Details
+	if !strings.Contains(details, truncatedBodyMarker) {
+		t.Fatalf("request details = %q, want truncation marker", details)
+	}
+	if strings.Contains(details, body) {
+		t.Fatalf("request details contain the full request body")
+	}
+}
+
+func TestServerTruncatesLargeResponseBodiesInEventsOnly(t *testing.T) {
+	body := strings.Repeat("b", maxLoggedBodyBytes+10)
+	methods, err := restclient.Parse("test.http", strings.NewReader(`### Download
+GET /download
+Content-Type: text/plain
+
+`+body+`
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	request := httptest.NewRequest(http.MethodGet, "/download", nil)
+	response := httptest.NewRecorder()
+
+	server.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if got := response.Body.String(); got != body {
+		t.Fatalf("client body length = %d, want full body length %d", len(got), len(body))
+	}
+	if len(server.events) != 1 {
+		t.Fatalf("events length = %d, want 1", len(server.events))
+	}
+	details := server.events[0].Response.Details
+	if !strings.Contains(details, truncatedBodyMarker) {
+		t.Fatalf("response details = %q, want truncation marker", details)
+	}
+	if !strings.Contains(details, "Content-Length: "+strconv.Itoa(len(body))) {
+		t.Fatalf("response details = %q, want full content length", details)
+	}
+	if strings.Contains(details, body) {
+		t.Fatalf("response details contain the full response body")
 	}
 }
 

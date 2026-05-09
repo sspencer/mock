@@ -209,3 +209,20 @@ This order fixes user-visible reliability first, then resource safety, then main
 - `go run . -p 18085 examples/user.http`
 - `curl http://127.0.0.1:18085/mock/` returned `200`.
 - `curl http://127.0.0.1:18085/users/42` returned `200`.
+
+### Step 2: Bounded Body Logging
+
+**Status:** Complete.
+
+**Performed:**
+
+- Added a `maxLoggedBodyBytes` cap and shared truncation marker for request-log details.
+- Changed request body logging to sample only the preview bytes and replay the sampled bytes plus the unread stream through `r.Body`.
+- Changed response capture to send full responses to clients while storing only a bounded preview for UI events.
+- Preserved response detail `Content-Length` as the full delivered body length.
+- Added tests for oversized request and response bodies.
+
+**Verification:**
+
+- `go test ./...`
+- `go vet ./...`
