@@ -63,6 +63,96 @@
 - Confirmed `GET /users/42` returned `HTTP/1.1 200 OK` and `GET /users` returned the file-backed JSON response.
 - Removed the temporary verification container.
 
+## Request Table Arrival Time
+
+- [x] Add a request arrival time value to request-log events.
+- [x] Move the request table `Time` column before `Request` and `Status`.
+- [x] Render the arrival time as a time-only value in the first column.
+- [x] Verify with automated tests and a live browser check.
+
+## Request Table Arrival Time Review
+
+- Added `request.time` to request-log events using local `HH:MM:SS` formatting captured at request arrival.
+- Kept response duration available as `response.time`, but the table now displays the request arrival time instead.
+- Updated the request-log table order to `Time`, `Request`, `Status`.
+- Adjusted table CSS so the time column stays compact and the request column truncates.
+- Verified with `go test ./...`.
+- Verified in the browser by opening `/mock/`, sending `GET /users/42`, and confirming the row cells showed `22:02:06`, `GET /users/42`, `200 OK`.
+
+## Request Table Badge Colors
+
+- [x] Restore colorful visual treatment for HTTP method badges.
+- [x] Restore colorful visual treatment for response status badges.
+- [x] Verify the table still renders cleanly in the web UI.
+- [x] Record results.
+
+## Request Table Badge Colors Review
+
+- Replaced the subdued method/status chip styling with colorful light and dark mode badge colors inspired by the previous CSS.
+- Kept compact fixed badge sizing so the request table columns remain stable.
+- Verified in the browser with GET, POST, and DELETE rows in both light and dark modes.
+- Verified with `go test ./...`.
+
+## Method Badge Borders
+
+- [x] Add color-matched borders to HTTP method badges.
+- [x] Verify the CSS still keeps method/status badges visually consistent.
+- [x] Record results.
+
+## Method Badge Borders Review
+
+- Added color-matched borders for GET, POST, PUT, PATCH, and DELETE method badges in light and dark modes.
+- Kept the shared badge border sizing consistent between method and status chips.
+- Verified with `go test ./...`.
+
+## Request Table Column Widths
+
+- [x] Make the status column compact.
+- [x] Give the freed space to the request column.
+- [x] Verify CSS and record results.
+
+## Request Table Column Widths Review
+
+- Set the request log table to fixed layout.
+- Made the time column `98px` and the status column `132px`, leaving the request column to take the remaining width.
+- Preserved nowrap behavior for time/status and ellipsis truncation for request paths.
+- Verified with `go test ./...`.
+
+## Stylesheet Cache Busting
+
+- [x] Add a cache-busting version query to the web UI stylesheet link.
+- [x] Verify tests still pass.
+- [x] Record results.
+
+## Stylesheet Cache Busting Review
+
+- Updated the request-log UI to load `style.css?v=20260508`.
+- Verified with `go test ./...`.
+
+## Request Table Status Second
+
+- [x] Move `Status` to the second request table column.
+- [x] Make the status column about 10% wider.
+- [x] Keep `Request` as the final flexible column.
+- [x] Verify tests and record results.
+
+## Request Table Status Second Review
+
+- Reordered the request table header and row cells to `Time`, `Status`, `Request`.
+- Increased the status column from `132px` to `145px`.
+- Left the request column as the final flexible column with ellipsis behavior.
+- Verified with `go test ./...`.
+
+## Placeholder Regexp Warning
+
+- [x] Remove the redundant closing-brace escape from `placeholderPattern`.
+- [x] Verify placeholder behavior still passes tests.
+
+## Placeholder Regexp Warning Review
+
+- Updated `placeholderPattern` from `\}\}` to literal `}}` closing braces.
+- Verified with `go test ./...`.
+
 ## Dockerfile Review
 
 - [x] Inspect the current Dockerfile against the repository layout and runtime needs.

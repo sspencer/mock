@@ -85,8 +85,13 @@ Content-Type: application/json
 # $status=204
 DELETE /users/:id
 
-### Return a little music theory
+### Music Include
+# $file=chords.txt
 GET /chords
+
+
+### Music embed
+GET /chords2
 Content-Type: "text/plain; charset=utf-8"
 
           --- Chord Tones ---

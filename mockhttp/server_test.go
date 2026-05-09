@@ -148,6 +148,9 @@ Content-Type: application/json
 	}
 
 	event := server.events[0]
+	if _, err := time.Parse("15:04:05", event.Request.Time); err != nil {
+		t.Fatalf("request time = %q, want HH:MM:SS", event.Request.Time)
+	}
 	for _, want := range []string{
 		"POST /users HTTP/1.1",
 		"Host: localhost:8080",

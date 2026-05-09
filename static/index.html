@@ -6,7 +6,7 @@
     <link rel="icon" href="favicon.ico" type="image/x-icon" />
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
     <title>Mock Server</title>
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="style.css?v=20260508" />
 </head>
 <body>
 <main class="app-shell">
@@ -32,9 +32,9 @@
                 <table>
                     <thead>
                     <tr>
-                        <th>Request</th>
-                        <th>Status</th>
                         <th>Time</th>
+                        <th>Status</th>
+                        <th>Request</th>
                     </tr>
                     </thead>
                     <tbody id="requestTableBody">
@@ -210,16 +210,10 @@
         row.style.opacity = '0';
         row.style.transform = 'translateY(-10px)';
 
-        // First cell: {Method} {URI}
+        // First cell: request arrival time
         const c0 = row.insertCell(0);
-        const methodSpan = document.createElement('span');
-        methodSpan.textContent = http.request.method;
-        methodSpan.className = `method-${http.request.method.toLowerCase()}`;
-        c0.appendChild(methodSpan);
-
-        const urlSpan = document.createElement('span');
-        urlSpan.textContent = ` ${http.request.url}`;
-        c0.appendChild(urlSpan);
+        c0.className = 'time-cell';
+        c0.textContent = http.request.time || '';
 
         // Second cell: {Status} {StatusText}
         const c1 = row.insertCell(1);
@@ -244,8 +238,17 @@
         statusTextSpan.textContent = ` ${http.response.statusText}`;
         c1.appendChild(statusTextSpan);
 
-        // Third cell: {Time}
-        row.insertCell(2).textContent = http.response.time;
+        // Third cell: {Method} {URI}
+        const c2 = row.insertCell(2);
+        c2.className = 'request-cell';
+        const methodSpan = document.createElement('span');
+        methodSpan.textContent = http.request.method;
+        methodSpan.className = `method-${http.request.method.toLowerCase()}`;
+        c2.appendChild(methodSpan);
+
+        const urlSpan = document.createElement('span');
+        urlSpan.textContent = ` ${http.request.url}`;
+        c2.appendChild(urlSpan);
         events.unshift(http);
 
         // Animate the new row

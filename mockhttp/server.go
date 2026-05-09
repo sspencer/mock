@@ -34,7 +34,7 @@ type Server struct {
 	mu          sync.Mutex
 }
 
-var placeholderPattern = regexp.MustCompile(`\{\{\$([A-Za-z_][A-Za-z0-9_]*)\}\}`)
+var placeholderPattern = regexp.MustCompile(`\{\{\$([A-Za-z_][A-Za-z0-9_]*)}}`)
 
 const maxRequestEvents = 200
 
@@ -46,6 +46,7 @@ type RequestEvent struct {
 type EventRequest struct {
 	Method  string `json:"method"`
 	URL     string `json:"url"`
+	Time    string `json:"time"`
 	Details string `json:"details"`
 }
 
@@ -66,7 +67,7 @@ func New(methods []restclient.Method, logger *slog.Logger) *Server {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
+	arrivedAt := time.Now()
 	requestBody := readRequestBody(r)
 	capture := newResponseCapture(w)
 
@@ -75,7 +76,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		http.NotFound(capture, r)
 		status = capture.statusCode()
-		s.logRequest(r, requestBody, capture, status, "", time.Since(start))
+		s.logRequest(r, requestBody, capture, status, "", arrivedAt, time.Since(arrivedAt))
 		return
 	}
 	s.delay(method)
@@ -94,7 +95,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(capture, body)
 	}
 
-	s.logRequest(r, requestBody, capture, status, method.Name, time.Since(start))
+	s.logRequest(r, requestBody, capture, status, method.Name, arrivedAt, time.Since(arrivedAt))
 }
 
 func (s *Server) ServeEvents(w http.ResponseWriter, r *http.Request) {
@@ -430,8 +431,8 @@ func readRequestBody(r *http.Request) string {
 	return s
 }
 
-func (s *Server) logRequest(r *http.Request, requestBody string, response *responseCapture, status int, methodName string, elapsed time.Duration) {
-	s.publishRequest(newRequestEvent(r, requestBody, response, status, elapsed))
+func (s *Server) logRequest(r *http.Request, requestBody string, response *responseCapture, status int, methodName string, arrivedAt time.Time, elapsed time.Duration) {
+	s.publishRequest(newRequestEvent(r, requestBody, response, status, arrivedAt, elapsed))
 
 	logger := s.logger
 	if logger == nil {
@@ -496,11 +497,12 @@ func writeEvent(w io.Writer, event RequestEvent) bool {
 	return err == nil
 }
 
-func newRequestEvent(r *http.Request, requestBody string, response *responseCapture, status int, elapsed time.Duration) RequestEvent {
+func newRequestEvent(r *http.Request, requestBody string, response *responseCapture, status int, arrivedAt time.Time, elapsed time.Duration) RequestEvent {
 	return RequestEvent{
 		Request: EventRequest{
 			Method:  r.Method,
 			URL:     r.URL.RequestURI(),
+			Time:    formatRequestTime(arrivedAt),
 			Details: requestDetails(r, requestBody),
 		},
 		Response: EventResponse{
@@ -510,6 +512,10 @@ func newRequestEvent(r *http.Request, requestBody string, response *responseCapt
 			Details:    responseDetails(r, response, status),
 		},
 	}
+}
+
+func formatRequestTime(t time.Time) string {
+	return t.Local().Format("15:04:05")
 }
 
 func requestDetails(r *http.Request, body string) string {
