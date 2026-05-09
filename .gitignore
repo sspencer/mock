@@ -8,7 +8,6 @@ bin/
 /scripts/places/*.json
 lint.txt
 /.idea
-.idea
 /.vscode
 /dump.rdb
 /qodana.yaml
