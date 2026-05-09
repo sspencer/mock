@@ -87,7 +87,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !s.delay(r.Context(), method) {
 		return
 	}
-	filePath, _ := resolveFilePath(method)
+	filePath, hasFile := resolveFilePath(method)
+
+	status = statusFromVariables(method.Variables)
+	body, err := renderBody(*method, values, filePath, hasFile)
+	if err != nil {
+		s.logResponseRenderError(err)
+		http.Error(capture, "mock: failed to read response file", http.StatusInternalServerError)
+		s.logRequest(r, requestBody, capture, capture.statusCode(), method.Name, arrivedAt, time.Since(arrivedAt))
+		return
+	}
 
 	headers := responseHeaders(*method, filePath)
 	for name, headerValues := range headers {
@@ -95,8 +104,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			capture.Header().Add(name, value)
 		}
 	}
-	status = statusFromVariables(method.Variables)
-	body := renderBody(*method, values, filePath)
 	capture.WriteHeader(status)
 	if body != "" && statusAllowsBody(status) {
 		_, _ = io.WriteString(capture, body)
@@ -288,15 +295,16 @@ func responseHeaders(method restclient.Method, filePath string) http.Header {
 	return headers
 }
 
-func renderBody(method restclient.Method, values map[string]string, filePath string) string {
+func renderBody(method restclient.Method, values map[string]string, filePath string, hasFile bool) (string, error) {
 	if method.Body == "" {
-		if filePath != "" {
+		if hasFile {
 			body, err := os.ReadFile(filePath)
-			if err == nil {
-				return string(body)
+			if err != nil {
+				return "", fmt.Errorf("%s: %w", filePath, err)
 			}
+			return string(body), nil
 		}
-		return ""
+		return "", nil
 	}
 
 	return placeholderPattern.ReplaceAllStringFunc(method.Body, func(match string) string {
@@ -312,7 +320,7 @@ func renderBody(method restclient.Method, values map[string]string, filePath str
 			return value
 		}
 		return generatedValue(key)
-	})
+	}), nil
 }
 
 func resolveFilePath(method *restclient.Method) (string, bool) {
@@ -511,6 +519,14 @@ func (s *Server) logRequest(r *http.Request, requestBody loggedBody, response *r
 		"mock", methodName,
 		"duration", elapsed.String(),
 	)
+}
+
+func (s *Server) logResponseRenderError(err error) {
+	logger := s.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.Error("failed to render mock response", "error", err)
 }
 
 func (s *Server) subscribe() ([]RequestEvent, chan RequestEvent) {

@@ -241,3 +241,20 @@ This order fixes user-visible reliability first, then resource safety, then main
 
 - `go test ./...`
 - `go vet ./...`
+
+### Step 4: File-Backed Response Errors
+
+**Status:** Complete.
+
+**Performed:**
+
+- Changed response rendering to return an error when a safe configured `$file` cannot be read.
+- Returned `500 Internal Server Error` with a concise text message for missing or unreadable response files.
+- Logged the render failure through the server logger.
+- Preserved the existing safe-empty behavior for rejected path traversal attempts.
+- Added coverage for missing `$file` responses and event status reporting.
+
+**Verification:**
+
+- `go test ./...`
+- `go vet ./...`

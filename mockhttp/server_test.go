@@ -348,6 +348,37 @@ GET /
 	}
 }
 
+func TestServerReportsMissingResponseFile(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "user.http")
+	methods, err := restclient.Parse(source, strings.NewReader(`### Missing File
+# $file=missing.json
+GET /missing
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	request := httptest.NewRequest(http.MethodGet, "/missing", nil)
+	response := httptest.NewRecorder()
+
+	server.ServeHTTP(response, request)
+
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
+	}
+	if body := response.Body.String(); !strings.Contains(body, "mock: failed to read response file") {
+		t.Fatalf("body = %q, want file read error message", body)
+	}
+	if len(server.events) != 1 {
+		t.Fatalf("events length = %d, want 1", len(server.events))
+	}
+	if got := server.events[0].Response.Status; got != http.StatusInternalServerError {
+		t.Fatalf("event status = %d, want %d", got, http.StatusInternalServerError)
+	}
+}
+
 func TestServerRejectsFilePathTraversal(t *testing.T) {
 	dir := t.TempDir()
 	restClientDir := filepath.Join(dir, "requests")
