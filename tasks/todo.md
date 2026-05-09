@@ -19,7 +19,7 @@
 - [x] Step 2: Bound logged request and response bodies.
 - [x] Step 3: Make configured response delays cancellation-aware.
 - [x] Step 4: Report file-backed response failures clearly.
-- [ ] Step 5: Tighten parser rules around variables and request lines.
+- [x] Step 5: Tighten parser rules around variables and request lines.
 - [ ] Step 6: Split `mockhttp/server.go` by responsibility.
 - [ ] Step 7: Improve UI event handling and mobile usability.
 - [ ] Step 8: Strengthen CI to match local checks.
@@ -39,6 +39,9 @@
 - Step 4 changed safe-but-unreadable `$file` responses to return `500 Internal Server Error` and log the render failure.
 - Added a missing-file response test while preserving the path-traversal rejection behavior.
 - Verified Step 4 with `go test ./...` and `go vet ./...`.
+- Step 5 anchored variable comments and rejected request lines with extra trailing fields.
+- Added parser tests for incidental `$name=value` text and malformed request lines.
+- Verified Step 5 with `go test ./...` and `go vet ./...`.
 
 ## Docker Startup Diagnosis
 

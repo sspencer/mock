@@ -50,3 +50,41 @@ DELETE /users/:id
 		t.Fatalf("delete route = %#v", deleteMethod)
 	}
 }
+
+func TestParseOnlyTreatsWholeCommentsAsVariables(t *testing.T) {
+	input := `### User
+# this mentions $status=500 but is not a variable
+# $status=201
+POST /users
+
+created
+`
+
+	methods, err := Parse("test.http", strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(methods) != 1 {
+		t.Fatalf("len(methods) = %d, want 1", len(methods))
+	}
+	if got := methods[0].Variables["status"]; got != "201" {
+		t.Fatalf("status variable = %q, want 201", got)
+	}
+	if len(methods[0].Variables) != 1 {
+		t.Fatalf("variables = %#v, want only explicit status variable", methods[0].Variables)
+	}
+}
+
+func TestParseRejectsRequestLinesWithExtraTokens(t *testing.T) {
+	input := `### User
+GET /users HTTP/1.1
+`
+
+	_, err := Parse("test.http", strings.NewReader(input))
+	if err == nil {
+		t.Fatal("Parse() error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "invalid HTTP request line") {
+		t.Fatalf("error = %q, want invalid request line", err)
+	}
+}

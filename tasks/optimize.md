@@ -258,3 +258,18 @@ This order fixes user-visible reliability first, then resource safety, then main
 
 - `go test ./...`
 - `go vet ./...`
+
+### Step 5: Parser Tightening
+
+**Status:** Complete.
+
+**Performed:**
+
+- Anchored comment variable parsing so only whole comments like `$status=201` become variables.
+- Rejected request lines with extra fields instead of silently ignoring trailing tokens.
+- Added parser coverage for comments that merely mention `$name=value` and for malformed request lines.
+
+**Verification:**
+
+- `go test ./...`
+- `go vet ./...`

@@ -23,7 +23,7 @@ type Method struct {
 	Source    string
 }
 
-var commentVariablePattern = regexp.MustCompile(`\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)`)
+var commentVariablePattern = regexp.MustCompile(`^\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$`)
 
 func Load(paths []string) ([]Method, error) {
 	var methods []Method
@@ -130,7 +130,7 @@ func parseSection(method Method, lines []string) (Method, error) {
 	}
 
 	requestLine := strings.Fields(strings.TrimSpace(lines[i]))
-	if len(requestLine) < 2 {
+	if len(requestLine) != 2 {
 		return method, fmt.Errorf("%q has an invalid HTTP request line", method.Name)
 	}
 	method.Method = strings.ToUpper(requestLine[0])
