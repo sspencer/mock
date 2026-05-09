@@ -1,12 +1,100 @@
 # Mock HTTP Server
 
+## Docker Startup Diagnosis
+
+- [x] Check Docker client and daemon connectivity.
+- [x] Inspect local Docker process and context state.
+- [x] Identify the most likely startup failure point.
+- [x] Record findings and recommended recovery steps.
+
+## Docker Startup Diagnosis Review
+
+- Docker Desktop is currently running and the Docker engine is reachable from the host context.
+- `docker ps` shows one running Postgres container, and `docker run --rm postgres postgres --version` successfully starts a short-lived container.
+- The sandboxed Codex process sees `permission denied while trying to connect to the docker API at unix:///Users/steve/.docker/run/docker.sock`, but the same Docker commands work outside the sandbox.
+- `docker info` reports Swarm is broken because `/var/lib/docker/swarm/certificates/swarm-node.crt` expired on Thu, 21 Sep 2023 23:56:00 UTC.
+- Swarm state is inconsistent: `docker node ls` says this node is not a manager, while `docker swarm init` says the node is already part of a swarm.
+- Recommended recovery, if Swarm is not intentionally used on this machine: run `docker swarm leave --force` to clear stale Swarm membership. Do not run it if this machine is part of an active Swarm cluster without first confirming the cluster plan.
+
+## Docker Full Cleanup
+
+- [x] Snapshot existing Docker containers, images, volumes, networks, and disk usage.
+- [x] Stop/remove containers and prune all unused Docker-managed artifacts.
+- [x] Remove build cache and builder remnants.
+- [x] Verify Docker is empty afterward.
+- [x] Record cleanup results.
+
+## Docker Full Cleanup Review
+
+- Stopped the old `todoapi-db-1` Postgres container.
+- Removed all containers, images, user-created networks, volumes, and Docker builder cache.
+- Main prune reclaimed 5.507 GB; explicit named-volume prune reclaimed another 134.2 MB.
+- Final verification: `docker ps -a` is empty, `docker images` is empty, `docker volume ls` is empty, `docker system df -v` reports no images/containers/volumes/cache, and `docker info` reports `Swarm: inactive`.
+- Only Docker's built-in default networks remain: `bridge`, `host`, and `none`.
+
+## Dockerfile Runtime Test
+
+- [x] Build the `mock` Docker image from the repository Dockerfile.
+- [x] Run the image with the bundled example request file.
+- [x] Verify an example route responds through the published port.
+- [x] Clean up the test container and record results.
+
+## Dockerfile Runtime Test Review
+
+- Built `mock:latest` successfully from `Dockerfile`.
+- Ran `mock-dockerfile-test` with `-p 18080:8080`; container startup printed 13 available mock methods and listened on `:8080`.
+- Verified `GET http://127.0.0.1:18080/users/42` returned `HTTP/1.1 200 OK` with JSON content.
+- Verified `GET http://127.0.0.1:18080/mock/` returned `HTTP/1.1 200 OK` with the request-log UI HTML.
+- Removed the temporary `mock-dockerfile-test` container after verification.
+- Left the successfully built `mock:latest` image in place for local use; final image size is 17.5 MB.
+
+## Docker README Example
+
+- [x] Add README usage showing a host `.http` file mounted into the container.
+- [x] Verify the documented Docker command works.
+- [x] Record results.
+
+## Docker README Example Review
+
+- Added a `Docker` section to `README.md` with `docker build -t mock .`.
+- Documented running the image with a bind-mounted host `.http` file: `mock /mock/user.http`.
+- Added a second example that mounts the whole `examples/` directory for request files that use relative `$file` response bodies.
+- Verified the directory-mount command with `mock-readme-test` on port `8080`.
+- Confirmed `GET /users/42` returned `HTTP/1.1 200 OK` and `GET /users` returned the file-backed JSON response.
+- Removed the temporary verification container.
+
+## Dockerfile Review
+
+- [x] Inspect the current Dockerfile against the repository layout and runtime needs.
+- [x] Update build and runtime paths.
+- [x] Verify the Docker build command and runtime layout as far as the local environment allows.
+- [x] Record review results.
+
+## Dockerfile Review Results
+
+- Replaced the stale `cmd/main.go` build path with a root package build: `go build -trimpath -o /out/mock .`.
+- Kept the Go builder on Go 1.26 and pinned it to Alpine 3.23 to match the runtime image line.
+- Copied both `examples/` and `static/` into `/app` so the default example file and request log UI work in the container.
+- Changed the image entrypoint to `mock` and the default command to `examples/user.http`.
+- Updated Makefile Docker targets to build and run a `mock` image instead of a generic `test` image.
+- Verified the Dockerfile build command with a Linux static binary build, simulated the `/app` runtime layout locally, and confirmed `/users/42` plus `/mock/` respond.
+- A real `docker build -t mock .` could not run because the Docker client cannot connect to the local Docker daemon.
+
 ## README Refresh
 
 - [x] Review the current README against CLI behavior and repository layout.
 - [x] Rewrite stale sections for developer-friendly usage and examples.
 - [x] Update checked-in example request files to match documented variable syntax.
-- [ ] Run verification for docs-referenced commands and examples.
-- [ ] Record review results.
+- [x] Run verification for docs-referenced commands and examples.
+- [x] Record review results.
+
+## README Refresh Results
+
+- Rewrote the README around the current `go run .`, `mock -p`, and `mock -l` usage.
+- Removed stale references to `cmd/main.go`, directory serving, missing `docs/events.png`, unsupported global variables, and old `@` variable syntax.
+- Documented request-file sections, control variables, placeholders, matching, duplicate response rotation, and the current project layout.
+- Updated example `.http` files so they parse with the current `$` variable syntax.
+- Verified with `go test ./...`, `make all`, stale-text scans, and a brief `go run . -p 0 examples/*.http` startup check.
 
 ## Makefile Review
 

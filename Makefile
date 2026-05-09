@@ -1,6 +1,7 @@
 GO ?= go
 APP_NAME := mock
 APP_MAIN := .
+DOCKER_IMAGE := $(APP_NAME)
 PKG := ./...
 SRC := $(shell find . -name '*.go' -not -path './.git/*')
 GOBIN ?= $(shell $(GO) env GOBIN)
@@ -42,10 +43,10 @@ test:
 	$(GO) test ./...
 
 docker:
-	docker build -t test .
+	docker build -t $(DOCKER_IMAGE) .
 
 run:
-	docker run -p 7777:8080 test
+	docker run --rm -p 7777:8080 $(DOCKER_IMAGE)
 
 lint:
 	golangci-lint run --config=~/.golangci.yaml ./...

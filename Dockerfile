@@ -1,25 +1,18 @@
-# builder image
-FROM golang:1.22-alpine3.19 as builder
-RUN mkdir /build
-RUN mkdir /build/cmd
-WORKDIR /build
+FROM golang:1.26-alpine3.23 AS builder
 
-#RUN go get -d -v
-#COPY go.mod .
-#COPY go.sum .
-#RUN go mod download
+WORKDIR /src
+COPY go.mod ./
+RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -a -o golang-mock cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o /out/mock .
 
-# generate clean, final image for end users
-FROM alpine:3.19
-COPY --from=builder /build/golang-mock .
-COPY --from=builder /build/examples/ .
+FROM alpine:3.23
 
-# executable
-ENTRYPOINT [ "./golang-mock" ]
-# arguments that can be overridden
-CMD ["user.api"]
+WORKDIR /app
+COPY --from=builder /out/mock /usr/local/bin/mock
+COPY --from=builder /src/examples ./examples
+COPY --from=builder /src/static ./static
 
-# docker build -t test .
-# docker run -p 7777:8080 test
+EXPOSE 8080
+ENTRYPOINT ["mock"]
+CMD ["examples/user.http"]

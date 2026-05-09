@@ -54,6 +54,37 @@ mock -p 9090 -l inspect examples/user.http
 That serves the mock API on `:9090` and the request log at
 `http://localhost:9090/inspect/`.
 
+## Docker
+
+Build the image:
+
+```sh
+docker build -t mock .
+```
+
+Run it with a `.http` file from your host machine:
+
+```sh
+docker run --rm \
+  -p 8080:8080 \
+  -v "$PWD/examples/user.http:/mock/user.http:ro" \
+  mock /mock/user.http
+```
+
+The bind mount keeps the request file outside the image. Rebuild the image only
+when the `mock` binary or static UI changes; edit the host `.http` file and
+restart the container to load new mock routes.
+
+If the request file uses `$file` response bodies, mount the whole directory so
+relative file references are available inside the container:
+
+```sh
+docker run --rm \
+  -p 8080:8080 \
+  -v "$PWD/examples:/mock/examples:ro" \
+  mock /mock/examples/user.http
+```
+
 ## CLI
 
 ```text
