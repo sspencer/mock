@@ -226,3 +226,18 @@ This order fixes user-visible reliability first, then resource safety, then main
 
 - `go test ./...`
 - `go vet ./...`
+
+### Step 3: Cancellation-Aware Delays
+
+**Status:** Complete.
+
+**Performed:**
+
+- Changed `$delay` handling to use a `time.Timer` and the request context instead of unconditional `time.Sleep`.
+- Returned early without writing the configured response when the request context is already canceled during the delay.
+- Added coverage proving a canceled delayed request exits quickly and does not publish a completed response event.
+
+**Verification:**
+
+- `go test ./...`
+- `go vet ./...`

@@ -2,6 +2,7 @@ package mockhttp
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -83,7 +84,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.logRequest(r, requestBody, capture, status, "", arrivedAt, time.Since(arrivedAt))
 		return
 	}
-	s.delay(method)
+	if !s.delay(r.Context(), method) {
+		return
+	}
 	filePath, _ := resolveFilePath(method)
 
 	headers := responseHeaders(*method, filePath)
@@ -254,16 +257,24 @@ func statusAllowsBody(status int) bool {
 	return status != http.StatusNoContent && status != http.StatusNotModified && (status < 100 || status >= 200)
 }
 
-func (s *Server) delay(method *restclient.Method) {
+func (s *Server) delay(ctx context.Context, method *restclient.Method) bool {
 	raw, ok := method.Variables["delay"]
 	if !ok {
-		return
+		return true
 	}
 	delay, err := time.ParseDuration(raw)
 	if err != nil || delay <= 0 {
-		return
+		return true
 	}
-	time.Sleep(delay)
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 func responseHeaders(method restclient.Method, filePath string) http.Header {

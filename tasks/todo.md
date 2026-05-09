@@ -17,7 +17,7 @@
 
 - [x] Step 1: Embed request-log UI assets so installed binaries serve `/mock/` without a working-directory dependency.
 - [x] Step 2: Bound logged request and response bodies.
-- [ ] Step 3: Make configured response delays cancellation-aware.
+- [x] Step 3: Make configured response delays cancellation-aware.
 - [ ] Step 4: Report file-backed response failures clearly.
 - [ ] Step 5: Tighten parser rules around variables and request lines.
 - [ ] Step 6: Split `mockhttp/server.go` by responsibility.
@@ -33,6 +33,9 @@
 - Step 2 added bounded body previews for request-log details, preserved full client responses, and replayed sampled request bytes back into `r.Body`.
 - Added tests for truncating oversized request and response event details.
 - Verified Step 2 with `go test ./...` and `go vet ./...`.
+- Step 3 changed `$delay` from unconditional sleep to timer/context selection.
+- Added a canceled-context test proving delayed handlers return promptly without writing a response body or event.
+- Verified Step 3 with `go test ./...` and `go vet ./...`.
 
 ## Docker Startup Diagnosis
 

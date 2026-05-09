@@ -1,6 +1,7 @@
 package mockhttp
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -278,6 +279,39 @@ done
 	}
 	if body := response.Body.String(); body != "done" {
 		t.Fatalf("body = %q, want done", body)
+	}
+}
+
+func TestServerStopsDelayWhenRequestContextIsCanceled(t *testing.T) {
+	methods, err := restclient.Parse("test.http", strings.NewReader(`### Slow Response
+# $delay=1s
+GET /slow
+Content-Type: text/plain
+
+done
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	request := httptest.NewRequestWithContext(ctx, http.MethodGet, "/slow", nil)
+	response := httptest.NewRecorder()
+
+	start := time.Now()
+	server.ServeHTTP(response, request)
+	elapsed := time.Since(start)
+
+	if elapsed > 100*time.Millisecond {
+		t.Fatalf("elapsed = %s, want canceled delay to return quickly", elapsed)
+	}
+	if body := response.Body.String(); body != "" {
+		t.Fatalf("body = %q, want no response body after cancellation", body)
+	}
+	if len(server.events) != 0 {
+		t.Fatalf("events length = %d, want no logged response after cancellation", len(server.events))
 	}
 }
 
