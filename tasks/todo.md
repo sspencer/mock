@@ -23,7 +23,7 @@
 - [x] Step 6: Split `mockhttp/server.go` by responsibility.
 - [x] Step 7: Improve UI event handling and mobile usability.
 - [x] Step 8: Strengthen CI to match local checks.
-- [ ] Step 9: Add route indexing only if benchmarking justifies it.
+- [x] Step 9: Add route indexing only if benchmarking justifies it.
 
 ## Optimization Implementation Review
 
@@ -49,6 +49,8 @@
 - Verified Step 7 with `go test ./...`, `go vet ./...`, and browser checks for desktop rows, mobile rows, and Clear behavior.
 - Step 8 updated GitHub Actions to run `make all`, matching the local format, vet, test, and build gate.
 - Verified Step 8 with `make all`.
+- Step 9 added a 1,000-route lookup benchmark and deferred route indexing because the measured baseline does not justify extra complexity yet.
+- Verified Step 9 with `go test ./...`, `go vet ./...`, and `go test ./mockhttp -bench BenchmarkServerRouteLookup -benchmem`.
 
 ## Docker Startup Diagnosis
 

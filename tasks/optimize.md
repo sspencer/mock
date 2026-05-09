@@ -327,3 +327,23 @@ This order fixes user-visible reliability first, then resource safety, then main
 **Verification:**
 
 - `make all`
+
+### Step 9: Route Lookup Benchmark
+
+**Status:** Complete; route index deferred.
+
+**Performed:**
+
+- Added `BenchmarkServerRouteLookup` with 1,000 same-method routes.
+- Preserved the current lookup implementation because the measured cost does not justify a more complex index for this local mock-server use case yet.
+- Left the benchmark in place so future routing changes can be compared against a stable baseline.
+
+**Verification:**
+
+- `go test ./...`
+- `go vet ./...`
+- `go test ./mockhttp -bench BenchmarkServerRouteLookup -benchmem`
+
+**Benchmark result:**
+
+- `BenchmarkServerRouteLookup-8`: `102991 ns/op`, `112096 B/op`, `3002 allocs/op` on Apple M1.

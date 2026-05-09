@@ -2,6 +2,7 @@ package mockhttp
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -410,5 +411,27 @@ GET /unsafe
 	}
 	if contentType := response.Header().Get("Content-Type"); contentType != "" {
 		t.Fatalf("content type = %q, want none for unsafe file path", contentType)
+	}
+}
+
+func BenchmarkServerRouteLookup(b *testing.B) {
+	var input strings.Builder
+	for i := 0; i < 1000; i++ {
+		fmt.Fprintf(&input, "### Route %d\nGET /routes/%d\n\nok-%d\n\n", i, i, i)
+	}
+	methods, err := restclient.Parse("bench.http", strings.NewReader(input.String()))
+	if err != nil {
+		b.Fatalf("Parse() error = %v", err)
+	}
+
+	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	request := httptest.NewRequest(http.MethodGet, "/routes/999", nil)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, _, ok := server.findMethod(request); !ok {
+			b.Fatal("findMethod() did not match route")
+		}
 	}
 }
