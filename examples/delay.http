@@ -19,7 +19,7 @@ Content-Type: application/json
 }
 
 ### return a user after 1 second delay
-# @delay=1000ms
+# $delay=1000ms
 GET /users/1
 Content-Type: application/json
 
@@ -30,7 +30,7 @@ Content-Type: application/json
 }
 
 ### Return a user after 2 second delay
-# @delay=2s
+# $delay=2s
 GET /users/2
 Content-Type: application/json
 

@@ -1,24 +1,20 @@
-@message = In a Bottle
-@ab = 123abc456def789-LAX
-@cd = Zenyatta Mondatta
-
 ### Get with full url
 GET http://localhost:8080/user/:id
 Content-Type: application/json
-AB-RAY: {{$ab}}
-X-Request-ID: {{guid}}_{{id}}
+AB-RAY: 123abc456def789-LAX
+X-Request-ID: request-{{$id}}
 
 {
-    "cd": "{{cd}}",
-    "id": {{id}},
+    "album": "Zenyatta Mondatta",
+    "id": {{$id}},
     "name": "{{$name}}",
     "email": "{{$email}}",
     "delay": "{{$delay}}",
-    "message": "{{$message}}"
+    "message": "In a Bottle"
 }
 
 ### Create user
-# @status = 201
+# $status = 201
 POST http://localhost:8080/user
 Content-Type: application/json
 

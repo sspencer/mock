@@ -1,18 +1,18 @@
 ### Return home page external html file
-# @file=index.html
+# $file=index.html
 GET /
 
 
 ### Return home page external html file, specify path
-# @file=index.html
+# $file=index.html
 GET /index.html
 
 ### Return external json file
-# @file=users.json
+# $file=users.json
 GET /users
 
 ### Create random user
-# @status=201
+# $status=201
 POST /users
 Content-Type: application/json
 
@@ -24,7 +24,7 @@ Content-Type: application/json
 }
 
 ### Create user failure
-# @status=400
+# $status=400
 POST /users
 Content-Type: application/json
 
@@ -82,7 +82,7 @@ Content-Type: application/json
 }
 
 ### Delete a user
-# @status=204
+# $status=204
 DELETE /users/:id
 
 ### Return a little music theory
@@ -116,7 +116,7 @@ Content-Type: application/json
 }
 
 ### Return a page after a delay
-# @delay=1500ms
+# $delay=1500ms
 GET /delay
 Content-Type: application/json
 

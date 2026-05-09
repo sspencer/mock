@@ -1,164 +1,203 @@
-# mock - http server
+# mock
 
-Mock creates an HTTP server with _mocked_ routes specified from a local file.
-It allows for rapid development and testing of (REST) API clients. The routes
-are specified in a HTTP like format and both requests and resonses are logged
-via standard out and a [web interface](http://localhost:8080/mock/).
+`mock` turns REST Client-style `.http` files into a local HTTP server.
 
-![API Requests Logger](docs/events.png)
+It is meant for the useful middle ground between hand-written test doubles and
+a real backend: describe the routes you need, start the server, point your client
+at `localhost`, and inspect the traffic in a small web UI.
 
-## Run
+## Quick Start
 
-    $ mock --help
-    Start mock server with REST Client file, directory or <stdin>.
-    mock [flags] [input_file]
-      -l string
-            URL path to view the request log (default "/mock")
-      -p int
-            port (default 8080)
+Run the example API:
 
-1. Mock API: `mock examples/user.http` or `cat my.http | mock` or even `mock < my.http`
-2. Serve Directory: `mock .` NOTE: can't combine serving a directory with serving `.http` files.
+```sh
+go run . examples/user.http
+```
 
-If you're interested in developing `mock` _itself_, simply start `mock` with:
+The server prints the routes it loaded, then listens on `:8080`.
 
-    go run cmd/main.go examples/user.http
+```sh
+curl http://localhost:8080/users/42
+curl -X POST http://localhost:8080/users
+curl http://localhost:8080/names?type=cat
+```
 
-## Response File
+Open the request log at [http://localhost:8080/mock/](http://localhost:8080/mock/).
+The UI shows each request and response with raw HTTP-style details, which is
+handy when you want to see exactly what your client sent.
 
-Responses are mocked in a text file. Responses start with `###`, specify optional
-parameters, then the HTTP Method and PATH, followed by optional headers, an
-empty line and an optional body. Parameters in the path may be specified by preceding
-the parameter with a COLON. To substitute this parameter in the response, surround
-the name with double curly brackets.
+You can also pipe a request file through stdin:
 
-Examples:
+```sh
+cat examples/user.http | go run .
+```
 
-    ### Return user
-    GET /users/:id
-    content-type: application/json
+## Installing And Building
 
-    {
-        "id": "{{id}}"
-        "name": "John Dough",
-        "email": "john@dough.com"
-    }
+Common development commands:
 
-    ### Delete user
-    # @status=204
-    DELETE http://localhost:1234/users/:id
+```sh
+make test
+make all
+make build
+```
 
-In general, syntax is:
+`make build` installs the `mock` binary into `GOBIN`, or `GOPATH/bin` when
+`GOBIN` is not set.
 
-    ### Response Name
-    # @var=value (understands @delay, @status, @file)
-    HTTP_METHOD URL
-    header      (optional zero or more)
-                (empty line, required if body specified)
-    body line 1 (optional)
-    body line 2 (optional)
+After building:
 
-    ### Response 2
-    ...
+```sh
+mock -p 9090 -l inspect examples/user.http
+```
 
-### Response Variables
+That serves the mock API on `:9090` and the request log at
+`http://localhost:9090/inspect/`.
 
-Variables are specified after `###`, are optional, and are defined one per line.
+## CLI
 
-1. `# $delay=500ms` delays response (defaults to 0, golang duration syntax)
-2. `# $status=201` defines http status code (defaults to 200)
-3. `# $file=index.html` specifies body from external file (defaults to unspecified)
+```text
+mock [-l mock] [-p 8080] <file.http> [file.http...]
+cat file.http | mock
+```
 
-### [TODO] Global Variables
+Flags:
 
-May specify global variables that can then be substituted in responses
-with `{{$name}}`. This are usually specified at the top of the file.
+- `-p`: HTTP port to listen on. Defaults to `8080`.
+- `-l`: URL path for the request log UI. Defaults to `mock`, served as `/mock/`.
 
-`@name=value`
+You can pass one or more `.http` files. When no files are passed, `mock` reads
+from stdin. Empty input fails fast with an error that points at the expected
+request-section format.
 
-### Path Variables
+## Request File Format
 
-Variables may be defined in the path, preceded by a colon. For any path variable
-defined in the path, `{{$name}}` in the body will be replaced with the value
-of the variable.
+Each response starts with `###`, followed by a name, optional variables, an HTTP
+request line, optional response headers, a blank line, and an optional body.
 
-    ### say hello
-    GET /hello/:name
-    content-type: text/plain
+```http
+### Return user
+# $status=200
+GET /users/:id
+Content-Type: application/json
 
-    Hello {{$name}}!
+{
+  "id": "{{$id}}",
+  "name": "{{$name}}",
+  "requestId": "{{$uuid}}"
+}
 
-### Headers
+### Delete user
+# $status=204
+DELETE /users/:id
+```
 
-Headers are optional. By default, every response will respond
-with `content-type: "text/html; charset=utf-8"`.
+The request target may be a path or a full URL. Only the path and query string
+are used for matching.
 
-**NOTE** While it'd be nicer to default content type to `application/json`,
-HTTP Client plugins only highlight JSON bodies if the content-type
-is specified.
+## Variables
 
-### Variables
+Variables live in comments directly below the `###` line:
 
-Besides replacing path variables in the body or header e.g. `{{id}}`, the following
-variables will be dynamically generated with [faker](https://github.com/jaswdr/faker)
-and replaced in the body. The dollar sign is optional.
+```http
+# $status=201
+# $delay=500ms
+# $file=users.json
+```
 
-- `{{$name}}`
-- `{{$firstName}}`
-- `{{$lastName}}`
-- `{{$user}}`
-- `{{$email}}`
-- `{{$phone}}`
-- `{{$url}}`
-- `{{$file}}`
-- `{{$server}}`
-- `{{$hash}}`
-- `{{$bool}}`
-- `{{$integer}}`
-- `{{$float}}`
-- `{{$guid}}`
-- `{{$uuid}}`
-- `{{$timestamp}}`
-- `{{$isoTimestamp}}`
-- `{{$sentence}}`
-- `{{$paragraph}}`
-- `{{$article}}`
+Supported control variables:
 
-## [TODO] Multiple Responses
+- `$status`: response status code. Defaults to `200`.
+- `$delay`: response delay parsed with Go duration syntax, such as `250ms` or `2s`.
+- `$file`: response body file, resolved relative to the `.http` file.
 
-The same Method and Path can be specified. Each duplicate Method / Path adds
-a new response to the entry. As you request the same API, different responses
-are returned in a round-robin fashion.
+`$file` paths must be relative and cannot contain `..` path segments. If no
+explicit `Content-Type` header is set, file-backed responses infer it from the
+file extension when possible.
 
-For example (not actual format):
+## Placeholders
 
-    ### response 1
-    # @status=201
-    POST /users
-    { "id": 5 }
+Response bodies can contain `{{$name}}` placeholders. `mock` resolves them from:
 
-    ### response 2
-    # @status=201
-    POST /users
-    { "id": 6 }
+- Path parameters, such as `:id` in `/users/:id`.
+- Query parameters, such as `type` in `/names?type=cat`.
+- Variables declared in comments, such as `$delay`.
+- Built-in generated values.
 
-    ### response 3
-    # @status 400
-    POST /users
-    { "id": 0 }
+Useful generated values:
 
-Will return the status codes `201`, `201`, `400` and responses `{ "id": 5 }`,
-`{ "id": 6 }`, `{ "id": 0 }` in order as you issue
-`curl -XPOST http://localhost:8080/users` requests.
+```text
+{{$name}}          {{$firstName}}      {{$lastName}}
+{{$user}}          {{$email}}          {{$phone}}
+{{$url}}           {{$server}}         {{$hash}}
+{{$bool}}          {{$integer}}        {{$float}}
+{{$uuid}}          {{$timestamp}}      {{$isoTimestamp}}
+{{$sentence}}
+```
 
-## Features
+Unknown placeholders resolve to an empty string.
 
-- [x] embedded web server displays log of all requests/responses. Uses [ngrok](https://ngrok.com) as inspiration.
-- [x] easy api specification similar to [HTTP Client](https://www.jetbrains.com/help/idea/http-client-in-product-code-editor.html)
-- [x] specify multiple api files from command line
-- [x] include external files
-- [x] path variables
-- [x] multiple responses per Method / Path
-- [x] dockerized
-- [x] add {{$body}} variables similar to what http client supports
-- [x] Use Go lang text templates instead of ReplaceAll()
+## Matching
+
+Routes match on HTTP method, path, and any query parameters declared in the
+`.http` file.
+
+```http
+### Cat names
+GET /names?type=cat
+Content-Type: application/json
+
+{"type":"{{$type}}","names":["miso","taco"]}
+```
+
+`GET /names?type=cat` matches. `GET /names?type=dog` does not.
+
+Path parameters are introduced with `:`.
+
+```http
+### User profile
+GET /users/:id/profile
+Content-Type: application/json
+
+{"id":"{{$id}}"}
+```
+
+## Multiple Responses
+
+If more than one response has the same method and URL, `mock` rotates through
+the matching responses in file order. This is useful for retry paths and stateful
+client behavior without building a stateful fake server.
+
+```http
+### First create succeeds
+# $status=201
+POST /users
+Content-Type: application/json
+
+{"id":1}
+
+### Second create fails
+# $status=400
+POST /users
+Content-Type: application/json
+
+{"error":"duplicate user"}
+```
+
+Repeated `POST /users` requests return `201`, then `400`, then `201` again.
+
+## Development
+
+This repository is intentionally small:
+
+- `main.go` wires CLI flags, input loading, and HTTP server startup.
+- `restclient/` parses `.http` files.
+- `mockhttp/` matches requests, renders responses, and streams request-log events.
+- `static/` contains the request log UI.
+- `examples/` contains request files you can run locally.
+
+Before sending a change around:
+
+```sh
+make all
+```

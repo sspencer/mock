@@ -1,5 +1,13 @@
 # Mock HTTP Server
 
+## README Refresh
+
+- [x] Review the current README against CLI behavior and repository layout.
+- [x] Rewrite stale sections for developer-friendly usage and examples.
+- [x] Update checked-in example request files to match documented variable syntax.
+- [ ] Run verification for docs-referenced commands and examples.
+- [ ] Record review results.
+
 ## Makefile Review
 
 - [x] Inspect current Makefile targets against the repository layout.
