@@ -11,7 +11,6 @@ FROM alpine:3.23
 WORKDIR /app
 COPY --from=builder /out/mock /usr/local/bin/mock
 COPY --from=builder /src/examples ./examples
-COPY --from=builder /src/static ./static
 
 EXPOSE 8080
 ENTRYPOINT ["mock"]

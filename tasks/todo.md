@@ -52,6 +52,21 @@
 - Step 9 added a 1,000-route lookup benchmark and deferred route indexing because the measured baseline does not justify extra complexity yet.
 - Verified Step 9 with `go test ./...`, `go vet ./...`, and `go test ./mockhttp -bench BenchmarkServerRouteLookup -benchmem`.
 
+## Dockerfile Embedded Static Follow-Up
+
+- [x] Recheck runtime image contents after embedding `static/`.
+- [x] Remove obsolete runtime `static/` copy.
+- [x] Rebuild the Docker image.
+- [x] Verify the container still serves the embedded request-log UI and example API.
+
+## Dockerfile Embedded Static Follow-Up Review
+
+- Removed `COPY --from=builder /src/static ./static` from the runtime stage because the binary now serves UI files from `embed.FS`.
+- Kept copying `examples/` because the default `CMD ["examples/user.http"]` and example `$file` responses still depend on those runtime files.
+- Verified with `go test ./...`.
+- Verified `docker build -t mock .` succeeds.
+- Verified a container from the rebuilt image returns `200` for `/mock/` and `/users/42` on host port `18087`.
+
 ## Docker Startup Diagnosis
 
 - [x] Check Docker client and daemon connectivity.
