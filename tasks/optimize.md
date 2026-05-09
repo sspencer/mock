@@ -273,3 +273,23 @@ This order fixes user-visible reliability first, then resource safety, then main
 
 - `go test ./...`
 - `go vet ./...`
+
+### Step 6: `mockhttp` Responsibility Split
+
+**Status:** Complete.
+
+**Performed:**
+
+- Kept `server.go` focused on `Server`, request handling, and delay orchestration.
+- Moved route matching and duplicate-response rotation to `match.go`.
+- Moved response rendering, status handling, file resolution, and generated values to `render.go`.
+- Moved request/response detail capture and logging helpers to `details.go`.
+- Moved SSE event types, replay, subscription, and publishing to `events.go`.
+- Kept the exported API unchanged.
+
+**Verification:**
+
+- `gofmt`
+- `git diff --check`
+- `go test ./...`
+- `go vet ./...`

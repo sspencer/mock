@@ -20,7 +20,7 @@
 - [x] Step 3: Make configured response delays cancellation-aware.
 - [x] Step 4: Report file-backed response failures clearly.
 - [x] Step 5: Tighten parser rules around variables and request lines.
-- [ ] Step 6: Split `mockhttp/server.go` by responsibility.
+- [x] Step 6: Split `mockhttp/server.go` by responsibility.
 - [ ] Step 7: Improve UI event handling and mobile usability.
 - [ ] Step 8: Strengthen CI to match local checks.
 - [ ] Step 9: Add route indexing only if benchmarking justifies it.
@@ -42,6 +42,9 @@
 - Step 5 anchored variable comments and rejected request lines with extra trailing fields.
 - Added parser tests for incidental `$name=value` text and malformed request lines.
 - Verified Step 5 with `go test ./...` and `go vet ./...`.
+- Step 6 split `mockhttp/server.go` into focused files for matching, rendering, event streaming, and detail capture.
+- Kept the exported `mockhttp` API unchanged and avoided behavior changes.
+- Verified Step 6 with `gofmt`, `git diff --check`, `go test ./...`, and `go vet ./...`.
 
 ## Docker Startup Diagnosis
 
