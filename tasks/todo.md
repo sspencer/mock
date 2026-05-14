@@ -1,5 +1,23 @@
 # Mock HTTP Server
 
+## Current Fixture Parser Tests
+
+- [x] Inspect legacy parser fixture translations and old-format test data.
+- [x] Update `mockhttp/testdata` fixtures to current `$` variable syntax.
+- [x] Remove test-only legacy translation from `mockhttp/match_test.go`.
+- [x] Update golden files to current parser/application behavior.
+- [x] Run focused and full verification.
+- [x] Record the result.
+
+## Current Fixture Parser Tests Review
+
+- Updated imported `.http` fixtures from legacy `# @...` variables to current `# $...` variables.
+- Removed the obsolete top-level `@global` fixture line and trailing empty `###` section.
+- Replaced stale invalid-status and invalid-delay golden errors with the current behavior: those values parse as variables, with invalid delay ignored at runtime and status `999` preserved.
+- Simplified `mockhttp/match_test.go` so it directly calls `restclient.Parse` with no translation or legacy validation path.
+- Updated goldens to current LF body sizing and current response-header behavior.
+- Verified with `go test ./mockhttp -run TestParser -count=1`, `go test ./...`, `go vet ./...`, and `make all`.
+
 ## Legacy Match Parser Tests
 
 - [x] Inspect imported `mockhttp/match_test.go` and `mockhttp/testdata` fixtures.

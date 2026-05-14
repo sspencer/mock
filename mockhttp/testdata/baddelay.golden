@@ -1,1 +1,1 @@
-invalid duration, line 3: # @delay=zero
+Bad status: DELETE /bread/1 delay=0s status=204 header=0 body=0

@@ -1,5 +1,4 @@
-@global = hello world
 ### Delete loaf
-# @delay=1s
-# @status=204
+# $delay=1s
+# $status=204
 DELETE /bread/1
