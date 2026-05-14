@@ -1,5 +1,23 @@
 # Mock HTTP Server
 
+## Directory Static Server
+
+- [x] Inspect CLI input loading, handler setup, and existing tests.
+- [x] Add input-mode detection for a single directory argument.
+- [x] Serve directory contents from `/` without mock routes or the request-log UI.
+- [x] Add focused tests for directory mode and mixed-input rejection.
+- [x] Update README usage.
+- [x] Run verification and record the result.
+
+## Directory Static Server Review
+
+- Added `loadInput` to choose between mock request input and single-directory static serving.
+- Added `newStaticFileHandler` so directory mode serves files from `/` with `http.FileServer`.
+- Rejects mixed directory and `.http` inputs to keep modes unambiguous.
+- Updated CLI usage docs and missing-input usage text.
+- Added tests for directory input detection, mixed-input rejection, and serving `index.html` plus direct file paths.
+- Verified with focused tests, `go test ./...`, `go vet ./...`, and `make all`.
+
 ## Current Fixture Parser Tests
 
 - [x] Inspect legacy parser fixture translations and old-format test data.

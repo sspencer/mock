@@ -91,6 +91,7 @@ docker run --rm \
 
 ```text
 mock [-l mock] [-p 8080] <file.http> [file.http...]
+mock [-p 8080] <directory>
 cat file.http | mock
 ```
 
@@ -102,6 +103,9 @@ Flags:
 You can pass one or more `.http` files. When no files are passed, `mock` reads
 from stdin. Empty input fails fast with an error that points at the expected
 request-section format.
+
+If you pass a single directory, `mock` serves that directory as a static file
+server from `/` instead of loading mock routes or the request-log UI.
 
 ## Request File Format
 

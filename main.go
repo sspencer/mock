@@ -26,34 +26,42 @@ func main() {
 		os.Exit(2)
 	}
 	if flagSet.NArg() == 0 && stdinIsTerminal(os.Stdin) {
-		logger.Error("missing request input", "usage", "mock [-l mock] [-p 8080] <file.http> [file.http...] or cat file.http | mock")
+		logger.Error("missing request input", "usage", "mock [-l mock] [-p 8080] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
 		os.Exit(2)
 	}
 
-	methods, err := loadMethods(flagSet.Args(), os.Stdin)
+	input, err := loadInput(flagSet.Args(), os.Stdin)
 	if err != nil {
 		logger.Error("failed to load request input", "error", err)
 		os.Exit(1)
 	}
-	if err := validateMethods(methods, flagSet.Args()); err != nil {
-		logger.Error("failed to start mock server", "error", err)
-		os.Exit(1)
-	}
-	printMethods(os.Stdout, methods)
 
-	staticFS, err := staticFileSystem()
-	if err != nil {
-		logger.Error("failed to load static files", "error", err)
-		os.Exit(1)
+	var handler http.Handler
+	if input.StaticDir != "" {
+		handler = newStaticFileHandler(input.StaticDir)
+		logger.Info("starting static HTTP server", "addr", listenAddress(*port), "dir", input.StaticDir)
+	} else {
+		if err := validateMethods(input.Methods, flagSet.Args()); err != nil {
+			logger.Error("failed to start mock server", "error", err)
+			os.Exit(1)
+		}
+		printMethods(os.Stdout, input.Methods)
+
+		staticFS, err := staticFileSystem()
+		if err != nil {
+			logger.Error("failed to load static files", "error", err)
+			os.Exit(1)
+		}
+		handler = newHandler(input.Methods, logger, *mount, staticFS)
+		logger.Info("starting mock HTTP server", "addr", listenAddress(*port), "methods", len(input.Methods), "ui", normalizeMountPath(*mount))
 	}
-	handler := newHandler(methods, logger, *mount, staticFS)
+
 	server := &http.Server{
 		Addr:              listenAddress(*port),
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	logger.Info("starting mock HTTP server", "addr", server.Addr, "methods", len(methods), "ui", normalizeMountPath(*mount))
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Error("server failed", "error", err)
 		os.Exit(1)
@@ -62,6 +70,38 @@ func main() {
 
 func listenAddress(port int) string {
 	return fmt.Sprintf(":%d", port)
+}
+
+type inputSource struct {
+	Methods   []restclient.Method
+	StaticDir string
+}
+
+func loadInput(args []string, stdin io.Reader) (inputSource, error) {
+	if len(args) == 1 {
+		info, err := os.Stat(args[0])
+		if err != nil {
+			return inputSource{}, err
+		}
+		if info.IsDir() {
+			return inputSource{StaticDir: args[0]}, nil
+		}
+	}
+	for _, arg := range args {
+		info, err := os.Stat(arg)
+		if err != nil {
+			return inputSource{}, err
+		}
+		if info.IsDir() {
+			return inputSource{}, fmt.Errorf("cannot mix static directory %q with other request inputs", arg)
+		}
+	}
+
+	methods, err := loadMethods(args, stdin)
+	if err != nil {
+		return inputSource{}, err
+	}
+	return inputSource{Methods: methods}, nil
 }
 
 func loadMethods(args []string, stdin io.Reader) ([]restclient.Method, error) {
@@ -85,6 +125,10 @@ func validateMethods(methods []restclient.Method, args []string) error {
 func stdinIsTerminal(file *os.File) bool {
 	info, err := file.Stat()
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
+func newStaticFileHandler(dir string) http.Handler {
+	return http.FileServer(http.Dir(dir))
 }
 
 func newHandler(methods []restclient.Method, logger *slog.Logger, mount string, staticFS fs.FS) http.Handler {

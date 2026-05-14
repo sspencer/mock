@@ -63,6 +63,36 @@ created
 	}
 }
 
+func TestLoadInputUsesSingleDirectoryAsStaticRoot(t *testing.T) {
+	dir := t.TempDir()
+	input, err := loadInput([]string{dir}, strings.NewReader(""))
+	if err != nil {
+		t.Fatalf("loadInput() error = %v", err)
+	}
+	if input.StaticDir != dir {
+		t.Fatalf("StaticDir = %q, want %q", input.StaticDir, dir)
+	}
+	if len(input.Methods) != 0 {
+		t.Fatalf("len(Methods) = %d, want 0", len(input.Methods))
+	}
+}
+
+func TestLoadInputRejectsDirectoryMixedWithRequestFiles(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "user.http")
+	if err := os.WriteFile(path, []byte("### User\nGET /users\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	_, err := loadInput([]string{dir, path}, strings.NewReader(""))
+	if err == nil {
+		t.Fatal("loadInput() error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "cannot mix static directory") {
+		t.Fatalf("error = %q, want mixed directory error", err)
+	}
+}
+
 func TestListenAddress(t *testing.T) {
 	tests := map[int]string{
 		8080: ":8080",
@@ -152,6 +182,37 @@ func TestNormalizeMountPath(t *testing.T) {
 		if got := normalizeMountPath(input); got != want {
 			t.Fatalf("normalizeMountPath(%q) = %q, want %q", input, got, want)
 		}
+	}
+}
+
+func TestStaticFileHandlerServesDirectoryFiles(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("home"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "about.txt"), []byte("about"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	handler := newStaticFileHandler(dir)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("index status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if body := response.Body.String(); body != "home" {
+		t.Fatalf("index body = %q, want home", body)
+	}
+
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/about.txt", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("file status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if body := response.Body.String(); body != "about" {
+		t.Fatalf("file body = %q, want about", body)
 	}
 }
 
