@@ -26,6 +26,8 @@ Open the request log at [http://localhost:8080/mock/](http://localhost:8080/mock
 The UI shows each request and response with raw HTTP-style details, which is
 handy when you want to see exactly what your client sent.
 
+![Web Interface](./docs/web.png)
+
 You can also pipe a request file through stdin:
 
 ```sh
