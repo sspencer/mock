@@ -187,10 +187,17 @@ func TestNormalizeMountPath(t *testing.T) {
 
 func TestStaticFileHandlerServesDirectoryFiles(t *testing.T) {
 	dir := t.TempDir()
+	nestedDir := filepath.Join(dir, "docs")
+	if err := os.Mkdir(nestedDir, 0o700); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
 	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("home"), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "about.txt"), []byte("about"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(nestedDir, "guide.txt"), []byte("guide"), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	handler := newStaticFileHandler(dir)
@@ -213,6 +220,42 @@ func TestStaticFileHandlerServesDirectoryFiles(t *testing.T) {
 	}
 	if body := response.Body.String(); body != "about" {
 		t.Fatalf("file body = %q, want about", body)
+	}
+
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/docs/guide.txt", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("nested file status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if body := response.Body.String(); body != "guide" {
+		t.Fatalf("nested file body = %q, want guide", body)
+	}
+}
+
+func TestStaticFileHandlerRejectsMissingAndTraversalPaths(t *testing.T) {
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "public")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(parent, "secret.txt"), []byte("secret"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	handler := newStaticFileHandler(dir)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/missing.txt", nil))
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("missing status = %d, want %d", response.Code, http.StatusNotFound)
+	}
+
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/../secret.txt", nil))
+
+	if response.Code == http.StatusOK || strings.Contains(response.Body.String(), "secret") {
+		t.Fatalf("traversal response status = %d body = %q, want secret not served", response.Code, response.Body.String())
 	}
 }
 

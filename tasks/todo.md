@@ -1,5 +1,23 @@
 # Mock HTTP Server
 
+## Test Coverage Expansion
+
+- [x] Add static-directory edge coverage for nested files, missing files, and traversal attempts.
+- [x] Add route and query matching table coverage.
+- [x] Add SSE/event stream behavior coverage.
+- [x] Add parser error coverage for current `.http` behavior.
+- [x] Add generated placeholder key coverage.
+- [x] Run full verification and commit the test changes.
+
+## Test Coverage Expansion Review
+
+- Added static directory tests for nested files, missing files, and traversal attempts.
+- Added table tests for path matching and query matching edge cases.
+- Added event tests for method rejection, stored-event replay, subscriber cleanup, and bounded event storage.
+- Added parser error tests for current `.http` syntax failures.
+- Added generated-value coverage for every documented placeholder key and unknown keys.
+- Verified with `go test ./...`, `go vet ./...`, `go test ./... -race`, and `make all`.
+
 ## Directory Static Server
 
 - [x] Inspect CLI input loading, handler setup, and existing tests.

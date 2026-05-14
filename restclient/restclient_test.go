@@ -88,3 +88,59 @@ GET /users HTTP/1.1
 		t.Fatalf("error = %q, want invalid request line", err)
 	}
 }
+
+func TestParseErrors(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name: "content before first section",
+			input: `GET /users
+`,
+			want: "content before first ###",
+		},
+		{
+			name: "missing method name",
+			input: `###
+GET /users
+`,
+			want: "method name is required after ###",
+		},
+		{
+			name: "missing request line",
+			input: `### User
+# comment only
+`,
+			want: "missing an HTTP request line",
+		},
+		{
+			name: "invalid request target",
+			input: `### User
+GET http://[::1
+`,
+			want: "invalid request target",
+		},
+		{
+			name: "invalid header line",
+			input: `### User
+GET /users
+Content-Type application/json
+`,
+			want: "invalid header line",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Parse("test.http", strings.NewReader(tt.input))
+			if err == nil {
+				t.Fatal("Parse() error = nil, want error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %q, want to contain %q", err, tt.want)
+			}
+		})
+	}
+}
