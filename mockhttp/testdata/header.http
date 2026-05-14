@@ -1,0 +1,4 @@
+### Get auth loaf
+GET /bread/1
+Accept-Ranges: bytes
+Date: Fri, 07 Oct 2022 06:37:46 GMT

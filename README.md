@@ -164,9 +164,13 @@ Useful generated values:
 {{$user}}          {{$email}}          {{$phone}}
 {{$url}}           {{$server}}         {{$hash}}
 {{$bool}}          {{$integer}}        {{$float}}
-{{$uuid}}          {{$timestamp}}      {{$isoTimestamp}}
-{{$sentence}}
+{{$uuid}}          {{$guid}}           {{$timestamp}}
+{{$isoTimestamp}}  {{$file}}           {{$sentence}}
+{{$paragraph}}     {{$article}}
 ```
+
+Generated values are random faker data and are recalculated each time a
+response body is rendered.
 
 Unknown placeholders resolve to an empty string.
 

@@ -1,5 +1,37 @@
 # Mock HTTP Server
 
+## Legacy Match Parser Tests
+
+- [x] Inspect imported `mockhttp/match_test.go` and `mockhttp/testdata` fixtures.
+- [x] Replace the obsolete `NewParser` test path with the current `restclient.Parse` API.
+- [x] Preserve legacy fixture coverage by normalizing old `@` variables inside the test harness.
+- [x] Run the new parser fixture tests with the full project verification.
+- [x] Record the result.
+
+## Legacy Match Parser Tests Review
+
+- Reworked `mockhttp/match_test.go` to parse fixtures with `restclient.Parse`.
+- Added test-only normalization for legacy fixture syntax: `# @...` variables become current `# $...`, top-level globals are ignored, and a trailing empty `###` is skipped.
+- Kept the existing golden files by serializing parsed methods into the old summary format, including legacy CRLF body byte counts and file content-type inference.
+- Verified with `go test ./mockhttp -run TestParser -count=1`, `go test ./...`, `go vet ./...`, and `make all`.
+
+## Faker Generated Values
+
+- [x] Inspect the reverted generated-value code and current faker dependency state.
+- [x] Update `generatedValue` to return faker-backed random values using the existing switch shape.
+- [x] Update README placeholder documentation for the expanded generated values.
+- [x] Add focused regression coverage for faker-backed dynamic placeholders.
+- [x] Run verification and record the result.
+
+## Faker Generated Values Review
+
+- Updated `generatedValue` in `mockhttp/render.go` to use a package-level `faker.New()` generator with direct switch cases.
+- Added faker-backed placeholders for `guid`, `file`, `paragraph`, and `article`, and changed existing generated placeholders to return random faker data.
+- Left `mockhttp/values.go` untouched as an empty package placeholder and kept generation in `mockhttp/render.go`.
+- Updated the README placeholder list and noted that generated values are recalculated on each render.
+- Added server coverage for faker placeholders while preserving path, query, comment, and unknown-placeholder behavior.
+- Verified with `go test ./...`, `go vet ./...`, and `make all`.
+
 ## Optimization Plan Analysis
 
 - [x] Inspect Go package structure, tests, docs, and static UI.

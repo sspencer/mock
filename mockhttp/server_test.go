@@ -46,6 +46,71 @@ Content-Type: application/json
 	}
 }
 
+func TestServerGeneratesFakerPlaceholderValues(t *testing.T) {
+	methods, err := restclient.Parse("test.http", strings.NewReader(`### Return User
+# $name=Configured Name
+GET /users/:id?type=cat
+Content-Type: text/plain
+
+id={{$id}}
+type={{$type}}
+name={{$name}}
+uuid={{$uuid}}
+guid={{$guid}}
+paragraph={{$paragraph}}
+article={{$article}}
+missing={{$missing}}
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	bodies := make([]string, 2)
+	for i := range bodies {
+		request := httptest.NewRequest(http.MethodGet, "/users/42?type=cat", nil)
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		if response.Code != http.StatusOK {
+			t.Fatalf("request %d status = %d, want %d", i+1, response.Code, http.StatusOK)
+		}
+		bodies[i] = response.Body.String()
+		for _, want := range []string{
+			"id=42",
+			"type=cat",
+			"name=Configured Name",
+			"missing=",
+		} {
+			if !strings.Contains(bodies[i], want) {
+				t.Fatalf("request %d body = %q, want to contain %q", i+1, bodies[i], want)
+			}
+		}
+		for _, key := range []string{"uuid", "guid", "paragraph", "article"} {
+			if lineValue(bodies[i], key) == "" {
+				t.Fatalf("request %d body = %q, want generated %s", i+1, bodies[i], key)
+			}
+		}
+	}
+
+	firstUUID := lineValue(bodies[0], "uuid")
+	secondUUID := lineValue(bodies[1], "uuid")
+	if firstUUID == secondUUID {
+		t.Fatalf("uuid values both = %q, want dynamic generated values", firstUUID)
+	}
+}
+
+func lineValue(body, key string) string {
+	prefix := key + "="
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimPrefix(line, prefix)
+		}
+	}
+	return ""
+}
+
 func TestServerUsesStatusVariableAndSuppressesNoContentBody(t *testing.T) {
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### Delete User
 # $status=204

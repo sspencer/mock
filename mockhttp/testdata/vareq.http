@@ -1,0 +1,4 @@
+### Delete equal loaf
+# @delay=500ms
+# @status=200
+DELETE /bread/2
