@@ -1,0 +1,16 @@
+### Requires bearer token
+# $header.Authorization=Bearer secret
+# $status=200
+GET /secure
+Content-Type: application/json
+
+{
+  "ok": true,
+  "message": "authorized"
+}
+
+### Missing or wrong token falls through (no match)
+GET /public
+Content-Type: application/json
+
+{"ok":true,"public":true}
