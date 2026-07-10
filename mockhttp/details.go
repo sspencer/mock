@@ -29,6 +29,11 @@ func newResponseCapture(w http.ResponseWriter) *responseCapture {
 	return &responseCapture{ResponseWriter: w}
 }
 
+// Unwrap exposes the underlying ResponseWriter for http.ResponseController and middleware.
+func (w *responseCapture) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
 func (w *responseCapture) WriteHeader(status int) {
 	if w.status != 0 {
 		return

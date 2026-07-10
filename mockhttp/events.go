@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
+
+	"github.com/sspencer/mock/restclient"
 )
 
 const maxRequestEvents = 200
 
 type RequestEvent struct {
+	ID       uint64        `json:"id"`
 	Request  EventRequest  `json:"request"`
 	Response EventResponse `json:"response"`
 }
@@ -29,6 +33,14 @@ type EventResponse struct {
 	Details    string `json:"details"`
 }
 
+// RouteInfo is a JSON-friendly description of a configured mock route.
+type RouteInfo struct {
+	Name   string `json:"name"`
+	Method string `json:"method"`
+	Path   string `json:"path"`
+	Query  string `json:"query,omitzero"`
+}
+
 func (s *Server) ServeEvents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", http.MethodGet)
@@ -45,10 +57,14 @@ func (s *Server) ServeEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
+	lastID := parseLastEventID(r)
 	events, subscriber := s.subscribe()
 	defer s.unsubscribe(subscriber)
 
 	for _, event := range events {
+		if event.ID <= lastID {
+			continue
+		}
 		if !writeEvent(w, event) {
 			return
 		}
@@ -58,6 +74,9 @@ func (s *Server) ServeEvents(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case event := <-subscriber:
+			if event.ID <= lastID {
+				continue
+			}
 			if !writeEvent(w, event) {
 				return
 			}
@@ -66,6 +85,39 @@ func (s *Server) ServeEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+// ServeClear handles POST to clear the in-memory request log and rotation counters.
+func (s *Server) ServeClear(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.ClearEvents()
+	s.ResetCounters()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ServeRoutes handles GET of the currently configured mock routes.
+func (s *Server) ServeRoutes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	methods := s.Methods()
+	routes := make([]RouteInfo, 0, len(methods))
+	for _, method := range methods {
+		routes = append(routes, RouteInfo{
+			Name:   method.Name,
+			Method: method.Method,
+			Path:   method.Path,
+			Query:  method.Query.Encode(),
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(routes)
 }
 
 func (s *Server) subscribe() ([]RequestEvent, chan RequestEvent) {
@@ -86,6 +138,10 @@ func (s *Server) unsubscribe(subscriber chan RequestEvent) {
 }
 
 func (s *Server) publishRequest(event RequestEvent) {
+	if event.ID == 0 {
+		event.ID = s.nextEventID.Add(1)
+	}
+
 	s.mu.Lock()
 	if len(s.events) == maxRequestEvents {
 		copy(s.events, s.events[1:])
@@ -113,7 +169,7 @@ func writeEvent(w io.Writer, event RequestEvent) bool {
 	if err != nil {
 		return false
 	}
-	_, err = fmt.Fprintf(w, "data: %s\n\n", data)
+	_, err = fmt.Fprintf(w, "id: %d\ndata: %s\n\n", event.ID, data)
 	return err == nil
 }
 
@@ -136,4 +192,30 @@ func newRequestEvent(r *http.Request, requestBody loggedBody, response *response
 
 func formatRequestTime(t time.Time) string {
 	return t.Local().Format("15:04:05")
+}
+
+func parseLastEventID(r *http.Request) uint64 {
+	raw := r.Header.Get("Last-Event-ID")
+	if raw == "" {
+		return 0
+	}
+	id, err := strconv.ParseUint(raw, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return id
+}
+
+// RoutesFromMethods is a helper for tests and CLI summaries.
+func RoutesFromMethods(methods []restclient.Method) []RouteInfo {
+	routes := make([]RouteInfo, 0, len(methods))
+	for _, method := range methods {
+		routes = append(routes, RouteInfo{
+			Name:   method.Name,
+			Method: method.Method,
+			Path:   method.Path,
+			Query:  method.Query.Encode(),
+		})
+	}
+	return routes
 }

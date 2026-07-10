@@ -75,6 +75,46 @@ created
 	}
 }
 
+func TestParseMatchHeadersFromDollarHeaderComments(t *testing.T) {
+	input := `### Secured
+# $header.Authorization=Bearer secret
+# $header.X-Trace=*
+GET /secure
+Content-Type: application/json
+
+{"ok":true}
+`
+	methods, err := Parse("test.http", strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(methods) != 1 {
+		t.Fatalf("len(methods) = %d, want 1", len(methods))
+	}
+	if got := methods[0].MatchHeaders.Get("Authorization"); got != "Bearer secret" {
+		t.Fatalf("Authorization match = %q, want Bearer secret", got)
+	}
+	if got := methods[0].MatchHeaders.Get("X-Trace"); got != "*" {
+		t.Fatalf("X-Trace match = %q, want *", got)
+	}
+	if got := methods[0].Headers.Get("Content-Type"); got != "application/json" {
+		t.Fatalf("response Content-Type = %q", got)
+	}
+}
+
+func TestFileDependencies(t *testing.T) {
+	methods := []Method{
+		{Variables: map[string]string{"file": "users.json"}},
+		{Variables: map[string]string{"file": "users.json"}},
+		{Variables: map[string]string{"file": "index.html"}},
+		{Variables: map[string]string{}},
+	}
+	deps := FileDependencies(methods)
+	if len(deps) != 2 {
+		t.Fatalf("deps = %#v, want 2 unique paths", deps)
+	}
+}
+
 func TestParseRejectsRequestLinesWithExtraTokens(t *testing.T) {
 	input := `### User
 GET /users HTTP/1.1

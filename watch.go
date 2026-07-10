@@ -13,7 +13,7 @@ import (
 )
 
 // reloadDebounce coalesces rapid editor save events (Write + Create, atomic renames).
-const reloadDebounce = 100 * time.Millisecond
+const reloadDebounce = 250 * time.Millisecond
 
 // watchFiles watches the parent directories of the given files and invokes onChange
 // when any of those files is written or recreated. The parent directory is watched
@@ -35,18 +35,17 @@ func watchFiles(paths []string, onChange func(), logger *slog.Logger) (io.Closer
 	watched := make(map[string]struct{}, len(paths))
 	dirs := make(map[string]struct{})
 	for _, path := range paths {
-		info, err := os.Lstat(path)
-		if err != nil {
-			return nil, err
-		}
-		if info.IsDir() {
-			return nil, fmt.Errorf("%q is a directory, not a file", path)
-		}
 		abs, err := filepath.Abs(path)
 		if err != nil {
 			return nil, err
 		}
 		abs = filepath.Clean(abs)
+		// Dependency files may not exist yet; still watch their directory.
+		if info, err := os.Lstat(abs); err == nil && info.IsDir() {
+			return nil, fmt.Errorf("%q is a directory, not a file", path)
+		} else if err != nil && !os.IsNotExist(err) {
+			return nil, err
+		}
 		watched[abs] = struct{}{}
 		dirs[filepath.Dir(abs)] = struct{}{}
 	}
@@ -104,7 +103,7 @@ func (w *fileWatcher) loop() {
 			if !ok {
 				return
 			}
-			if !event.Has(fsnotify.Write) && !event.Has(fsnotify.Create) {
+			if !event.Has(fsnotify.Write) && !event.Has(fsnotify.Create) && !event.Has(fsnotify.Rename) {
 				continue
 			}
 			abs, err := filepath.Abs(event.Name)
@@ -127,4 +126,35 @@ func (w *fileWatcher) schedule() {
 		w.timer.Stop()
 	}
 	w.timer = time.AfterFunc(reloadDebounce, w.onChange)
+}
+
+func resolveWatchPaths(httpFiles []string, relativeDeps []string) []string {
+	seen := make(map[string]struct{})
+	var paths []string
+	add := func(p string) {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			return
+		}
+		abs = filepath.Clean(abs)
+		if _, ok := seen[abs]; ok {
+			return
+		}
+		seen[abs] = struct{}{}
+		paths = append(paths, abs)
+	}
+	for _, f := range httpFiles {
+		add(f)
+	}
+	// relativeDeps are relative to each http file's directory; resolve against all parents.
+	for _, httpFile := range httpFiles {
+		dir := filepath.Dir(httpFile)
+		for _, dep := range relativeDeps {
+			if filepath.IsAbs(dep) {
+				continue
+			}
+			add(filepath.Join(dir, dep))
+		}
+	}
+	return paths
 }

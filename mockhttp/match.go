@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"mock/restclient"
+	"github.com/sspencer/mock/restclient"
 )
 
 func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]string, bool) {
@@ -29,6 +29,9 @@ func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]str
 		}
 		values, ok := matchPath(method.Path, r.URL.Path)
 		if !ok || !queryMatches(method.Query, r.URL.Query()) {
+			continue
+		}
+		if !headerMatches(method.MatchHeaders, r.Header) {
 			continue
 		}
 		for name, queryValues := range r.URL.Query() {
@@ -110,4 +113,36 @@ func queryMatches(expected url.Values, actual url.Values) bool {
 		}
 	}
 	return true
+}
+
+// headerMatches requires every expected header name to be present with a matching
+// value. Expected value "*" matches any non-empty request header value.
+func headerMatches(expected http.Header, actual http.Header) bool {
+	for name, expectedValues := range expected {
+		actualValues := actual.Values(name)
+		if len(actualValues) == 0 {
+			return false
+		}
+		for _, expectedValue := range expectedValues {
+			if expectedValue == "*" {
+				if strings.TrimSpace(actualValues[0]) == "" {
+					return false
+				}
+				continue
+			}
+			if !headerValuePresent(actualValues, expectedValue) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func headerValuePresent(actual []string, want string) bool {
+	for _, value := range actual {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

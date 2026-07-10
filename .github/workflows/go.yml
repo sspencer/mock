@@ -23,3 +23,6 @@ jobs:
 
       - name: Verify
         run: make all
+
+      - name: Race tests
+        run: go test ./... -race -count=1

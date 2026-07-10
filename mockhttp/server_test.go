@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"mock/restclient"
+	"github.com/sspencer/mock/restclient"
 )
 
 func TestServerServesPathAndQueryValues(t *testing.T) {
@@ -477,6 +477,75 @@ GET /unsafe
 	if contentType := response.Header().Get("Content-Type"); contentType != "" {
 		t.Fatalf("content type = %q, want none for unsafe file path", contentType)
 	}
+}
+
+func TestServerHeaderMatchingAndPlaceholderHeaders(t *testing.T) {
+	methods, err := restclient.Parse("test.http", strings.NewReader(`### Secured
+# $header.Authorization=Bearer secret
+GET /secure
+X-User: {{$id}}
+Content-Type: text/plain
+
+ok-{{$id}}
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	// Path param for header expansion.
+	methods[0].Path = "/secure/:id"
+	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	missing := httptest.NewRecorder()
+	server.ServeHTTP(missing, httptest.NewRequest(http.MethodGet, "/secure/7", nil))
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("missing auth status = %d, want 404", missing.Code)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/secure/7", nil)
+	request.Header.Set("Authorization", "Bearer secret")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.Code)
+	}
+	if got := response.Header().Get("X-User"); got != "7" {
+		t.Fatalf("X-User = %q, want 7", got)
+	}
+	if body := response.Body.String(); body != "ok-7" {
+		t.Fatalf("body = %q, want ok-7", body)
+	}
+}
+
+func TestServerSetMethodsConcurrentWithServeHTTP(t *testing.T) {
+	methods, err := restclient.Parse("test.http", strings.NewReader(`### A
+GET /a
+
+a
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 100 {
+			alt, _ := restclient.Parse("test.http", strings.NewReader(`### B
+GET /b
+
+b
+`))
+			server.SetMethods(alt)
+			server.SetMethods(methods)
+		}
+	}()
+	for range 200 {
+		response := httptest.NewRecorder()
+		server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/a", nil))
+		response = httptest.NewRecorder()
+		server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/b", nil))
+	}
+	<-done
 }
 
 func TestServerSetMethodsReplacesRoutesAndResetsRotation(t *testing.T) {

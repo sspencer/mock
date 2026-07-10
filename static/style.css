@@ -441,6 +441,101 @@ tbody tr.selected {
     }
 }
 
+.topbar-actions,
+.panel-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.filter-input {
+    min-height: 36px;
+    min-width: 180px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    padding: 0 12px;
+    font: inherit;
+}
+
+.filter-input:focus {
+    outline: 2px solid var(--accent-soft);
+    border-color: var(--accent);
+}
+
+.clear-button.active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.side-panel {
+    display: grid;
+    grid-template-rows: minmax(0, 1.2fr) minmax(160px, 0.8fr);
+    min-width: 0;
+    min-height: 0;
+}
+
+.side-panel .detail-panel {
+    border-bottom: 1px solid var(--border);
+}
+
+.routes-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+}
+
+.panel-header.compact {
+    min-height: 56px;
+    padding: 12px 20px;
+}
+
+.routes-list {
+    list-style: none;
+    margin: 0;
+    padding: 8px 0;
+    overflow: auto;
+}
+
+.routes-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 20px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9rem;
+}
+
+.routes-list .route-path {
+    font-family: var(--mono);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.routes-list .route-name {
+    color: var(--muted);
+    font-size: 0.82rem;
+    white-space: nowrap;
+}
+
+@media (max-width: 960px) {
+    .workspace {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(240px, 0.9fr) minmax(0, 1.1fr);
+    }
+
+    .request-panel {
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+    }
+}
+
 @media (max-width: 640px) {
     .topbar,
     .panel-header {
@@ -449,7 +544,8 @@ tbody tr.selected {
     }
 
     .theme-toggle,
-    .clear-button {
+    .clear-button,
+    .filter-input {
         width: 100%;
     }
 

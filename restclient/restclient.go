@@ -11,19 +11,24 @@ import (
 	"strings"
 )
 
+// Method is one mock request section from a REST Client-style .http file.
+//
+// Headers on the Method are response headers. Use MatchHeaders (from
+// # $header.Name=value comments) to require request headers when matching.
 type Method struct {
-	Name      string
-	Method    string
-	Path      string
-	Query     url.Values
-	Comments  []string
-	Variables map[string]string
-	Headers   http.Header
-	Body      string
-	Source    string
+	Name         string
+	Method       string
+	Path         string
+	Query        url.Values
+	Comments     []string
+	Variables    map[string]string
+	MatchHeaders http.Header
+	Headers      http.Header
+	Body         string
+	Source       string
 }
 
-var commentVariablePattern = regexp.MustCompile(`^\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$`)
+var commentVariablePattern = regexp.MustCompile(`^\$([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(.*)$`)
 
 func Load(paths []string) ([]Method, error) {
 	var methods []Method
@@ -79,10 +84,11 @@ func Parse(source string, r io.Reader) ([]Method, error) {
 				return nil, fmt.Errorf("%s:%d: method name is required after ###", source, lineNumber)
 			}
 			current = &Method{
-				Name:      name,
-				Variables: make(map[string]string),
-				Headers:   make(http.Header),
-				Source:    source,
+				Name:         name,
+				Variables:    make(map[string]string),
+				MatchHeaders: make(http.Header),
+				Headers:      make(http.Header),
+				Source:       source,
 			}
 			section = section[:0]
 			continue
@@ -120,7 +126,13 @@ func parseSection(method Method, lines []string) (Method, error) {
 		comment := strings.TrimSpace(after)
 		method.Comments = append(method.Comments, comment)
 		if matches := commentVariablePattern.FindStringSubmatch(comment); len(matches) == 3 {
-			method.Variables[matches[1]] = strings.TrimSpace(matches[2])
+			key := matches[1]
+			value := strings.TrimSpace(matches[2])
+			if headerName, ok := strings.CutPrefix(key, "header."); ok && headerName != "" {
+				method.MatchHeaders.Add(headerName, value)
+			} else {
+				method.Variables[key] = value
+			}
 		}
 		i++
 	}
@@ -167,4 +179,26 @@ func trimTrailingBlankLines(lines []string) []string {
 		end--
 	}
 	return lines[:end]
+}
+
+// FileDependencies returns relative $file paths referenced by methods, for watching.
+func FileDependencies(methods []Method) []string {
+	seen := make(map[string]struct{})
+	var deps []string
+	for _, method := range methods {
+		raw, ok := method.Variables["file"]
+		if !ok {
+			continue
+		}
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		if _, ok := seen[raw]; ok {
+			continue
+		}
+		seen[raw] = struct{}{}
+		deps = append(deps, raw)
+	}
+	return deps
 }
