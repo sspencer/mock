@@ -300,29 +300,22 @@ export, and a routes panel that refreshes after hot-reload.
 
 ## OpenAPI Stubs
 
-The pets API is available in three equivalent example formats:
+Seed stub routes from an OpenAPI 3 document (JSON or YAML):
 
 ```sh
-# REST Client .http file (richer response bodies, watched for edits)
-mock examples/openapi.http
-
-# OpenAPI 3 JSON stubs
 mock -openapi examples/openapi.json -p 8080
-
-# OpenAPI 3 YAML stubs
 mock -openapi examples/openapi.yaml -p 8080
 ```
 
-Shared routes: `GET/POST /pets`, `GET/PUT/PATCH/DELETE /pets/:id`.
+Both examples define the same pets API: `GET/POST /pets` and
+`GET/PUT/PATCH/DELETE /pets/:id`.
 
-`-openapi` turns each path operation into a simple `200` JSON stub (unless the
-operation implies otherwise). Path parameters `{id}` become `:id`. You can
-combine `-openapi` with `.http` files; both are loaded, and the `.http` files
-are still watched for changes.
+`-openapi` turns each path operation into a simple `200` JSON stub. Path
+parameters `{id}` become `:id`. You can combine `-openapi` with `.http` files;
+both are loaded, and the `.http` files are still watched for changes.
 
 Checked-in samples:
 
-- `examples/openapi.http` — REST Client mock definitions
 - `examples/openapi.json` — OpenAPI 3 in JSON
 - `examples/openapi.yaml` — OpenAPI 3 in YAML
 

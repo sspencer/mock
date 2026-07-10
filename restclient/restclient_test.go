@@ -124,8 +124,11 @@ GET /users HTTP/1.1
 	if err == nil {
 		t.Fatal("Parse() error = nil, want error")
 	}
-	if !strings.Contains(err.Error(), "invalid HTTP request line") {
-		t.Fatalf("error = %q, want invalid request line", err)
+	msg := err.Error()
+	for _, want := range []string{"test.http:2:", "invalid HTTP request line", "METHOD /path"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("error = %q, want to contain %q", msg, want)
+		}
 	}
 }
 
@@ -133,34 +136,47 @@ func TestParseErrors(t *testing.T) {
 	tests := []struct {
 		name  string
 		input string
-		want  string
+		want  []string
 	}{
 		{
 			name: "content before first section",
 			input: `GET /users
 `,
-			want: "content before first ###",
+			want: []string{"test.http:1:", "content before first ###", "GET /users"},
 		},
 		{
 			name: "missing method name",
 			input: `###
 GET /users
 `,
-			want: "method name is required after ###",
+			want: []string{"test.http:1:", "method name is required after ###"},
 		},
 		{
 			name: "missing request line",
 			input: `### User
 # comment only
 `,
-			want: "missing an HTTP request line",
+			want: []string{"test.http:2:", `section "User" is missing an HTTP request line`, "METHOD /path"},
+		},
+		{
+			name: "missing request line empty section",
+			input: `### User
+`,
+			want: []string{"test.http:1:", `section "User" is missing an HTTP request line`},
+		},
+		{
+			name: "incomplete request line",
+			input: `### User
+GET
+`,
+			want: []string{"test.http:2:", "incomplete HTTP request line", `"GET"`},
 		},
 		{
 			name: "invalid request target",
 			input: `### User
 GET http://[::1
 `,
-			want: "invalid request target",
+			want: []string{"test.http:2:", `section "User" has an invalid request target`, "path like"},
 		},
 		{
 			name: "invalid header line",
@@ -168,7 +184,40 @@ GET http://[::1
 GET /users
 Content-Type application/json
 `,
-			want: "invalid header line",
+			want: []string{
+				"test.http:3:",
+				`section "User" has an invalid response header line`,
+				"Content-Type application/json",
+				"Name: value",
+			},
+		},
+		{
+			name: "empty header name",
+			input: `### User
+GET /users
+: missing-name
+`,
+			want: []string{"test.http:3:", "header name is required"},
+		},
+		{
+			name: "empty header matcher name",
+			input: `### User
+# $header.=value
+GET /users
+`,
+			want: []string{"test.http:2:", "$header. requires a header name"},
+		},
+		{
+			name: "error line in later section",
+			input: `### Good
+GET /ok
+
+ok
+
+### Bad
+POST /users HTTP/1.1
+`,
+			want: []string{"test.http:7:", `section "Bad" has an invalid HTTP request line`},
 		},
 	}
 
@@ -178,9 +227,29 @@ Content-Type application/json
 			if err == nil {
 				t.Fatal("Parse() error = nil, want error")
 			}
-			if !strings.Contains(err.Error(), tt.want) {
-				t.Fatalf("error = %q, want to contain %q", err, tt.want)
+			msg := err.Error()
+			for _, want := range tt.want {
+				if !strings.Contains(msg, want) {
+					t.Fatalf("error = %q, want to contain %q", msg, want)
+				}
 			}
 		})
+	}
+}
+
+func TestParseAllowsBlankLinesBeforeFirstSection(t *testing.T) {
+	input := `
+
+### User
+GET /users
+
+ok
+`
+	methods, err := Parse("test.http", strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(methods) != 1 || methods[0].Path != "/users" {
+		t.Fatalf("methods = %#v", methods)
 	}
 }
