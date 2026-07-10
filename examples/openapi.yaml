@@ -1,0 +1,25 @@
+openapi: "3.0.3"
+info:
+  title: Sample pets API
+  version: "1.0.0"
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      summary: List pets
+    post:
+      operationId: createPet
+      summary: Create a pet
+  /pets/{id}:
+    get:
+      operationId: getPet
+      summary: Get a pet by id
+    delete:
+      operationId: deletePet
+      summary: Delete a pet
+    put:
+      operationId: replacePet
+      summary: Replace a pet
+    patch:
+      operationId: updatePet
+      summary: Update a pet

@@ -20,6 +20,14 @@
         "operationId": "getPet",
         "summary": "Get a pet by id"
       },
+      "put": {
+        "operationId": "replacePet",
+        "summary": "Replace a pet"
+      },
+      "patch": {
+        "operationId": "updatePet",
+        "summary": "Update a pet"
+      },
       "delete": {
         "operationId": "deletePet",
         "summary": "Delete a pet"

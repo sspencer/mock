@@ -5,7 +5,6 @@ bin/
 /*.env
 /*DS_Store
 /db-data
-/scripts/places/*.json
 lint.txt
 /.idea
 /.vscode
