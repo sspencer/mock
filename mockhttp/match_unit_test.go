@@ -1,6 +1,7 @@
 package mockhttp
 
 import (
+	"net/http"
 	"net/url"
 	"reflect"
 	"testing"
@@ -69,6 +70,47 @@ func TestMatchPath(t *testing.T) {
 			}
 			if !reflect.DeepEqual(values, tt.wantValues) {
 				t.Fatalf("values = %#v, want %#v", values, tt.wantValues)
+			}
+		})
+	}
+}
+
+func TestHeaderMatches(t *testing.T) {
+	tests := []struct {
+		name     string
+		expected http.Header
+		actual   http.Header
+		want     bool
+	}{
+		{
+			name:     "exact match",
+			expected: http.Header{"Authorization": []string{"Bearer x"}},
+			actual:   http.Header{"Authorization": []string{"Bearer x"}},
+			want:     true,
+		},
+		{
+			name:     "missing header",
+			expected: http.Header{"Authorization": []string{"Bearer x"}},
+			actual:   http.Header{},
+			want:     false,
+		},
+		{
+			name:     "wildcard requires non-empty",
+			expected: http.Header{"X-Trace": []string{"*"}},
+			actual:   http.Header{"X-Trace": []string{"abc"}},
+			want:     true,
+		},
+		{
+			name:     "wildcard rejects empty",
+			expected: http.Header{"X-Trace": []string{"*"}},
+			actual:   http.Header{"X-Trace": []string{""}},
+			want:     false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := headerMatches(tt.expected, tt.actual); got != tt.want {
+				t.Fatalf("headerMatches() = %v, want %v", got, tt.want)
 			}
 		})
 	}

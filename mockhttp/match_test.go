@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"mock/restclient"
+	"github.com/sspencer/mock/restclient"
 )
 
 func TestParser(t *testing.T) {
@@ -78,8 +78,8 @@ func formatFixture(methods []restclient.Method) (string, error) {
 			method.Method,
 			method.Path,
 			delay,
-			statusFromVariables(method.Variables),
-			headerSize(responseHeaders(method, filePath)),
+			statusFromVariables(nil, method.Variables),
+			headerSize(responseHeaders(method, nil, filePath)),
 			len(body),
 		)
 	}

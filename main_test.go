@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"io"
@@ -15,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"mock/mockhttp"
-	"mock/restclient"
+	"github.com/sspencer/mock/mockhttp"
+	"github.com/sspencer/mock/restclient"
 )
 
 func TestLoadMethodsLoadsFiles(t *testing.T) {
@@ -67,7 +66,7 @@ created
 
 func TestLoadInputUsesSingleDirectoryAsStaticRoot(t *testing.T) {
 	dir := t.TempDir()
-	input, err := loadInput([]string{dir}, strings.NewReader(""))
+	input, err := loadInput([]string{dir}, strings.NewReader(""), "")
 	if err != nil {
 		t.Fatalf("loadInput() error = %v", err)
 	}
@@ -86,7 +85,7 @@ func TestLoadInputRejectsDirectoryMixedWithRequestFiles(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	_, err := loadInput([]string{dir, path}, strings.NewReader(""))
+	_, err := loadInput([]string{dir, path}, strings.NewReader(""), "")
 	if err == nil {
 		t.Fatal("loadInput() error = nil, want error")
 	}
@@ -96,15 +95,39 @@ func TestLoadInputRejectsDirectoryMixedWithRequestFiles(t *testing.T) {
 }
 
 func TestListenAddress(t *testing.T) {
-	tests := map[int]string{
-		8080: ":8080",
-		3000: ":3000",
+	tests := []struct {
+		bind string
+		port int
+		want string
+	}{
+		{bind: "", port: 8080, want: ":8080"},
+		{bind: "", port: 3000, want: ":3000"},
+		{bind: "127.0.0.1", port: 9090, want: "127.0.0.1:9090"},
 	}
 
-	for port, want := range tests {
-		if got := listenAddress(port); got != want {
-			t.Fatalf("listenAddress(%d) = %q, want %q", port, got, want)
+	for _, tt := range tests {
+		if got := listenAddress(tt.bind, tt.port); got != tt.want {
+			t.Fatalf("listenAddress(%q, %d) = %q, want %q", tt.bind, tt.port, got, tt.want)
 		}
+	}
+}
+
+func TestParseConfigAndVersion(t *testing.T) {
+	cfg, err := parseConfig([]string{"-p", "9090", "-b", "127.0.0.1", "-cors", "*", "api.http"})
+	if err != nil {
+		t.Fatalf("parseConfig() error = %v", err)
+	}
+	if cfg.Port != 9090 || cfg.Bind != "127.0.0.1" || cfg.CORS != "*" || len(cfg.Args) != 1 {
+		t.Fatalf("config = %#v", cfg)
+	}
+
+	var out bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if err := run([]string{"-version"}, strings.NewReader(""), &out, logger); err != nil {
+		t.Fatalf("run(-version) error = %v", err)
+	}
+	if !strings.Contains(out.String(), "dev") {
+		t.Fatalf("version output = %q, want dev", out.String())
 	}
 }
 
@@ -340,7 +363,7 @@ ok
 	server := mockhttp.New(nil, logger)
 
 	var output bytes.Buffer
-	reloadMockFiles(server, []string{path}, logger, &output)
+	reloadMockFiles(server, []string{path}, "", logger, &output)
 
 	response := httptest.NewRecorder()
 	server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/users", nil))
@@ -378,7 +401,7 @@ ok
 	server := mockhttp.New(initial, logger)
 
 	var output bytes.Buffer
-	reloadMockFiles(server, []string{path}, logger, &output)
+	reloadMockFiles(server, []string{path}, "", logger, &output)
 	if output.Len() != 0 {
 		t.Fatalf("output = %q, want empty on failed reload", output.String())
 	}
@@ -445,16 +468,98 @@ ok
 	events := httptest.NewRecorder()
 	handler.ServeHTTP(events, request)
 
-	line, err := bufio.NewReader(events.Body).ReadString('\n')
-	if err != nil {
-		t.Fatalf("ReadString() error = %v", err)
+	body := events.Body.String()
+	if !strings.Contains(body, "data: ") {
+		t.Fatalf("events body = %q, want data prefix", body)
 	}
-	if !strings.HasPrefix(line, "data: ") {
-		t.Fatalf("event line = %q, want data prefix", line)
-	}
-	for _, want := range []string{`"method":"GET"`, `"url":"/users"`, `"status":200`, `"statusText":"OK"`} {
-		if !strings.Contains(line, want) {
-			t.Fatalf("event line = %q, want to contain %q", line, want)
+	for _, want := range []string{`"method":"GET"`, `"url":"/users"`, `"status":200`, `"statusText":"OK"`, `"id":`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("events body = %q, want to contain %q", body, want)
 		}
 	}
+
+	// Admin routes are mounted under the UI path.
+	clear := httptest.NewRecorder()
+	handler.ServeHTTP(clear, httptest.NewRequest(http.MethodPost, "/admin/clear", nil))
+	if clear.Code != http.StatusNoContent {
+		t.Fatalf("clear status = %d, want %d", clear.Code, http.StatusNoContent)
+	}
+	routes := httptest.NewRecorder()
+	handler.ServeHTTP(routes, httptest.NewRequest(http.MethodGet, "/admin/routes", nil))
+	if routes.Code != http.StatusOK || !strings.Contains(routes.Body.String(), "/users") {
+		t.Fatalf("routes status = %d body = %q", routes.Code, routes.Body.String())
+	}
+}
+
+func TestWithCORS(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := withCORS(inner, "*")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodOptions, "/users", nil))
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("options status = %d, want %d", response.Code, http.StatusNoContent)
+	}
+	if got := response.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Fatalf("CORS origin = %q, want *", got)
+	}
+}
+
+func TestResolveWatchPathsIncludesDependencies(t *testing.T) {
+	paths := resolveWatchPaths([]string{"examples/user.http"}, []string{"users.json", "index.html"})
+	if len(paths) < 3 {
+		t.Fatalf("paths = %#v, want http file plus dependencies", paths)
+	}
+}
+
+func TestEndToEndReloadServesNewRoutes(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "api.http")
+	if err := os.WriteFile(path, []byte("### A\nGET /a\n\na\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	methods, err := restclient.Load([]string{path})
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	server := mockhttp.New(methods, logger)
+
+	changed := make(chan struct{}, 1)
+	closer, err := watchFiles([]string{path}, func() {
+		reloadMockFiles(server, []string{path}, "", logger, io.Discard)
+		select {
+		case changed <- struct{}{}:
+		default:
+		}
+	}, logger)
+	if err != nil {
+		t.Fatalf("watchFiles() error = %v", err)
+	}
+	t.Cleanup(func() { _ = closer.Close() })
+
+	time.Sleep(50 * time.Millisecond)
+	if err := os.WriteFile(path, []byte("### B\nGET /b\n\nb\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	select {
+	case <-changed:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for reload")
+	}
+
+	// Allow reload callback to finish SetMethods.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		response := httptest.NewRecorder()
+		server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/b", nil))
+		if response.Code == http.StatusOK && response.Body.String() == "b" {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("reloaded route /b not served")
 }

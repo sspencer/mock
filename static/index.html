@@ -6,7 +6,7 @@
     <link rel="icon" href="favicon.ico" type="image/x-icon" />
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
     <title>Mock Server</title>
-    <link rel="stylesheet" href="style.css?v=20260508" />
+    <link rel="stylesheet" href="style.css?v=20260710" />
 </head>
 <body>
 <main class="app-shell">
@@ -15,7 +15,11 @@
             <p class="eyebrow">Live HTTP traffic</p>
             <h1>Mock server</h1>
         </div>
-        <button id="themeToggle" class="theme-toggle" aria-label="Toggle color theme">Dark</button>
+        <div class="topbar-actions">
+            <button id="pauseButton" class="clear-button" type="button">Pause</button>
+            <button id="exportButton" class="clear-button" type="button">Export HAR</button>
+            <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle color theme">Dark</button>
+        </div>
     </header>
 
     <section class="workspace" aria-label="Request log workspace">
@@ -25,7 +29,10 @@
                     <p class="eyebrow">Requests</p>
                     <h2>All activity</h2>
                 </div>
-                <button id="clearRequestsButton" class="clear-button">Clear</button>
+                <div class="panel-actions">
+                    <input id="filterInput" class="filter-input" type="search" placeholder="Filter method, path, status…" aria-label="Filter requests" />
+                    <button id="clearRequestsButton" class="clear-button" type="button">Clear</button>
+                </div>
             </div>
 
             <div class="table-container" aria-live="polite">
@@ -46,27 +53,55 @@
             </div>
         </section>
 
-        <section class="detail-panel" aria-label="Request and response details">
-            <div class="detail-section">
-                <div class="detail-label">Request</div>
-                <div id="requestDetails" class="detail-content">
+        <section class="side-panel" aria-label="Details and routes">
+            <section class="detail-panel" aria-label="Request and response details">
+                <div class="detail-section">
+                    <div class="detail-label">Request</div>
+                    <div id="requestDetails" class="detail-content"></div>
                 </div>
-            </div>
-            <div class="detail-section">
-                <div class="detail-label">Response</div>
-                <div id="responseDetails" class="detail-content">
+                <div class="detail-section">
+                    <div class="detail-label">Response</div>
+                    <div id="responseDetails" class="detail-content"></div>
                 </div>
-            </div>
+            </section>
+            <section class="routes-panel" aria-label="Configured routes">
+                <div class="panel-header compact">
+                    <div>
+                        <p class="eyebrow">Routes</p>
+                        <h2>Configured mocks</h2>
+                    </div>
+                    <button id="refreshRoutesButton" class="clear-button" type="button">Refresh</button>
+                </div>
+                <ul id="routesList" class="routes-list">
+                    <li class="empty-state">Loading routes…</li>
+                </ul>
+            </section>
         </section>
     </section>
 </main>
 
 <script>
-    // Theme switching functionality
+    const MAX_EVENTS = 200;
     const themeToggle = document.getElementById('themeToggle');
     const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+    const requestTableBody = document.getElementById('requestTableBody');
+    const requestDetails = document.getElementById('requestDetails');
+    const responseDetails = document.getElementById('responseDetails');
+    const clearRequestsButton = document.getElementById('clearRequestsButton');
+    const pauseButton = document.getElementById('pauseButton');
+    const exportButton = document.getElementById('exportButton');
+    const filterInput = document.getElementById('filterInput');
+    const routesList = document.getElementById('routesList');
+    const refreshRoutesButton = document.getElementById('refreshRoutesButton');
 
-    // Function to set the theme
+    /** @type {Map<number, any>} */
+    const eventsById = new Map();
+    /** @type {number[]} newest-first ids */
+    let eventOrder = [];
+    let paused = false;
+    let selectedId = null;
+    let filterText = '';
+
     function setTheme(theme) {
         if (theme === 'dark') {
             document.documentElement.setAttribute('data-theme', 'dark');
@@ -79,7 +114,6 @@
         }
     }
 
-    // Check for saved theme preference or use the system preference
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'dark') {
         setTheme('dark');
@@ -89,7 +123,6 @@
         setTheme('dark');
     }
 
-    // Toggle theme when button is clicked
     themeToggle.addEventListener('click', () => {
         if (document.documentElement.getAttribute('data-theme') === 'dark') {
             setTheme('light');
@@ -98,89 +131,160 @@
         }
     });
 
-    // Main application code
-    const requestTableBody = document.getElementById('requestTableBody');
-    const requestDetails = document.getElementById('requestDetails');
-    const responseDetails = document.getElementById('responseDetails');
-    const clearRequestsButton = document.getElementById('clearRequestsButton');
-    const events = [];
     const source = new EventSource('events');
-    let rowIndex = 0;
-
     source.onmessage = function (event) {
+        if (paused) {
+            return;
+        }
         try {
             const data = JSON.parse(event.data);
-            addEventToTable(data);
+            upsertEvent(data);
         } catch (e) {
-            console.error("Error parsing json", e);
+            console.error('Error parsing json', e);
         }
     };
 
-    requestTableBody.addEventListener('mouseover', (e) => {
-        if (e.target.tagName === 'TD') {
-            e.target.parentElement.classList.add('hover');
-        }
-    });
-
-    requestTableBody.addEventListener('mouseout', (e) => {
-        if (e.target.tagName === 'TD') {
-            e.target.parentElement.classList.remove('hover');
-        }
-    });
-
     requestTableBody.addEventListener('click', (e) => {
         const row = e.target.closest('tr');
-        if (row && row.dataset.index) {
-            const event = events[events.length - 1 - row.dataset.index];
-            selectRow(row, event);
+        if (!row || !row.dataset.id) {
+            return;
+        }
+        const id = Number(row.dataset.id);
+        const http = eventsById.get(id);
+        if (http) {
+            selectRow(row, http);
         }
     });
 
-    // New event listener for Clear Requests button
-    clearRequestsButton.addEventListener('click', () => {
-        // Animate rows before clearing
-        const rows = requestTableBody.getElementsByTagName('tr');
+    clearRequestsButton.addEventListener('click', async () => {
+        try {
+            await fetch('clear', { method: 'POST' });
+        } catch (e) {
+            console.error('failed to clear server events', e);
+        }
+        eventsById.clear();
+        eventOrder = [];
+        selectedId = null;
+        renderEmptyState();
+        fadeOutAndUpdate(requestDetails, '');
+        fadeOutAndUpdate(responseDetails, '');
+    });
 
-        // If there are rows to clear
-        if (rows.length > 0 && rows[0].cells.length > 1) {
-            // Fade out all rows
-            for (let i = 0; i < rows.length; i++) {
-                const row = rows[i];
-                row.style.opacity = '0';
-                row.style.transform = 'translateY(10px)';
+    pauseButton.addEventListener('click', () => {
+        paused = !paused;
+        pauseButton.textContent = paused ? 'Resume' : 'Pause';
+        pauseButton.classList.toggle('active', paused);
+    });
+
+    exportButton.addEventListener('click', () => {
+        const har = buildHAR([...eventOrder].reverse().map((id) => eventsById.get(id)).filter(Boolean));
+        const blob = new Blob([JSON.stringify(har, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `mock-${new Date().toISOString().replace(/[:.]/g, '-')}.har`;
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+
+    filterInput.addEventListener('input', () => {
+        filterText = filterInput.value.trim().toLowerCase();
+        renderTable();
+    });
+
+    refreshRoutesButton.addEventListener('click', loadRoutes);
+    loadRoutes();
+    // Refresh routes periodically so hot-reload is visible without a full page refresh.
+    setInterval(loadRoutes, 3000);
+
+    function upsertEvent(http) {
+        if (http.id == null) {
+            return;
+        }
+        const isNew = !eventsById.has(http.id);
+        eventsById.set(http.id, http);
+        if (isNew) {
+            eventOrder.unshift(http.id);
+            while (eventOrder.length > MAX_EVENTS) {
+                const dropped = eventOrder.pop();
+                eventsById.delete(dropped);
+            }
+        }
+        renderTable();
+    }
+
+    function eventMatchesFilter(http) {
+        if (!filterText) {
+            return true;
+        }
+        const hay = [
+            http.request.method,
+            http.request.url,
+            String(http.response.status),
+            http.response.statusText || '',
+        ].join(' ').toLowerCase();
+        return hay.includes(filterText);
+    }
+
+    function renderTable() {
+        const visible = eventOrder
+            .map((id) => eventsById.get(id))
+            .filter(Boolean)
+            .filter(eventMatchesFilter);
+
+        if (visible.length === 0) {
+            renderEmptyState(filterText ? 'No matching requests' : 'No requests yet');
+            return;
+        }
+
+        requestTableBody.replaceChildren();
+        for (const http of visible) {
+            const row = requestTableBody.insertRow();
+            row.dataset.id = String(http.id);
+            if (selectedId === http.id) {
+                row.classList.add('selected');
             }
 
-            setTimeout(() => {
-                renderEmptyState();
-                events.length = 0;
-                rowIndex = 0;
-            }, 300);
-        }
+            const c0 = row.insertCell(0);
+            c0.className = 'time-cell';
+            c0.textContent = http.request.time || '';
 
-        // Clear request and response details with fade effect
-        fadeOutAndUpdate(requestDetails, '\n');
-        fadeOutAndUpdate(responseDetails, '\n');
-    });
+            const c1 = row.insertCell(1);
+            const statusSpan = document.createElement('span');
+            statusSpan.textContent = `${http.response.status}`;
+            const status = parseInt(http.response.status, 10);
+            if (status >= 200 && status < 300) statusSpan.classList.add('status-2xx');
+            else if (status >= 300 && status < 400) statusSpan.classList.add('status-3xx');
+            else if (status >= 400 && status < 500) statusSpan.classList.add('status-4xx');
+            else if (status >= 500) statusSpan.classList.add('status-5xx');
+            c1.appendChild(statusSpan);
+            const statusTextSpan = document.createElement('span');
+            statusTextSpan.className = 'status-text';
+            statusTextSpan.textContent = ` ${http.response.statusText || ''}`;
+            c1.appendChild(statusTextSpan);
+
+            const c2 = row.insertCell(2);
+            c2.className = 'request-cell';
+            const methodSpan = document.createElement('span');
+            methodSpan.textContent = http.request.method;
+            methodSpan.className = `method-${(http.request.method || '').toLowerCase()}`;
+            c2.appendChild(methodSpan);
+            const urlSpan = document.createElement('span');
+            urlSpan.textContent = ` ${http.request.url}`;
+            c2.appendChild(urlSpan);
+        }
+    }
 
     function selectRow(row, http) {
-        // Remove 'selected' class from all rows
-        const rows = requestTableBody.getElementsByTagName('tr');
-        for (let r of rows) {
-            r.classList.remove('selected');
+        selectedId = http.id;
+        for (const r of requestTableBody.getElementsByTagName('tr')) {
+            r.classList.toggle('selected', r === row);
         }
-
-        // Add 'selected' class to clicked row with a slight delay for animation
-        setTimeout(() => {
-            row.classList.add('selected');
-        }, 10);
-
-        // Update details with a fade effect
-        fadeOutAndUpdate(requestDetails, http.request.details);
-        fadeOutAndUpdate(responseDetails, http.response.details);
+        fadeOutAndUpdate(requestDetails, http.request.details || '');
+        fadeOutAndUpdate(responseDetails, http.response.details || '');
     }
 
     function fadeOutAndUpdate(element, newContent) {
-        // Simple fade effect for content updates
         element.style.opacity = '0';
         setTimeout(() => {
             element.textContent = newContent;
@@ -188,75 +292,94 @@
         }, 150);
     }
 
-    function renderEmptyState() {
+    function renderEmptyState(message) {
         requestTableBody.replaceChildren();
         const row = requestTableBody.insertRow();
         const cell = row.insertCell();
         cell.colSpan = 3;
         cell.className = 'empty-state';
-        cell.textContent = 'No requests yet';
+        cell.textContent = message || 'No requests yet';
     }
 
-    function addEventToTable(http) {
-        if (rowIndex === 0 && requestTableBody.rows.length > 0) {
-            requestTableBody.deleteRow(0);
+    async function loadRoutes() {
+        try {
+            const res = await fetch('routes');
+            if (!res.ok) {
+                throw new Error(`status ${res.status}`);
+            }
+            const routes = await res.json();
+            routesList.replaceChildren();
+            if (!routes.length) {
+                const li = document.createElement('li');
+                li.className = 'empty-state';
+                li.textContent = 'No routes configured';
+                routesList.appendChild(li);
+                return;
+            }
+            for (const route of routes) {
+                const li = document.createElement('li');
+                const method = document.createElement('span');
+                method.className = `method-${(route.method || '').toLowerCase()}`;
+                method.textContent = route.method;
+                const path = document.createElement('span');
+                path.className = 'route-path';
+                path.textContent = ` ${route.path}${route.query ? '?' + route.query : ''}`;
+                const name = document.createElement('span');
+                name.className = 'route-name';
+                name.textContent = route.name || '';
+                li.append(method, path, name);
+                routesList.appendChild(li);
+            }
+        } catch (e) {
+            routesList.replaceChildren();
+            const li = document.createElement('li');
+            li.className = 'empty-state';
+            li.textContent = 'Failed to load routes';
+            routesList.appendChild(li);
         }
-        const row = requestTableBody.insertRow(0);
-        row.dataset.index = rowIndex++;
-
-        // Add animation for new rows
-        row.style.opacity = '0';
-        row.style.transform = 'translateY(-10px)';
-
-        // First cell: request arrival time
-        const c0 = row.insertCell(0);
-        c0.className = 'time-cell';
-        c0.textContent = http.request.time || '';
-
-        // Second cell: {Status} {StatusText}
-        const c1 = row.insertCell(1);
-        const statusSpan = document.createElement('span');
-        statusSpan.textContent = `${http.response.status}`;
-
-        // Assign status code category class
-        const status = parseInt(http.response.status);
-        if (status >= 200 && status < 300) {
-            statusSpan.classList.add('status-2xx');
-        } else if (status >= 300 && status < 400) {
-            statusSpan.classList.add('status-3xx');
-        } else if (status >= 400 && status < 500) {
-            statusSpan.classList.add('status-4xx');
-        } else if (status >= 500) {
-            statusSpan.classList.add('status-5xx');
-        }
-
-        c1.appendChild(statusSpan);
-
-        const statusTextSpan = document.createElement('span');
-        statusTextSpan.className = 'status-text';
-        statusTextSpan.textContent = ` ${http.response.statusText}`;
-        c1.appendChild(statusTextSpan);
-
-        // Third cell: {Method} {URI}
-        const c2 = row.insertCell(2);
-        c2.className = 'request-cell';
-        const methodSpan = document.createElement('span');
-        methodSpan.textContent = http.request.method;
-        methodSpan.className = `method-${http.request.method.toLowerCase()}`;
-        c2.appendChild(methodSpan);
-
-        const urlSpan = document.createElement('span');
-        urlSpan.textContent = ` ${http.request.url}`;
-        c2.appendChild(urlSpan);
-        events.unshift(http);
-
-        // Animate the new row
-        setTimeout(() => {
-            row.style.opacity = '1';
-            row.style.transform = 'translateY(0)';
-        }, 10);
     }
 
+    function buildHAR(events) {
+        const entries = events.map((http) => ({
+            startedDateTime: new Date().toISOString(),
+            time: 0,
+            request: {
+                method: http.request.method,
+                url: http.request.url,
+                httpVersion: 'HTTP/1.1',
+                cookies: [],
+                headers: [],
+                queryString: [],
+                headersSize: -1,
+                bodySize: -1,
+                postData: http.request.details ? { mimeType: 'text/plain', text: http.request.details } : undefined,
+            },
+            response: {
+                status: http.response.status,
+                statusText: http.response.statusText || '',
+                httpVersion: 'HTTP/1.1',
+                cookies: [],
+                headers: [],
+                content: {
+                    size: (http.response.details || '').length,
+                    mimeType: 'text/plain',
+                    text: http.response.details || '',
+                },
+                redirectURL: '',
+                headersSize: -1,
+                bodySize: -1,
+            },
+            cache: {},
+            timings: { send: 0, wait: 0, receive: 0 },
+        }));
+        return {
+            log: {
+                version: '1.2',
+                creator: { name: 'mock', version: 'dev' },
+                entries,
+            },
+        };
+    }
 </script>
 </body>
 </html>
