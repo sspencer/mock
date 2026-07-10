@@ -14,9 +14,16 @@ func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]str
 		values map[string]string
 	}
 
+	// Snapshot the methods slice under the lock so hot-reload via SetMethods
+	// cannot race with matching. Pointers into the snapshot remain valid for
+	// this request even after a later SetMethods replaces s.methods.
+	s.mu.Lock()
+	methods := s.methods
+	s.mu.Unlock()
+
 	var matches []match
-	for i := range s.methods {
-		method := &s.methods[i]
+	for i := range methods {
+		method := &methods[i]
 		if method.Method != r.Method {
 			continue
 		}

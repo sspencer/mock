@@ -479,6 +479,66 @@ GET /unsafe
 	}
 }
 
+func TestServerSetMethodsReplacesRoutesAndResetsRotation(t *testing.T) {
+	initial, err := restclient.Parse("test.http", strings.NewReader(`### Old
+GET /old
+
+old
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	server := New(initial, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/old", nil))
+	if response.Code != http.StatusOK || response.Body.String() != "old" {
+		t.Fatalf("initial response status = %d body = %q, want 200 old", response.Code, response.Body.String())
+	}
+
+	updated, err := restclient.Parse("test.http", strings.NewReader(`### First
+# $status=201
+POST /users
+
+one
+
+### Second
+# $status=400
+POST /users
+
+two
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	server.SetMethods(updated)
+
+	response = httptest.NewRecorder()
+	server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/old", nil))
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("old route status = %d, want %d", response.Code, http.StatusNotFound)
+	}
+
+	// Rotation counters reset: first matching response should be returned again.
+	for i, want := range []struct {
+		status int
+		body   string
+	}{
+		{http.StatusCreated, "one"},
+		{http.StatusBadRequest, "two"},
+		{http.StatusCreated, "one"},
+	} {
+		response = httptest.NewRecorder()
+		server.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/users", nil))
+		if response.Code != want.status {
+			t.Fatalf("request %d status = %d, want %d", i+1, response.Code, want.status)
+		}
+		if body := response.Body.String(); body != want.body {
+			t.Fatalf("request %d body = %q, want %q", i+1, body, want.body)
+		}
+	}
+}
+
 func BenchmarkServerRouteLookup(b *testing.B) {
 	var input strings.Builder
 	for i := 0; i < 1000; i++ {

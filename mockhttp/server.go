@@ -29,6 +29,15 @@ func New(methods []restclient.Method, logger *slog.Logger) *Server {
 	}
 }
 
+// SetMethods replaces the mock routes served by this server.
+// Rotation counters are reset so duplicate routes start from the first match again.
+func (s *Server) SetMethods(methods []restclient.Method) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.methods = methods
+	s.counters = make(map[string]int)
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	arrivedAt := time.Now()
 	requestBody := readRequestBody(r)

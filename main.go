@@ -52,8 +52,21 @@ func main() {
 			logger.Error("failed to load static files", "error", err)
 			os.Exit(1)
 		}
-		handler = newHandler(input.Methods, logger, *mount, staticFS)
+		mockServer := mockhttp.New(input.Methods, logger)
+		handler = newHandler(mockServer, *mount, staticFS)
 		logger.Info("starting mock HTTP server", "addr", listenAddress(*port), "methods", len(input.Methods), "ui", normalizeMountPath(*mount))
+
+		if files := flagSet.Args(); len(files) > 0 {
+			closer, err := watchFiles(files, func() {
+				reloadMockFiles(mockServer, files, logger, os.Stdout)
+			}, logger)
+			if err != nil {
+				logger.Error("failed to watch request files", "error", err)
+				os.Exit(1)
+			}
+			defer closer.Close()
+			logger.Info("watching request files for changes", "files", files)
+		}
 	}
 
 	server := &http.Server{
@@ -131,8 +144,7 @@ func newStaticFileHandler(dir string) http.Handler {
 	return http.FileServer(http.Dir(dir))
 }
 
-func newHandler(methods []restclient.Method, logger *slog.Logger, mount string, staticFS fs.FS) http.Handler {
-	mockServer := mockhttp.New(methods, logger)
+func newHandler(mockServer *mockhttp.Server, mount string, staticFS fs.FS) http.Handler {
 	mountPath := normalizeMountPath(mount)
 
 	mountRoot := mountPath + "/"
@@ -144,6 +156,21 @@ func newHandler(methods []restclient.Method, logger *slog.Logger, mount string, 
 	mux.Handle(mountRoot, http.StripPrefix(mountRoot, http.FileServer(http.FS(staticFS))))
 	mux.Handle("/", mockServer)
 	return mux
+}
+
+func reloadMockFiles(mockServer *mockhttp.Server, files []string, logger *slog.Logger, out io.Writer) {
+	methods, err := restclient.Load(files)
+	if err != nil {
+		logger.Error("failed to reload request files", "error", err)
+		return
+	}
+	if err := validateMethods(methods, files); err != nil {
+		logger.Error("failed to reload request files", "error", err)
+		return
+	}
+	mockServer.SetMethods(methods)
+	logger.Info("reloaded request files", "files", files, "methods", len(methods))
+	printMethods(out, methods)
 }
 
 func normalizeMountPath(mount string) string {

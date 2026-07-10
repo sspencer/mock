@@ -14,7 +14,9 @@ Run the example API:
 go run . examples/user.http
 ```
 
-The server prints the routes it loaded, then listens on `:8080`.
+The server prints the routes it loaded, then listens on `:8080`. While it is
+running, it watches the given `.http` file(s) for edits. Save the file and the
+server reloads the routes and reprints the updated method list.
 
 ```sh
 curl http://localhost:8080/users/42
@@ -74,8 +76,9 @@ docker run --rm \
 ```
 
 The bind mount keeps the request file outside the image. Rebuild the image only
-when the `mock` binary or static UI changes; edit the host `.http` file and
-restart the container to load new mock routes.
+when the `mock` binary or static UI changes. Because the file is mounted from
+the host, edits to the host `.http` file are picked up by the running container
+and reloaded automatically.
 
 If the request file uses `$file` response bodies, mount the whole directory so
 relative file references are available inside the container:
@@ -103,6 +106,12 @@ Flags:
 You can pass one or more `.http` files. When no files are passed, `mock` reads
 from stdin. Empty input fails fast with an error that points at the expected
 request-section format.
+
+Request files passed on the command line are watched for changes. On save,
+`mock` reloads those files, swaps in the new routes without restarting the
+process, and prints the updated route list. A failed reload (parse error or no
+routes) keeps the previous routes and logs the error. Stdin and static-directory
+modes do not watch for changes.
 
 If you pass a single directory, `mock` serves that directory as a static file
 server from `/` instead of loading mock routes or the request-log UI.

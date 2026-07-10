@@ -13,7 +13,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"mock/mockhttp"
 	"mock/restclient"
 )
 
@@ -272,7 +274,8 @@ ok
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	handler := newHandler(methods, slog.New(slog.NewTextHandler(io.Discard, nil)), "admin", os.DirFS(staticDir))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	handler := newHandler(mockhttp.New(methods, logger), "admin", os.DirFS(staticDir))
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/admin/", nil))
@@ -308,7 +311,8 @@ ok
 	if err != nil {
 		t.Fatalf("staticFileSystem() error = %v", err)
 	}
-	handler := newHandler(methods, slog.New(slog.NewTextHandler(io.Discard, nil)), "mock", staticFS)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	handler := newHandler(mockhttp.New(methods, logger), "mock", staticFS)
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/mock/", nil))
@@ -318,6 +322,104 @@ ok
 	}
 	if body := response.Body.String(); !strings.Contains(body, "<title>Mock Server</title>") {
 		t.Fatalf("static body = %q, want embedded dashboard HTML", body)
+	}
+}
+
+func TestReloadMockFilesUpdatesRoutesAndPrintsSummary(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "api.http")
+	if err := os.WriteFile(path, []byte(`### User
+GET /users
+
+ok
+`), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	server := mockhttp.New(nil, logger)
+
+	var output bytes.Buffer
+	reloadMockFiles(server, []string{path}, logger, &output)
+
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/users", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if body := response.Body.String(); body != "ok" {
+		t.Fatalf("body = %q, want ok", body)
+	}
+
+	got := output.String()
+	for _, want := range []string{"Available mock methods:", "GET", "/users", "User"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("reload output = %q, want to contain %q", got, want)
+		}
+	}
+}
+
+func TestReloadMockFilesKeepsPreviousRoutesOnParseError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "api.http")
+	if err := os.WriteFile(path, []byte("not a valid request file\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	initial, err := restclient.Parse("test.http", strings.NewReader(`### User
+GET /users
+
+ok
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	server := mockhttp.New(initial, logger)
+
+	var output bytes.Buffer
+	reloadMockFiles(server, []string{path}, logger, &output)
+	if output.Len() != 0 {
+		t.Fatalf("output = %q, want empty on failed reload", output.String())
+	}
+
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/users", nil))
+	if response.Code != http.StatusOK || response.Body.String() != "ok" {
+		t.Fatalf("status = %d body = %q, want previous route preserved", response.Code, response.Body.String())
+	}
+}
+
+func TestWatchFilesInvokesCallbackOnWrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "api.http")
+	if err := os.WriteFile(path, []byte("initial\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	changed := make(chan struct{}, 1)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	closer, err := watchFiles([]string{path}, func() {
+		select {
+		case changed <- struct{}{}:
+		default:
+		}
+	}, logger)
+	if err != nil {
+		t.Fatalf("watchFiles() error = %v", err)
+	}
+	t.Cleanup(func() { _ = closer.Close() })
+
+	// Allow the watcher to attach before writing.
+	time.Sleep(50 * time.Millisecond)
+	if err := os.WriteFile(path, []byte("updated\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	select {
+	case <-changed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for watchFiles callback")
 	}
 }
 
@@ -331,7 +433,8 @@ ok
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	handler := newHandler(methods, slog.New(slog.NewTextHandler(io.Discard, nil)), "admin", os.DirFS(staticDir))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	handler := newHandler(mockhttp.New(methods, logger), "admin", os.DirFS(staticDir))
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/users", nil))
