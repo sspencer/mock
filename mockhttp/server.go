@@ -140,13 +140,21 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 	for _, method := range methods {
 		if raw, ok := method.Variables["status"]; ok {
 			if _, err := parseStatusCode(raw); err != nil {
-				logger.Warn("invalid $status will be treated as 200", "status", raw, "method", method.Name, "error", err)
+				logger.Warn("invalid $status will be treated as 200", "status", raw, "method", method.Name, "source", method.Source, "error", err)
 			}
 		}
 		if raw, ok := method.Variables["delay"]; ok {
 			if _, err := time.ParseDuration(raw); err != nil {
-				logger.Warn("invalid $delay will be ignored", "delay", raw, "method", method.Name, "error", err)
+				logger.Warn("invalid $delay will be ignored", "delay", raw, "method", method.Name, "source", method.Source, "error", err)
 			}
+		}
+		for _, name := range restclient.UnusedCustomVariables(method) {
+			logger.Warn("unused custom variable (not referenced as {{$"+name+"}} in body or response headers)",
+				"variable", "$"+name,
+				"value", method.Variables[name],
+				"method", method.Name,
+				"source", method.Source,
+			)
 		}
 	}
 }

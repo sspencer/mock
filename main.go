@@ -22,32 +22,33 @@ import (
 )
 
 func main() {
+	// Operational logs (start, reload success, requests) go to stdout via slog.
+	// User-facing failures print plain text to stderr so parse/load errors are readable.
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	if err := run(os.Args[1:], os.Stdin, os.Stdout, logger); err != nil {
+	if err := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, logger); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
 		var exitErr *exitError
 		if errors.As(err, &exitErr) {
-			logger.Error(exitErr.message, exitErr.attrs...)
 			os.Exit(exitErr.code)
 		}
-		logger.Error("failed", "error", err)
 		os.Exit(1)
 	}
 }
 
+// exitError is a fatal CLI failure with a human-readable message for stderr.
 type exitError struct {
-	code    int
-	message string
-	attrs   []any
+	code int
+	msg  string
 }
 
-func (e *exitError) Error() string { return e.message }
+func (e *exitError) Error() string { return e.msg }
 
-func usageError(msg string, attrs ...any) error {
-	return &exitError{code: 2, message: msg, attrs: attrs}
+func usageError(format string, args ...any) error {
+	return &exitError{code: 2, msg: fmt.Sprintf(format, args...)}
 }
 
-func runError(msg string, attrs ...any) error {
-	return &exitError{code: 1, message: msg, attrs: attrs}
+func runError(format string, args ...any) error {
+	return &exitError{code: 1, msg: fmt.Sprintf(format, args...)}
 }
 
 type config struct {
@@ -75,13 +76,13 @@ func parseConfig(args []string) (config, error) {
 	flagSet.StringVar(&cfg.OpenAPI, "openapi", "", "OpenAPI 3 JSON/YAML file to seed stub routes")
 	flagSet.BoolVar(&cfg.Version, "version", false, "print version and exit")
 	if err := flagSet.Parse(args); err != nil {
-		return config{}, usageError("failed to parse flags", "error", err)
+		return config{}, usageError("failed to parse flags: %v", err)
 	}
 	cfg.Args = flagSet.Args()
 	return cfg, nil
 }
 
-func run(args []string, stdin io.Reader, stdout io.Writer, logger *slog.Logger) error {
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.Logger) error {
 	cfg, err := parseConfig(args)
 	if err != nil {
 		return err
@@ -95,13 +96,14 @@ func run(args []string, stdin io.Reader, stdout io.Writer, logger *slog.Logger) 
 	}
 	if len(cfg.Args) == 0 && cfg.OpenAPI == "" {
 		if f, ok := stdin.(*os.File); ok && stdinIsTerminal(f) {
-			return usageError("missing request input", "usage", "mock [-l mock] [-p 8080] [-b addr] [-cors *] [-cert c -key k] [-openapi spec.yaml] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
+			return usageError("missing request input\nusage: mock [-l mock] [-p 8080] [-b addr] [-cors *] [-cert c -key k] [-openapi spec.yaml] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
 		}
 	}
 
 	input, err := loadInput(cfg.Args, stdin, cfg.OpenAPI)
 	if err != nil {
-		return runError("failed to load request input", "error", err)
+		// Parse/load errors already include file:line; print them directly.
+		return runError("%v", err)
 	}
 
 	var handler http.Handler
@@ -113,13 +115,13 @@ func run(args []string, stdin io.Reader, stdout io.Writer, logger *slog.Logger) 
 		logger.Info("starting static HTTP server", "addr", listenAddress(cfg.Bind, cfg.Port), "dir", input.StaticDir)
 	} else {
 		if err := validateMethods(input.Methods, cfg.Args); err != nil {
-			return runError("failed to start mock server", "error", err)
+			return runError("%v", err)
 		}
 		printMethods(stdout, input.Methods)
 
 		staticFS, err := staticFileSystem()
 		if err != nil {
-			return runError("failed to load static files", "error", err)
+			return runError("failed to load static files: %v", err)
 		}
 		mockServer = mockhttp.New(input.Methods, logger)
 		handler = newHandler(mockServer, cfg.Mount, staticFS)
@@ -131,12 +133,12 @@ func run(args []string, stdin io.Reader, stdout io.Writer, logger *slog.Logger) 
 
 		if files := input.WatchFiles; len(files) > 0 {
 			reload := func() {
-				reloadMockFiles(mockServer, files, input.OpenAPI, logger, stdout)
+				reloadMockFiles(mockServer, files, input.OpenAPI, logger, stdout, stderr)
 			}
 			paths := resolveWatchPaths(files, restclient.FileDependencies(input.Methods))
 			watchCloser, err = watchFiles(paths, reload, logger)
 			if err != nil {
-				return runError("failed to watch request files", "error", err)
+				return runError("failed to watch request files: %v", err)
 			}
 			logger.Info("watching request files for changes", "files", paths)
 		}
@@ -169,18 +171,18 @@ func run(args []string, stdin io.Reader, stdout io.Writer, logger *slog.Logger) 
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
 
 	select {
 	case sig := <-sigCh:
 		logger.Info("shutting down", "signal", sig.String())
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := server.Shutdown(ctx); err != nil {
-			_ = server.Close()
+		// Brief graceful window, then force-close. Open SSE streams and long
+		// $delay handlers otherwise hold Shutdown until the full timeout.
+		if err := shutdownHTTPServer(server, 400*time.Millisecond); err != nil {
 			if watchCloser != nil {
 				_ = watchCloser.Close()
 			}
-			return runError("server shutdown failed", "error", err)
+			return runError("server shutdown failed: %v", err)
 		}
 		if watchCloser != nil {
 			_ = watchCloser.Close()
@@ -192,10 +194,28 @@ func run(args []string, stdin io.Reader, stdout io.Writer, logger *slog.Logger) 
 			_ = watchCloser.Close()
 		}
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return runError("server failed", "error", err)
+			return runError("server failed: %v", err)
 		}
 		return nil
 	}
+}
+
+// shutdownHTTPServer stops the listener, waits briefly for in-flight requests,
+// then force-closes anything still open (SSE, delayed mocks).
+func shutdownHTTPServer(server *http.Server, grace time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), grace)
+	defer cancel()
+
+	err := server.Shutdown(ctx)
+	// Always Close so lingering long-lived connections cannot block process exit.
+	closeErr := server.Close()
+	if err == nil || errors.Is(err, http.ErrServerClosed) || errors.Is(err, context.DeadlineExceeded) {
+		if closeErr != nil && !errors.Is(closeErr, http.ErrServerClosed) {
+			return closeErr
+		}
+		return nil
+	}
+	return err
 }
 
 func listenAddress(bind string, port int) string {
@@ -313,7 +333,7 @@ func withCORS(next http.Handler, origin string) http.Handler {
 	})
 }
 
-func reloadMockFiles(mockServer *mockhttp.Server, files []string, openAPI string, logger *slog.Logger, out io.Writer) {
+func reloadMockFiles(mockServer *mockhttp.Server, files []string, openAPI string, logger *slog.Logger, out, errOut io.Writer) {
 	load := func() ([]restclient.Method, error) {
 		var methods []restclient.Method
 		if openAPI != "" {
@@ -340,11 +360,11 @@ func reloadMockFiles(mockServer *mockhttp.Server, files []string, openAPI string
 		methods, err = load()
 	}
 	if err != nil {
-		logger.Error("failed to reload request files", "error", err)
+		fmt.Fprintln(errOut, err.Error())
 		return
 	}
 	if err := validateMethods(methods, files); err != nil {
-		logger.Error("failed to reload request files", "error", err)
+		fmt.Fprintln(errOut, err.Error())
 		return
 	}
 	mockServer.SetMethods(methods)

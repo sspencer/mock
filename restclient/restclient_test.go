@@ -132,6 +132,58 @@ GET /users HTTP/1.1
 	}
 }
 
+func TestParseRejectsUnknownHTTPMethods(t *testing.T) {
+	input := `### Broken
+DOPLGET /users/1
+
+ok
+`
+	_, err := Parse("debug.http", strings.NewReader(input))
+	if err == nil {
+		t.Fatal("Parse() error = nil, want error")
+	}
+	msg := err.Error()
+	for _, want := range []string{"debug.http:2:", "unrecognized HTTP method", "DOPLGET", "GET, POST"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("error = %q, want to contain %q", msg, want)
+		}
+	}
+}
+
+func TestUnusedCustomVariables(t *testing.T) {
+	methods, err := Parse("test.http", strings.NewReader(`### Used
+# $status=200
+# $greeting=hello
+# $unused=1000ms
+GET /hi
+X-Greeting: {{$greeting}}
+
+{{$greeting}}
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	unused := UnusedCustomVariables(methods[0])
+	if len(unused) != 1 || unused[0] != "unused" {
+		t.Fatalf("UnusedCustomVariables() = %#v, want [unused]", unused)
+	}
+
+	// Control vars and referenced custom vars are not reported.
+	methods, err = Parse("test.http", strings.NewReader(`### Ok
+# $delay=1s
+# $name=Ada
+GET /hi
+
+hi {{$name}}
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if got := UnusedCustomVariables(methods[0]); len(got) != 0 {
+		t.Fatalf("UnusedCustomVariables() = %#v, want none", got)
+	}
+}
+
 func TestParseErrors(t *testing.T) {
 	tests := []struct {
 		name  string

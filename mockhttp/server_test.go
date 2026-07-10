@@ -1,6 +1,7 @@
 package mockhttp
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -476,6 +477,26 @@ GET /unsafe
 	}
 	if contentType := response.Header().Get("Content-Type"); contentType != "" {
 		t.Fatalf("content type = %q, want none for unsafe file path", contentType)
+	}
+}
+
+func TestWarnMethodConfigUnusedCustomVariables(t *testing.T) {
+	methods, err := restclient.Parse("test.http", strings.NewReader(`### Slow?
+# $wrong=1000ms
+# $status=200
+GET /users
+
+ok
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	_ = New(methods, logger)
+	logText := buf.String()
+	if !strings.Contains(logText, "unused custom variable") || !strings.Contains(logText, "$wrong") {
+		t.Fatalf("log = %q, want unused custom variable warning for $wrong", logText)
 	}
 }
 

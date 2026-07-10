@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -94,6 +95,53 @@ func TestLoadInputRejectsDirectoryMixedWithRequestFiles(t *testing.T) {
 	}
 }
 
+func TestShutdownHTTPServerHonorsShortGrace(t *testing.T) {
+	// A handler that never returns until the connection is closed would stall a
+	// long Shutdown; with a short grace + Close, exit stays bounded.
+	started := make(chan struct{})
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-r.Context().Done()
+	})
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen() error = %v", err)
+	}
+	server := &http.Server{Handler: mux}
+	errCh := make(chan error, 1)
+	go func() { errCh <- server.Serve(ln) }()
+
+	go func() {
+		resp, err := http.Get("http://" + ln.Addr().String() + "/")
+		if err == nil {
+			_ = resp.Body.Close()
+		}
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler did not start")
+	}
+
+	begin := time.Now()
+	if err := shutdownHTTPServer(server, 200*time.Millisecond); err != nil {
+		t.Fatalf("shutdownHTTPServer() error = %v", err)
+	}
+	elapsed := time.Since(begin)
+	if elapsed > 1500*time.Millisecond {
+		t.Fatalf("shutdown took %s, want roughly the short grace period", elapsed)
+	}
+
+	select {
+	case <-errCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Serve did not return after shutdown")
+	}
+}
+
 func TestListenAddress(t *testing.T) {
 	tests := []struct {
 		bind string
@@ -123,11 +171,33 @@ func TestParseConfigAndVersion(t *testing.T) {
 
 	var out bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if err := run([]string{"-version"}, strings.NewReader(""), &out, logger); err != nil {
+	if err := run([]string{"-version"}, strings.NewReader(""), &out, io.Discard, logger); err != nil {
 		t.Fatalf("run(-version) error = %v", err)
 	}
 	if !strings.Contains(out.String(), "dev") {
 		t.Fatalf("version output = %q, want dev", out.String())
+	}
+}
+
+func TestRunPrintsParseErrorsDirectly(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad.http")
+	if err := os.WriteFile(path, []byte("### Bad\nDOPLGET /x\n\nok\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	err := run([]string{path}, strings.NewReader(""), io.Discard, io.Discard, logger)
+	if err == nil {
+		t.Fatal("run() error = nil, want parse error")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "level=ERROR") || strings.Contains(msg, "msg=") {
+		t.Fatalf("error uses slog format: %q", msg)
+	}
+	for _, want := range []string{path + ":2:", "DOPLGET", "unrecognized HTTP method"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("error = %q, want to contain %q", msg, want)
+		}
 	}
 }
 
@@ -363,7 +433,7 @@ ok
 	server := mockhttp.New(nil, logger)
 
 	var output bytes.Buffer
-	reloadMockFiles(server, []string{path}, "", logger, &output)
+	reloadMockFiles(server, []string{path}, "", logger, &output, io.Discard)
 
 	response := httptest.NewRecorder()
 	server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/users", nil))
@@ -401,9 +471,13 @@ ok
 	server := mockhttp.New(initial, logger)
 
 	var output bytes.Buffer
-	reloadMockFiles(server, []string{path}, "", logger, &output)
+	var errOut bytes.Buffer
+	reloadMockFiles(server, []string{path}, "", logger, &output, &errOut)
 	if output.Len() != 0 {
 		t.Fatalf("output = %q, want empty on failed reload", output.String())
+	}
+	if errOut.Len() == 0 {
+		t.Fatal("stderr empty on failed reload, want parse error")
 	}
 
 	response := httptest.NewRecorder()
@@ -529,7 +603,7 @@ func TestEndToEndReloadServesNewRoutes(t *testing.T) {
 
 	changed := make(chan struct{}, 1)
 	closer, err := watchFiles([]string{path}, func() {
-		reloadMockFiles(server, []string{path}, "", logger, io.Discard)
+		reloadMockFiles(server, []string{path}, "", logger, io.Discard, io.Discard)
 		select {
 		case changed <- struct{}{}:
 		default:

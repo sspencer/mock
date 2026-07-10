@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
-	"unicode"
 )
 
 // Method is one mock request section from a REST Client-style .http file.
@@ -197,7 +197,7 @@ func parseSection(method Method, lines []string, bodyStartLine, sectionNameLine 
 	method.Method = strings.ToUpper(requestLine[0])
 	if !isHTTPMethod(method.Method) {
 		return method, parseErrorf(source, lineAt(i),
-			`section %q has an unrecognized HTTP method %q (use GET, POST, PUT, PATCH, DELETE, HEAD, or OPTIONS)`,
+			`section %q has an unrecognized HTTP method %q (supported: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, CONNECT, TRACE)`,
 			method.Name, requestLine[0])
 	}
 
@@ -275,16 +275,7 @@ func isHTTPMethod(method string) bool {
 		http.MethodDelete, http.MethodHead, http.MethodOptions, http.MethodConnect, http.MethodTrace:
 		return true
 	default:
-		// Allow uncommon but syntactically valid tokens (e.g. custom methods) that look like HTTP methods.
-		if method == "" {
-			return false
-		}
-		for _, r := range method {
-			if !unicode.IsUpper(r) && r != '_' && r != '-' {
-				return false
-			}
-		}
-		return true
+		return false
 	}
 }
 
@@ -295,6 +286,16 @@ func trimTrailingBlankLines(lines []string) []string {
 	}
 	return lines[:end]
 }
+
+// controlVariables are consumed by the mock server itself (not only as {{$…}} placeholders).
+var controlVariables = map[string]struct{}{
+	"status": {},
+	"delay":  {},
+	"file":   {},
+}
+
+// placeholderPattern matches {{$name}} placeholders in bodies and headers.
+var placeholderPattern = regexp.MustCompile(`\{\{\$([A-Za-z_][A-Za-z0-9_]*)}}`)
 
 // FileDependencies returns relative $file paths referenced by methods, for watching.
 func FileDependencies(methods []Method) []string {
@@ -316,4 +317,44 @@ func FileDependencies(methods []Method) []string {
 		deps = append(deps, raw)
 	}
 	return deps
+}
+
+// UnusedCustomVariables returns names of comment variables that are not control
+// variables ($status, $delay, $file) and never appear as {{$name}} in the
+// section body or response headers. Callers should warn; these are not errors.
+func UnusedCustomVariables(method Method) []string {
+	if len(method.Variables) == 0 {
+		return nil
+	}
+	used := placeholderNames(method)
+	var unused []string
+	for name := range method.Variables {
+		if _, ok := controlVariables[name]; ok {
+			continue
+		}
+		if used[name] {
+			continue
+		}
+		unused = append(unused, name)
+	}
+	slices.Sort(unused)
+	return unused
+}
+
+func placeholderNames(method Method) map[string]bool {
+	used := make(map[string]bool)
+	collect := func(text string) {
+		for _, match := range placeholderPattern.FindAllStringSubmatch(text, -1) {
+			if len(match) == 2 {
+				used[match[1]] = true
+			}
+		}
+	}
+	collect(method.Body)
+	for _, values := range method.Headers {
+		for _, value := range values {
+			collect(value)
+		}
+	}
+	return used
 }
