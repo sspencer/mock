@@ -161,6 +161,7 @@ func TestListenAddress(t *testing.T) {
 }
 
 func TestParseConfigAndVersion(t *testing.T) {
+	t.Setenv("MOCK_PORT", "")
 	cfg, err := parseConfig([]string{"-p", "9090", "-b", "127.0.0.1", "-cors", "*", "api.http"})
 	if err != nil {
 		t.Fatalf("parseConfig() error = %v", err)
@@ -176,6 +177,50 @@ func TestParseConfigAndVersion(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "dev") {
 		t.Fatalf("version output = %q, want dev", out.String())
+	}
+}
+
+func TestParseConfigDefaultPortWithoutEnv(t *testing.T) {
+	t.Setenv("MOCK_PORT", "")
+	cfg, err := parseConfig([]string{"api.http"})
+	if err != nil {
+		t.Fatalf("parseConfig() error = %v", err)
+	}
+	if cfg.Port != 8080 {
+		t.Fatalf("Port = %d, want 8080", cfg.Port)
+	}
+}
+
+func TestParseConfigUsesMockPortEnvAsDefault(t *testing.T) {
+	t.Setenv("MOCK_PORT", "9091")
+	cfg, err := parseConfig([]string{"api.http"})
+	if err != nil {
+		t.Fatalf("parseConfig() error = %v", err)
+	}
+	if cfg.Port != 9091 {
+		t.Fatalf("Port = %d, want 9091", cfg.Port)
+	}
+}
+
+func TestParseConfigFlagOverridesMockPortEnv(t *testing.T) {
+	t.Setenv("MOCK_PORT", "9091")
+	cfg, err := parseConfig([]string{"-p", "3000", "api.http"})
+	if err != nil {
+		t.Fatalf("parseConfig() error = %v", err)
+	}
+	if cfg.Port != 3000 {
+		t.Fatalf("Port = %d, want 3000 from -p", cfg.Port)
+	}
+}
+
+func TestParseConfigRejectsInvalidMockPort(t *testing.T) {
+	t.Setenv("MOCK_PORT", "nope")
+	_, err := parseConfig([]string{"api.http"})
+	if err == nil {
+		t.Fatal("parseConfig() error = nil, want invalid MOCK_PORT error")
+	}
+	if !strings.Contains(err.Error(), "MOCK_PORT") {
+		t.Fatalf("error = %q, want MOCK_PORT", err)
 	}
 }
 

@@ -109,13 +109,16 @@ Flags:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-p` | `8080` | HTTP port |
+| `-p` | `8080`, or `MOCK_PORT` | HTTP port |
 | `-b` | (all interfaces) | Bind address, e.g. `127.0.0.1` |
 | `-l` | `mock` | URL path for the request-log UI (`/mock/`) |
 | `-cors` | (off) | `Access-Control-Allow-Origin` value (`*` or an origin) |
 | `-cert` / `-key` | (off) | Enable HTTPS with the given certificate and key |
 | `-openapi` | (off) | Seed stub routes from an OpenAPI 3 JSON/YAML file |
 | `-version` | | Print version and exit |
+
+If `-p` is omitted, `mock` uses the `MOCK_PORT` environment variable when it
+is set. An explicit `-p` flag always wins.
 
 You can pass one or more `.http` files. When no files are passed, `mock` reads
 from stdin. Empty input fails fast with an error that points at the expected

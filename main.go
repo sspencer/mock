@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -67,8 +68,12 @@ func parseConfig(args []string) (config, error) {
 	flagSet := flag.NewFlagSet("mock", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
 	var cfg config
+	portDefault, err := portFromEnv()
+	if err != nil {
+		return config{}, err
+	}
 	flagSet.StringVar(&cfg.Mount, "l", "mock", "URL path for the admin web UI")
-	flagSet.IntVar(&cfg.Port, "p", 8080, "HTTP port")
+	flagSet.IntVar(&cfg.Port, "p", portDefault, "HTTP port")
 	flagSet.StringVar(&cfg.Bind, "b", "", "bind address (default all interfaces)")
 	flagSet.StringVar(&cfg.CORS, "cors", "", "Access-Control-Allow-Origin value (e.g. * or https://app.local)")
 	flagSet.StringVar(&cfg.CertFile, "cert", "", "TLS certificate file (enables HTTPS)")
@@ -80,6 +85,20 @@ func parseConfig(args []string) (config, error) {
 	}
 	cfg.Args = flagSet.Args()
 	return cfg, nil
+}
+
+// portFromEnv returns MOCK_PORT when set, otherwise the built-in default of 8080.
+// A set but unparseable value is a usage error so a typo is not silently ignored.
+func portFromEnv() (int, error) {
+	raw := strings.TrimSpace(os.Getenv("MOCK_PORT"))
+	if raw == "" {
+		return 8080, nil
+	}
+	port, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, usageError("invalid MOCK_PORT %q: must be an integer", raw)
+	}
+	return port, nil
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.Logger) error {
