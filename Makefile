@@ -3,7 +3,6 @@ APP_NAME := mock
 APP_MAIN := .
 DOCKER_IMAGE := $(APP_NAME)
 PKG := ./...
-SRC := $(shell find . -name '*.go' -not -path './.git/*')
 GOBIN ?= $(shell $(GO) env GOBIN)
 ifeq ($(GOBIN),)
 GOBIN := $(shell $(GO) env GOPATH)/bin
@@ -14,10 +13,11 @@ BINARY := $(GOBIN)/$(APP_NAME)
 
 all: fmt vet test build
 
-build: $(BINARY)
-
-$(BINARY): $(SRC)
-	CGO_ENABLED=0 $(GO) build -o $(BINARY) $(APP_MAIN)
+# Always rewrite $(BINARY). Make must not skip install when sources look current
+# (embedded static files, go.mod, or an already-installed binary).
+build:
+	mkdir -p "$(GOBIN)"
+	CGO_ENABLED=0 $(GO) build -o "$(BINARY)" $(APP_MAIN)
 
 fmt:
 	$(GO) fmt $(PKG)
