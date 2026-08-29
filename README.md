@@ -14,10 +14,23 @@ Run the example API:
 go run . examples/user.http
 ```
 
-The server prints the routes it loaded, then listens on `:8080`. While it is
-running, it watches the given `.http` file(s) and any `$file` response bodies
-they reference. Save a file and the server reloads the routes and reprints the
-updated method list. A failed reload keeps the previous routes and logs the error.
+The server prints a short banner with the listen address, the admin UI URL, and
+whether it is watching files, then the route list, and listens on `:8080`:
+
+```text
+starting mock HTTP server on :8080
+admin UI at http://localhost:8080/mock/
+watching request files for changes
+Available mock methods:
+  GET     /                              Return home page external html file
+  POST    /users                         Create random user
+  GET     /users/:id                     Return any user
+```
+
+While it is running, it watches the given `.http` file(s) and any `$file`
+response bodies they reference. Save a file and the server reloads the routes
+and reprints the updated method list. A failed reload keeps the previous routes
+and logs the error.
 
 ```sh
 curl http://localhost:8080/users/42
@@ -27,7 +40,8 @@ curl http://localhost:8080/names?type=cat
 
 Open the request log at [http://localhost:8080/mock/](http://localhost:8080/mock/).
 The UI shows each request and response with raw HTTP-style details, a live routes
-panel, filter/pause controls, and HAR export.
+panel, filter/pause/clear controls, HAR export, a theme toggle, and a Help
+dialog that explains those controls.
 
 ![Web Interface](./docs/web.png)
 
@@ -47,8 +61,9 @@ make all
 make build
 ```
 
-`make build` installs the `mock` binary into `GOBIN`, or `GOPATH/bin` when
-`GOBIN` is not set.
+`make build` always writes the `mock` binary into `GOBIN`, or `GOPATH/bin` when
+`GOBIN` is not set. `make` / `make all` does the same after tests pass, even if
+Make thinks the sources are unchanged.
 
 After building:
 
@@ -299,7 +314,10 @@ The UI is mounted under `-l` (default `/mock/`):
 outside the UI mount, or change `-l`.
 
 UI features: theme toggle, filter, pause stream, clear (server + client), HAR
-export, and a routes panel that refreshes after hot-reload.
+export, a Help dialog, and a routes panel that refreshes after hot-reload.
+Pause only freezes the live log in the browser; the mock server keeps serving
+traffic. Export HAR downloads the requests currently in the log as a HAR
+(HTTP Archive) JSON file.
 
 ## OpenAPI Stubs
 
