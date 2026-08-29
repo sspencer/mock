@@ -88,7 +88,7 @@ h2 {
 }
 
 h1 {
-    font-size: clamp(1.65rem, 3vw, 2.35rem);
+    font-size: clamp(1.45rem, 2.6vw, 2.05rem);
     line-height: 1.05;
     font-weight: 650;
 }
@@ -119,6 +119,10 @@ h2 {
 
 .clear-button:hover {
     color: var(--danger);
+}
+
+#helpButton:hover {
+    color: var(--text);
 }
 
 .workspace {
@@ -536,6 +540,113 @@ tbody tr.selected {
     }
 }
 
+.help-dialog {
+    width: min(36rem, calc(100% - 32px));
+    max-height: min(88vh, 42rem);
+    margin: auto;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+}
+
+.help-dialog[open] {
+    display: flex;
+    flex-direction: column;
+}
+
+.help-dialog:focus {
+    outline: none;
+}
+
+.help-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.help-dialog-header,
+.help-dialog-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 20px;
+    background: var(--surface);
+    flex: 0 0 auto;
+}
+
+.help-dialog-header {
+    border-bottom: 1px solid var(--border);
+}
+
+.help-dialog-footer {
+    border-top: 1px solid var(--border);
+}
+
+.help-dialog-x {
+    min-width: 36px;
+    min-height: 36px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 1.25rem;
+    line-height: 1;
+    padding: 0;
+}
+
+.help-dialog-x:hover {
+    border-color: var(--border-strong);
+    background: var(--surface-muted);
+}
+
+.help-dialog-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 8px 20px 12px;
+}
+
+.help-dialog-intro {
+    margin: 12px 0 4px;
+    color: var(--muted);
+}
+
+.help-dialog-list {
+    margin: 0;
+}
+
+.help-dialog-list > div {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.help-dialog-list > div:last-child {
+    border-bottom: 0;
+}
+
+.help-dialog-list dt {
+    margin: 0 0 4px;
+    font-weight: 650;
+}
+
+.help-dialog-list dd {
+    margin: 0;
+    color: var(--muted);
+}
+
+.help-dialog-hint {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
+.help-dialog-footer .clear-button:hover {
+    color: var(--text);
+}
+
 @media (max-width: 640px) {
     .topbar,
     .panel-header {
@@ -546,6 +657,15 @@ tbody tr.selected {
     .theme-toggle,
     .clear-button,
     .filter-input {
+        width: 100%;
+    }
+
+    .help-dialog-footer {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .help-dialog-footer .clear-button {
         width: 100%;
     }
 

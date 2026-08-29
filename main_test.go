@@ -503,8 +503,15 @@ ok
 	if response.Code != http.StatusOK {
 		t.Fatalf("static status = %d, want %d", response.Code, http.StatusOK)
 	}
-	if body := response.Body.String(); !strings.Contains(body, "<title>Mock Server</title>") {
-		t.Fatalf("static body = %q, want embedded dashboard HTML", body)
+	body := response.Body.String()
+	for _, want := range []string{
+		"<title>Mock Server</title>",
+		`id="helpButton"`,
+		`id="helpDialog"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("static body missing %q", want)
+		}
 	}
 }
 

@@ -6,7 +6,7 @@
     <link rel="icon" href="favicon.ico" type="image/x-icon" />
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
     <title>Mock Server</title>
-    <link rel="stylesheet" href="style.css?v=20260710" />
+    <link rel="stylesheet" href="style.css?v=20260829-help" />
 </head>
 <body>
 <main class="app-shell">
@@ -19,6 +19,7 @@
             <button id="pauseButton" class="clear-button" type="button">Pause</button>
             <button id="exportButton" class="clear-button" type="button">Export HAR</button>
             <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle color theme">Dark</button>
+            <button id="helpButton" class="clear-button" type="button" aria-haspopup="dialog" aria-controls="helpDialog">Help</button>
         </div>
     </header>
 
@@ -68,7 +69,6 @@
                 <div class="panel-header compact">
                     <div>
                         <p class="eyebrow">Routes</p>
-                        <h2>Configured mocks</h2>
                     </div>
                     <button id="refreshRoutesButton" class="clear-button" type="button">Refresh</button>
                 </div>
@@ -80,6 +80,48 @@
     </section>
 </main>
 
+<dialog id="helpDialog" class="help-dialog" aria-labelledby="helpDialogTitle">
+    <div class="help-dialog-header">
+        <h2 id="helpDialogTitle">Help</h2>
+        <button id="helpCloseButton" class="help-dialog-x" type="button" aria-label="Close help">&times;</button>
+    </div>
+    <div class="help-dialog-body">
+        <p class="help-dialog-intro">This page is a live log of HTTP traffic handled by the mock server.</p>
+        <dl class="help-dialog-list">
+            <div>
+                <dt>Pause / Resume</dt>
+                <dd>Stops adding new requests to the log. The mock server keeps serving traffic. Requests that arrive while paused are not recorded. Resume starts showing new requests again.</dd>
+            </div>
+            <div>
+                <dt>Export HAR</dt>
+                <dd>Downloads the current request log as a HAR (HTTP Archive) file, a JSON format for captured HTTP traffic. Only requests already in the log are included.</dd>
+            </div>
+            <div>
+                <dt>Dark / Light</dt>
+                <dd>Switches the page between dark and light themes. The choice is remembered in this browser.</dd>
+            </div>
+            <div>
+                <dt>Filter</dt>
+                <dd>Shows only log entries whose method, path, or status match what you type.</dd>
+            </div>
+            <div>
+                <dt>Clear</dt>
+                <dd>Removes all logged requests from the page and the server. This also resets rotation counters used by repeating mock responses.</dd>
+            </div>
+            <div>
+                <dt>Refresh</dt>
+                <dd>Reloads the configured routes list. Routes also refresh automatically every few seconds after request files change.</dd>
+            </div>
+        </dl>
+    </div>
+    <div class="help-dialog-footer">
+        <p class="help-dialog-hint">Press Escape, click outside, or use Close to dismiss.</p>
+        <form method="dialog">
+            <button class="clear-button" type="submit">Close</button>
+        </form>
+    </div>
+</dialog>
+
 <script>
     const MAX_EVENTS = 200;
     const themeToggle = document.getElementById('themeToggle');
@@ -90,6 +132,9 @@
     const clearRequestsButton = document.getElementById('clearRequestsButton');
     const pauseButton = document.getElementById('pauseButton');
     const exportButton = document.getElementById('exportButton');
+    const helpButton = document.getElementById('helpButton');
+    const helpDialog = document.getElementById('helpDialog');
+    const helpCloseButton = document.getElementById('helpCloseButton');
     const filterInput = document.getElementById('filterInput');
     const routesList = document.getElementById('routesList');
     const refreshRoutesButton = document.getElementById('refreshRoutesButton');
@@ -185,6 +230,34 @@
         a.download = `mock-${new Date().toISOString().replace(/[:.]/g, '-')}.har`;
         a.click();
         URL.revokeObjectURL(url);
+    });
+
+    function openHelp() {
+        if (typeof helpDialog.showModal !== 'function' || helpDialog.open) {
+            return;
+        }
+        const body = helpDialog.querySelector('.help-dialog-body');
+        if (body) {
+            body.scrollTop = 0;
+        }
+        helpDialog.showModal();
+    }
+
+    function closeHelp() {
+        if (helpDialog.open) {
+            helpDialog.close();
+        }
+    }
+
+    helpButton.addEventListener('click', openHelp);
+    helpCloseButton.addEventListener('click', closeHelp);
+    helpDialog.addEventListener('click', (event) => {
+        const rect = helpDialog.getBoundingClientRect();
+        const inside = event.clientX >= rect.left && event.clientX <= rect.right
+            && event.clientY >= rect.top && event.clientY <= rect.bottom;
+        if (!inside) {
+            closeHelp();
+        }
     });
 
     filterInput.addEventListener('input', () => {
