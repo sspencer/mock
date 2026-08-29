@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -243,6 +244,50 @@ func TestRunPrintsParseErrorsDirectly(t *testing.T) {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("error = %q, want to contain %q", msg, want)
 		}
+	}
+}
+
+func TestRunPrintsStartupBannersBeforeMethods(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "api.http")
+	if err := os.WriteFile(path, []byte("### User\nGET /users\n\nok\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen() error = %v", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	t.Cleanup(func() { _ = ln.Close() })
+
+	var out bytes.Buffer
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	err = run([]string{"-p", strconv.Itoa(port), "-b", "127.0.0.1", path}, strings.NewReader(""), &out, io.Discard, logger)
+	if err == nil {
+		t.Fatal("run() error = nil, want listen failure")
+	}
+
+	got := out.String()
+	logged := logs.String()
+	if strings.Contains(got, "level=INFO") || strings.Contains(got, "msg=") {
+		t.Fatalf("stdout uses slog format: %q", got)
+	}
+	for _, msg := range []string{"starting mock HTTP server", "watching request files"} {
+		if strings.Contains(logged, msg) {
+			t.Fatalf("logs = %q, want %q on stdout not slog", logged, msg)
+		}
+	}
+
+	start := strings.Index(got, "starting mock HTTP server")
+	watch := strings.Index(got, "watching request files")
+	methods := strings.Index(got, "Available mock methods:")
+	if start < 0 || watch < 0 || methods < 0 {
+		t.Fatalf("stdout = %q, want starting, watching, and method list", got)
+	}
+	if start > watch || watch > methods {
+		t.Fatalf("stdout order = %q, want starting, then watching, then methods", got)
 	}
 }
 

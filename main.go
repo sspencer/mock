@@ -23,8 +23,9 @@ import (
 )
 
 func main() {
-	// Operational logs (start, reload success, requests) go to stdout via slog.
-	// User-facing failures print plain text to stderr so parse/load errors are readable.
+	// Operational logs (reload success, requests) go to stdout via slog.
+	// Startup banners print plain text to stdout. User-facing failures print
+	// plain text to stderr so parse/load errors are readable.
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	if err := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, logger); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
@@ -136,7 +137,6 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 		if err := validateMethods(input.Methods, cfg.Args); err != nil {
 			return runError("%v", err)
 		}
-		printMethods(stdout, input.Methods)
 
 		staticFS, err := staticFileSystem()
 		if err != nil {
@@ -144,11 +144,6 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 		}
 		mockServer = mockhttp.New(input.Methods, logger)
 		handler = newHandler(mockServer, cfg.Mount, staticFS)
-		logger.Info("starting mock HTTP server",
-			"addr", listenAddress(cfg.Bind, cfg.Port),
-			"methods", len(input.Methods),
-			"ui", normalizeMountPath(cfg.Mount),
-		)
 
 		if files := input.WatchFiles; len(files) > 0 {
 			reload := func() {
@@ -159,8 +154,19 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 			if err != nil {
 				return runError("failed to watch request files: %v", err)
 			}
-			logger.Info("watching request files for changes", "files", paths)
 		}
+
+		fmt.Fprintf(stdout, "starting mock HTTP server on %s\n", listenAddress(cfg.Bind, cfg.Port))
+		bind := cfg.Bind
+		if bind == "" {
+			bind = "localhost"
+		}
+
+		fmt.Fprintf(stdout, "admin UI at http://%s%s/\n", listenAddress(bind, cfg.Port), normalizeMountPath(cfg.Mount))
+		if watchCloser != nil {
+			fmt.Fprintln(stdout, "watching request files for changes")
+		}
+		printMethods(stdout, input.Methods)
 	}
 
 	if cfg.CORS != "" {
