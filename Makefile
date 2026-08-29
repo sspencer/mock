@@ -3,6 +3,8 @@ APP_NAME := mock
 APP_MAIN := .
 DOCKER_IMAGE := $(APP_NAME)
 PKG := ./...
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -s -w -X main.version=$(VERSION)
 GOBIN ?= $(shell $(GO) env GOBIN)
 ifeq ($(GOBIN),)
 GOBIN := $(shell $(GO) env GOPATH)/bin
@@ -17,7 +19,7 @@ all: fmt vet test build
 # (embedded static files, go.mod, or an already-installed binary).
 build:
 	mkdir -p "$(GOBIN)"
-	CGO_ENABLED=0 $(GO) build -o "$(BINARY)" $(APP_MAIN)
+	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o "$(BINARY)" $(APP_MAIN)
 
 fmt:
 	$(GO) fmt $(PKG)
@@ -43,7 +45,7 @@ test:
 	$(GO) test ./...
 
 docker:
-	docker build -t $(DOCKER_IMAGE) .
+	docker build --build-arg VERSION=$(VERSION) -t $(DOCKER_IMAGE) .
 
 run:
 	docker run --rm -p 7777:8080 $(DOCKER_IMAGE)

@@ -1,10 +1,29 @@
 # mock
 
-`mock` turns REST Client-style `.http` files into a local HTTP server.
+[![CI](https://github.com/sspencer/mock/actions/workflows/go.yml/badge.svg)](https://github.com/sspencer/mock/actions/workflows/go.yml)
+[![Release](https://img.shields.io/github/v/release/sspencer/mock)](https://github.com/sspencer/mock/releases/latest)
+[![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](LICENSE)
 
-It is meant for the useful middle ground between hand-written test doubles and
-a real backend: describe the routes you need, start the server, point your client
-at `localhost`, and inspect the traffic in a small web UI.
+`mock` turns REST Client-style `.http` files into a local HTTP server with hot
+reload and a request-log UI. It is a single binary for the gap between
+hand-written test doubles and a real backend — not a replacement for WireMock,
+Prism, or Mockoon, and not the Go unit-test mocking libraries (gomock, mockery).
+
+## Install
+
+Requires [Go](https://go.dev/dl/) 1.26 or newer:
+
+```sh
+go install github.com/sspencer/mock@v0.1.0
+mock -version
+```
+
+Binaries for Linux, macOS, and Windows are on the
+[Releases](https://github.com/sspencer/mock/releases) page. Docker instructions
+are [below](#docker). To build from a clone, see [Building From Source](#building-from-source).
+
+This binary is named `mock`. If you already have another `mock` on your `PATH`,
+the new one will shadow it or be shadowed, depending on install order.
 
 ## Quick Start
 
@@ -51,7 +70,7 @@ You can also pipe a request file through stdin:
 cat examples/user.http | go run .
 ```
 
-## Installing And Building
+## Building From Source
 
 Common development commands:
 
@@ -63,7 +82,8 @@ make build
 
 `make build` always writes the `mock` binary into `GOBIN`, or `GOPATH/bin` when
 `GOBIN` is not set. `make` / `make all` does the same after tests pass, even if
-Make thinks the sources are unchanged.
+Make thinks the sources are unchanged. The binary reports `git describe` via
+`-version` when built this way.
 
 After building:
 
@@ -363,3 +383,6 @@ Before sending a change around:
 ```sh
 make all
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and pull-request notes. Release
+history is in [CHANGELOG.md](CHANGELOG.md).

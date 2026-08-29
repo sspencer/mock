@@ -108,7 +108,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 		return err
 	}
 	if cfg.Version {
-		fmt.Fprintln(stdout, version)
+		fmt.Fprintln(stdout, currentVersion())
 		return nil
 	}
 	if cfg.CertFile != "" && cfg.KeyFile == "" || cfg.KeyFile != "" && cfg.CertFile == "" {
