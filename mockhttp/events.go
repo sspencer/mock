@@ -26,6 +26,7 @@ type EventRequest struct {
 	URL             string `json:"url"`
 	Time            string `json:"time"`
 	StartedDateTime string `json:"startedDateTime,omitempty"`
+	StartedAt       string `json:"startedAt,omitempty"`
 	Details         string `json:"details"`
 }
 
@@ -202,12 +203,14 @@ func writeEvent(w io.Writer, event RequestEvent) bool {
 }
 
 func newRequestEvent(r *http.Request, requestBody loggedBody, response *responseCapture, status int, arrivedAt time.Time, elapsed time.Duration) RequestEvent {
+	started := arrivedAt.UTC().Format(time.RFC3339Nano)
 	return RequestEvent{
 		Request: EventRequest{
 			Method:          r.Method,
 			URL:             r.URL.RequestURI(),
 			Time:            formatRequestTime(arrivedAt),
-			StartedDateTime: arrivedAt.UTC().Format(time.RFC3339Nano),
+			StartedDateTime: started,
+			StartedAt:       started,
 			Details:         requestDetails(r, requestBody),
 		},
 		Response: EventResponse{
