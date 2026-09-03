@@ -675,9 +675,10 @@ tbody tr[data-id]:hover {
     background: var(--jade-soft);
 }
 
-tbody tr.selected {
-    background: color-mix(in srgb, var(--jade) 14%, var(--surface));
-    box-shadow: inset 4px 0 0 var(--jade);
+tbody tr.selected,
+tbody tr.selected[data-id]:hover {
+    background: color-mix(in srgb, var(--copper) 16%, var(--surface));
+    box-shadow: inset 4px 0 0 var(--copper);
 }
 
 tbody tr[data-id]:focus-visible {
@@ -687,7 +688,7 @@ tbody tr[data-id]:focus-visible {
 }
 
 tbody tr.selected:focus-visible {
-    background: color-mix(in srgb, var(--jade) 18%, var(--surface));
+    background: color-mix(in srgb, var(--copper) 22%, var(--surface));
 }
 
 .empty-state {
