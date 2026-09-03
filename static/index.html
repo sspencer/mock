@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="favicon.ico" type="image/x-icon" />
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
-    <meta name="theme-color" content="#11243a" />
+    <meta name="theme-color" content="#10271e" />
     <title>Mock Server</title>
-    <link rel="stylesheet" href="style.css?v=20260902-protocol" />
+    <link rel="stylesheet" href="style.css?v=20260903-title-alignment" />
 </head>
 <body>
 <main class="app-shell">
@@ -41,7 +41,7 @@
         <section class="request-panel" aria-label="All requests">
             <div class="panel-header">
                 <div class="panel-heading">
-                    <p class="eyebrow">Traffic / 01</p>
+                    <p class="eyebrow">Traffic</p>
                     <div class="panel-title-line">
                         <h2>Request log</h2>
                         <span id="requestCount" class="count-display" aria-label="0 requests">000/200</span>
@@ -58,14 +58,7 @@
             </div>
 
             <div class="table-container" aria-live="polite">
-                <table>
-                    <thead>
-                    <tr>
-                        <th>Time</th>
-                        <th>Status</th>
-                        <th>Request</th>
-                    </tr>
-                    </thead>
+                <table aria-label="Request log">
                     <tbody id="requestTableBody">
                     <tr>
                         <td colspan="3" class="empty-state">No requests yet</td>
@@ -75,12 +68,12 @@
             </div>
             <section class="routes-panel" aria-label="Configured routes">
                 <div class="panel-header compact">
-                    <div class="panel-title-line">
-                        <div>
-                            <p class="eyebrow">Registry / 02</p>
+                    <div class="panel-heading">
+                        <p class="eyebrow">Registry</p>
+                        <div class="panel-title-line">
                             <h2>Configured routes</h2>
+                            <span id="routeCount" class="count-display compact-count" aria-label="Loading routes">—</span>
                         </div>
-                        <span id="routeCount" class="count-display compact-count" aria-label="Loading routes">—</span>
                     </div>
                     <div class="routes-panel-actions">
                         <button id="routesToggleButton" class="clear-button route-toggle-button" type="button" aria-expanded="true" aria-controls="routesList" aria-label="Hide configured routes">
@@ -406,18 +399,19 @@
 
             const c1 = row.insertCell(1);
             const statusSpan = document.createElement('span');
+            const statusText = http.response.statusText || '';
             statusSpan.textContent = `${http.response.status}`;
             statusSpan.className = 'status-code';
+            if (statusText) {
+                statusSpan.title = statusText;
+                statusSpan.setAttribute('aria-label', `${http.response.status} ${statusText}`);
+            }
             const status = parseInt(http.response.status, 10);
             if (status >= 200 && status < 300) statusSpan.classList.add('status-2xx');
             else if (status >= 300 && status < 400) statusSpan.classList.add('status-3xx');
             else if (status >= 400 && status < 500) statusSpan.classList.add('status-4xx');
             else if (status >= 500) statusSpan.classList.add('status-5xx');
             c1.appendChild(statusSpan);
-            const statusTextSpan = document.createElement('span');
-            statusTextSpan.className = 'status-text';
-            statusTextSpan.textContent = ` ${http.response.statusText || ''}`;
-            c1.appendChild(statusTextSpan);
 
             const c2 = row.insertCell(2);
             c2.className = 'request-cell';
@@ -477,10 +471,15 @@
                 method.textContent = route.method;
                 const path = document.createElement('span');
                 path.className = 'route-path';
-                path.textContent = ` ${route.path}${route.query ? '?' + route.query : ''}`;
+                const routePath = `${route.path}${route.query ? '?' + route.query : ''}`;
+                path.textContent = routePath;
+                path.title = routePath;
                 const name = document.createElement('span');
                 name.className = 'route-name';
                 name.textContent = route.name || '';
+                if (route.name) {
+                    name.title = route.name;
+                }
                 li.append(method, path, name);
                 routesList.appendChild(li);
             }
