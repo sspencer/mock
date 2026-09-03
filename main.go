@@ -78,7 +78,7 @@ func parseConfig(args []string) (config, error) {
 	flagSet.StringVar(&cfg.Mount, "l", "mock", "URL path for the admin web UI")
 	flagSet.IntVar(&cfg.Port, "p", portDefault, "HTTP port")
 	flagSet.StringVar(&cfg.Bind, "b", "127.0.0.1", "bind address (default 127.0.0.1; use 0.0.0.0 for all interfaces)")
-	flagSet.StringVar(&cfg.CORS, "cors", "", "Access-Control-Allow-Origin value (e.g. * or https://app.local); preflight OPTIONS only")
+	flagSet.StringVar(&cfg.CORS, "cors", "", "Access-Control-Allow-Origin value (e.g. * or https://app.local); only real preflights short-circuit; * exposes SSE to any origin")
 	flagSet.StringVar(&cfg.CertFile, "cert", "", "TLS certificate file (enables HTTPS)")
 	flagSet.StringVar(&cfg.KeyFile, "key", "", "TLS private key file")
 	flagSet.StringVar(&cfg.OpenAPI, "openapi", "", "OpenAPI 3 JSON/YAML file to seed stub routes")
@@ -160,7 +160,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 
 		addr := listenAddress(cfg.Bind, cfg.Port)
 		fmt.Fprintf(stdout, "starting mock HTTP server on %s\n", addr)
-		fmt.Fprintf(stdout, "admin UI at %s://%s%s/\n", listenScheme(cfg.CertFile), addr, normalizeMountPath(cfg.Mount))
+		fmt.Fprintf(stdout, "admin UI at %s://%s%s/\n", listenScheme(cfg.CertFile, cfg.KeyFile), addr, normalizeMountPath(cfg.Mount))
 		if bindsAllInterfaces(cfg.Bind) {
 			fmt.Fprintln(stderr, "warning: bound to all interfaces; admin UI is unauthenticated and request logs may include Authorization headers and bodies")
 		}
@@ -248,8 +248,8 @@ func listenAddress(bind string, port int) string {
 	return net.JoinHostPort(bind, fmt.Sprintf("%d", port))
 }
 
-func listenScheme(certFile string) string {
-	if certFile != "" {
+func listenScheme(certFile, keyFile string) string {
+	if certFile != "" && keyFile != "" {
 		return "https"
 	}
 	return "http"
@@ -410,8 +410,6 @@ func withCORS(next http.Handler, origin string) http.Handler {
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD")
 		if reqHeaders := r.Header.Get("Access-Control-Request-Headers"); reqHeaders != "" {
 			w.Header().Set("Access-Control-Allow-Headers", reqHeaders)
-		} else {
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Last-Event-ID")
 		}
 		if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
 			w.WriteHeader(http.StatusNoContent)
