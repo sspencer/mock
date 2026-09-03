@@ -104,7 +104,9 @@ ok
 	}
 
 	clear := httptest.NewRecorder()
-	server.ServeClear(clear, httptest.NewRequest(http.MethodPost, "/clear", nil))
+	clearReq := httptest.NewRequest(http.MethodPost, "/clear", nil)
+	clearReq.Header.Set("X-Requested-With", "XMLHttpRequest")
+	server.ServeClear(clear, clearReq)
 	if clear.Code != http.StatusNoContent {
 		t.Fatalf("clear status = %d, want %d", clear.Code, http.StatusNoContent)
 	}
@@ -161,6 +163,73 @@ func TestSubscribeReturnsSnapshotAndUnsubscribeRemovesSubscriber(t *testing.T) {
 
 	if len(server.subscribers) != 0 {
 		t.Fatalf("len(subscribers) = %d, want 0", len(server.subscribers))
+	}
+}
+
+func TestServeClearRejectsBareFormPOST(t *testing.T) {
+	methods, err := restclient.Parse("test.http", strings.NewReader(`### User
+GET /users
+
+ok
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	server.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/users", nil))
+	server.counters["GET /users"] = 3
+
+	clear := httptest.NewRecorder()
+	server.ServeClear(clear, httptest.NewRequest(http.MethodPost, "/clear", strings.NewReader("")))
+	if clear.Code != http.StatusForbidden {
+		t.Fatalf("bare POST status = %d, want %d", clear.Code, http.StatusForbidden)
+	}
+	if len(server.events) != 1 {
+		t.Fatalf("len(events) after rejected clear = %d, want 1", len(server.events))
+	}
+	if server.counters["GET /users"] != 3 {
+		t.Fatalf("counters reset by rejected clear: %#v", server.counters)
+	}
+}
+
+func TestServeClearAcceptsUIHeaders(t *testing.T) {
+	methods, err := restclient.Parse("test.http", strings.NewReader(`### User
+GET /users
+
+ok
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	server.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/users", nil))
+	server.counters["GET /users"] = 3
+
+	xhr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/clear", nil)
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	server.ServeClear(xhr, req)
+	if xhr.Code != http.StatusNoContent {
+		t.Fatalf("X-Requested-With status = %d, want %d", xhr.Code, http.StatusNoContent)
+	}
+	if len(server.events) != 0 {
+		t.Fatalf("len(events) after UI clear = %d, want 0", len(server.events))
+	}
+	if len(server.counters) != 0 {
+		t.Fatalf("counters after UI clear = %#v, want empty", server.counters)
+	}
+
+	server.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/users", nil))
+	server.counters["GET /users"] = 1
+	jsonClear := httptest.NewRecorder()
+	jsonReq := httptest.NewRequest(http.MethodPost, "/clear", strings.NewReader("{}"))
+	jsonReq.Header.Set("Content-Type", "application/json")
+	server.ServeClear(jsonClear, jsonReq)
+	if jsonClear.Code != http.StatusNoContent {
+		t.Fatalf("JSON Content-Type status = %d, want %d", jsonClear.Code, http.StatusNoContent)
+	}
+	if len(server.events) != 0 || len(server.counters) != 0 {
+		t.Fatalf("JSON clear left events=%d counters=%#v", len(server.events), server.counters)
 	}
 }
 
