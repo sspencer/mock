@@ -149,7 +149,7 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 			}
 		}
 		for _, name := range restclient.UnusedCustomVariables(method) {
-			logger.Warn("unused custom variable (not referenced as {{"$"+name+"}} in body or response headers)",
+			logger.Warn("unused custom variable (not referenced as {{$"+name+"}} in body or response headers)",
 				"variable", "$"+name,
 				"value", method.Variables[name],
 				"method", method.Name,
