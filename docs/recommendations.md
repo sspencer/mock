@@ -59,7 +59,7 @@ Captured from a full project review (2026-07-10). Status tracks implementation o
 | 1 | CORS (`-cors`) | done |
 | 2 | Request header matching from `.http` headers | done |
 | 3 | Reset rotation counters + clear events API | done |
-| 4 | Basic OpenAPI → route summary import helper | done |
+| 4 | Basic OpenAPI → route summary import helper | removed (feature deleted) |
 | 5 | Bind address (`-b`) | done |
 | 6 | Optional TLS (`-cert` / `-key`) | done |
 | 7 | UI filter, pause stream, export HAR | done |
