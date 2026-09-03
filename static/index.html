@@ -5,34 +5,55 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="favicon.ico" type="image/x-icon" />
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
+    <meta name="theme-color" content="#10262a" />
     <title>Mock Server</title>
-    <link rel="stylesheet" href="style.css?v=20260829-help" />
+    <link rel="stylesheet" href="style.css?v=20260902-console" />
 </head>
 <body>
 <main class="app-shell">
     <header class="topbar">
-        <div>
-            <p class="eyebrow">Live HTTP traffic</p>
-            <h1>Mock server</h1>
+        <div class="brand-lockup">
+            <div class="brand-mark" aria-hidden="true">
+                <span class="brand-mark-node"></span>
+                <span class="brand-mark-route"></span>
+                <span class="brand-mark-node"></span>
+            </div>
+            <div>
+                <p class="eyebrow status-line"><span class="live-pip"></span><span id="streamStatus">Connecting</span> <span class="eyebrow-divider">/</span> Local HTTP traffic</p>
+                <h1>Request console</h1>
+            </div>
         </div>
-        <div class="topbar-actions">
-            <button id="pauseButton" class="clear-button" type="button">Pause</button>
-            <button id="exportButton" class="clear-button" type="button">Export HAR</button>
-            <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle color theme">Dark</button>
-            <button id="helpButton" class="clear-button" type="button" aria-haspopup="dialog" aria-controls="helpDialog">Help</button>
+        <div class="topbar-actions" role="toolbar" aria-label="Console controls">
+            <button id="pauseButton" class="clear-button" type="button" aria-label="Pause request log" aria-pressed="false">
+                <span class="button-icon pause-icon" aria-hidden="true"></span><span class="button-label">Pause</span>
+            </button>
+            <button id="exportButton" class="clear-button" type="button" aria-label="Export request log as HAR">
+                <span class="button-icon export-icon" aria-hidden="true"></span><span class="button-label">Export HAR</span>
+            </button>
+            <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle color theme">
+                <span class="button-icon theme-icon" aria-hidden="true"></span><span id="themeToggleLabel" class="button-label">Dark</span>
+            </button>
+            <button id="helpButton" class="clear-button icon-button" type="button" aria-label="Help" aria-haspopup="dialog" aria-controls="helpDialog">?</button>
         </div>
     </header>
 
     <section class="workspace" aria-label="Request log workspace">
         <section class="request-panel" aria-label="All requests">
             <div class="panel-header">
-                <div>
-                    <p class="eyebrow">Requests</p>
-                    <h2>All activity</h2>
+                <div class="panel-heading">
+                    <p class="eyebrow">Traffic / 01</p>
+                    <div class="panel-title-line">
+                        <h2>Request log</h2>
+                        <span id="requestCount" class="count-display" aria-label="0 requests">000/200</span>
+                    </div>
                 </div>
                 <div class="panel-actions">
-                    <input id="filterInput" class="filter-input" type="search" placeholder="Filter method, path, status…" aria-label="Filter requests" />
-                    <button id="clearRequestsButton" class="clear-button" type="button">Clear</button>
+                    <label class="filter-control">
+                        <span class="filter-icon" aria-hidden="true"></span>
+                        <input id="filterInput" class="filter-input" type="search" placeholder="Filter traffic" aria-label="Filter requests by method, path, or status" />
+                        <span class="key-hint" aria-hidden="true">/</span>
+                    </label>
+                    <button id="clearRequestsButton" class="clear-button danger-button" type="button">Clear</button>
                 </div>
             </div>
 
@@ -52,29 +73,38 @@
                     </tbody>
                 </table>
             </div>
-        </section>
-
-        <section class="side-panel" aria-label="Details and routes">
-            <section class="detail-panel" aria-label="Request and response details">
-                <div class="detail-section">
-                    <div class="detail-label">Request</div>
-                    <div id="requestDetails" class="detail-content"></div>
-                </div>
-                <div class="detail-section">
-                    <div class="detail-label">Response</div>
-                    <div id="responseDetails" class="detail-content"></div>
-                </div>
-            </section>
             <section class="routes-panel" aria-label="Configured routes">
                 <div class="panel-header compact">
-                    <div>
-                        <p class="eyebrow">Routes</p>
+                    <div class="panel-title-line">
+                        <div>
+                            <p class="eyebrow">Registry / 02</p>
+                            <h2>Configured routes</h2>
+                        </div>
+                        <span id="routeCount" class="count-display compact-count" aria-label="Loading routes">—</span>
                     </div>
-                    <button id="refreshRoutesButton" class="clear-button" type="button">Refresh</button>
+                    <div class="routes-panel-actions">
+                        <button id="routesToggleButton" class="clear-button route-toggle-button" type="button" aria-expanded="true" aria-controls="routesList" aria-label="Hide configured routes">
+                            <span class="button-icon collapse-icon" aria-hidden="true"></span><span id="routesToggleLabel" class="route-toggle-label">Hide</span>
+                        </button>
+                        <button id="refreshRoutesButton" class="clear-button" type="button"><span class="button-icon refresh-icon" aria-hidden="true"></span><span>Refresh</span></button>
+                    </div>
                 </div>
                 <ul id="routesList" class="routes-list">
                     <li class="empty-state">Loading routes…</li>
                 </ul>
+            </section>
+        </section>
+
+        <section class="side-panel" aria-label="Exchange inspector">
+            <section class="detail-panel" aria-label="Request and response details">
+                <div class="detail-section">
+                    <div class="detail-label"><span>Request</span><span class="direction-tag">IN</span></div>
+                    <div id="requestDetails" class="detail-content"></div>
+                </div>
+                <div class="detail-section">
+                    <div class="detail-label"><span>Response</span><span class="direction-tag response-tag">OUT</span></div>
+                    <div id="responseDetails" class="detail-content"></div>
+                </div>
             </section>
         </section>
     </section>
@@ -112,6 +142,10 @@
                 <dt>Refresh</dt>
                 <dd>Reloads the configured routes list. Routes also refresh automatically every few seconds after request files change.</dd>
             </div>
+            <div>
+                <dt>Hide / Show routes</dt>
+                <dd>Collapses the route registry to give the request log more vertical space. The choice is remembered in this browser.</dd>
+            </div>
         </dl>
     </div>
     <div class="help-dialog-footer">
@@ -125,12 +159,14 @@
 <script>
     const MAX_EVENTS = 200;
     const themeToggle = document.getElementById('themeToggle');
+    const themeToggleLabel = document.getElementById('themeToggleLabel');
     const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
     const requestTableBody = document.getElementById('requestTableBody');
     const requestDetails = document.getElementById('requestDetails');
     const responseDetails = document.getElementById('responseDetails');
     const clearRequestsButton = document.getElementById('clearRequestsButton');
     const pauseButton = document.getElementById('pauseButton');
+    const pauseButtonLabel = pauseButton.querySelector('.button-label');
     const exportButton = document.getElementById('exportButton');
     const helpButton = document.getElementById('helpButton');
     const helpDialog = document.getElementById('helpDialog');
@@ -138,6 +174,12 @@
     const filterInput = document.getElementById('filterInput');
     const routesList = document.getElementById('routesList');
     const refreshRoutesButton = document.getElementById('refreshRoutesButton');
+    const routesToggleButton = document.getElementById('routesToggleButton');
+    const routesToggleLabel = document.getElementById('routesToggleLabel');
+    const requestPanel = document.querySelector('.request-panel');
+    const requestCount = document.getElementById('requestCount');
+    const routeCount = document.getElementById('routeCount');
+    const streamStatus = document.getElementById('streamStatus');
 
     /** @type {Map<number, any>} */
     const eventsById = new Map();
@@ -150,13 +192,21 @@
     function setTheme(theme) {
         if (theme === 'dark') {
             document.documentElement.setAttribute('data-theme', 'dark');
-            themeToggle.textContent = 'Light';
+            themeToggleLabel.textContent = 'Light';
             localStorage.setItem('theme', 'dark');
         } else {
             document.documentElement.removeAttribute('data-theme');
-            themeToggle.textContent = 'Dark';
+            themeToggleLabel.textContent = 'Dark';
             localStorage.setItem('theme', 'light');
         }
+    }
+
+    function setRoutesCollapsed(collapsed) {
+        requestPanel.classList.toggle('routes-collapsed', collapsed);
+        routesToggleButton.setAttribute('aria-expanded', String(!collapsed));
+        routesToggleButton.setAttribute('aria-label', collapsed ? 'Show configured routes' : 'Hide configured routes');
+        routesToggleLabel.textContent = collapsed ? 'Show' : 'Hide';
+        localStorage.setItem('routesCollapsed', collapsed ? 'true' : 'false');
     }
 
     const savedTheme = localStorage.getItem('theme');
@@ -167,6 +217,7 @@
     } else if (prefersDarkScheme.matches) {
         setTheme('dark');
     }
+    setRoutesCollapsed(localStorage.getItem('routesCollapsed') === 'true');
 
     themeToggle.addEventListener('click', () => {
         if (document.documentElement.getAttribute('data-theme') === 'dark') {
@@ -177,6 +228,14 @@
     });
 
     const source = new EventSource('events');
+    source.onopen = function () {
+        document.body.classList.remove('stream-offline');
+        streamStatus.textContent = paused ? 'Paused' : 'Listening';
+    };
+    source.onerror = function () {
+        document.body.classList.add('stream-offline');
+        streamStatus.textContent = 'Reconnecting';
+    };
     source.onmessage = function (event) {
         if (paused) {
             return;
@@ -210,15 +269,20 @@
         eventsById.clear();
         eventOrder = [];
         selectedId = null;
+        updateRequestCount();
         renderEmptyState();
-        fadeOutAndUpdate(requestDetails, '');
-        fadeOutAndUpdate(responseDetails, '');
+        updateDetail(requestDetails, '');
+        updateDetail(responseDetails, '');
     });
 
     pauseButton.addEventListener('click', () => {
         paused = !paused;
-        pauseButton.textContent = paused ? 'Resume' : 'Pause';
+        pauseButtonLabel.textContent = paused ? 'Resume' : 'Pause';
         pauseButton.classList.toggle('active', paused);
+        pauseButton.setAttribute('aria-pressed', String(paused));
+        pauseButton.setAttribute('aria-label', paused ? 'Resume request log' : 'Pause request log');
+        streamStatus.textContent = paused ? 'Paused' : 'Listening';
+        document.body.classList.toggle('stream-paused', paused);
     });
 
     exportButton.addEventListener('click', () => {
@@ -265,7 +329,18 @@
         renderTable();
     });
 
+    document.addEventListener('keydown', (event) => {
+        const typing = event.target.matches('input, textarea, [contenteditable="true"]');
+        if (event.key === '/' && !typing && !helpDialog.open) {
+            event.preventDefault();
+            filterInput.focus();
+        }
+    });
+
     refreshRoutesButton.addEventListener('click', loadRoutes);
+    routesToggleButton.addEventListener('click', () => {
+        setRoutesCollapsed(!requestPanel.classList.contains('routes-collapsed'));
+    });
     loadRoutes();
     // Refresh routes periodically so hot-reload is visible without a full page refresh.
     setInterval(loadRoutes, 3000);
@@ -283,7 +358,14 @@
                 eventsById.delete(dropped);
             }
         }
+        updateRequestCount();
         renderTable();
+    }
+
+    function updateRequestCount() {
+        const value = String(eventOrder.length).padStart(3, '0');
+        requestCount.textContent = `${value}/${MAX_EVENTS}`;
+        requestCount.setAttribute('aria-label', `${eventOrder.length} requests`);
     }
 
     function eventMatchesFilter(http) {
@@ -325,6 +407,7 @@
             const c1 = row.insertCell(1);
             const statusSpan = document.createElement('span');
             statusSpan.textContent = `${http.response.status}`;
+            statusSpan.className = 'status-code';
             const status = parseInt(http.response.status, 10);
             if (status >= 200 && status < 300) statusSpan.classList.add('status-2xx');
             else if (status >= 300 && status < 400) statusSpan.classList.add('status-3xx');
@@ -353,16 +436,12 @@
         for (const r of requestTableBody.getElementsByTagName('tr')) {
             r.classList.toggle('selected', r === row);
         }
-        fadeOutAndUpdate(requestDetails, http.request.details || '');
-        fadeOutAndUpdate(responseDetails, http.response.details || '');
+        updateDetail(requestDetails, http.request.details || '');
+        updateDetail(responseDetails, http.response.details || '');
     }
 
-    function fadeOutAndUpdate(element, newContent) {
-        element.style.opacity = '0';
-        setTimeout(() => {
-            element.textContent = newContent;
-            element.style.opacity = '1';
-        }, 150);
+    function updateDetail(element, newContent) {
+        element.textContent = newContent;
     }
 
     function renderEmptyState(message) {
@@ -381,6 +460,8 @@
                 throw new Error(`status ${res.status}`);
             }
             const routes = await res.json();
+            routeCount.textContent = String(routes.length).padStart(2, '0');
+            routeCount.setAttribute('aria-label', `${routes.length} configured routes`);
             routesList.replaceChildren();
             if (!routes.length) {
                 const li = document.createElement('li');
@@ -404,6 +485,8 @@
                 routesList.appendChild(li);
             }
         } catch (e) {
+            routeCount.textContent = '—';
+            routeCount.setAttribute('aria-label', 'Routes unavailable');
             routesList.replaceChildren();
             const li = document.createElement('li');
             li.className = 'empty-state';
