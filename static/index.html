@@ -7,7 +7,7 @@
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
     <meta name="theme-color" content="#10271e" />
     <title>Mock Server</title>
-    <link rel="stylesheet" href="style.css?v=20260903-title-alignment" />
+    <link rel="stylesheet" href="style.css?v=20260903-panel-titles" />
 </head>
 <body>
 <main class="app-shell">
@@ -41,9 +41,8 @@
         <section class="request-panel" aria-label="All requests">
             <div class="panel-header">
                 <div class="panel-heading">
-                    <p class="eyebrow">Traffic</p>
                     <div class="panel-title-line">
-                        <h2>Request log</h2>
+                        <h2>Traffic</h2>
                         <span id="requestCount" class="count-display" aria-label="0 requests">000/200</span>
                     </div>
                 </div>
@@ -69,9 +68,8 @@
             <section class="routes-panel" aria-label="Configured routes">
                 <div class="panel-header compact">
                     <div class="panel-heading">
-                        <p class="eyebrow">Registry</p>
                         <div class="panel-title-line">
-                            <h2>Configured routes</h2>
+                            <h2>Registry</h2>
                             <span id="routeCount" class="count-display compact-count" aria-label="Loading routes">—</span>
                         </div>
                     </div>
@@ -91,11 +89,11 @@
         <section class="side-panel" aria-label="Exchange inspector">
             <section class="detail-panel" aria-label="Request and response details">
                 <div class="detail-section">
-                    <div class="detail-label"><span>Request</span><span class="direction-tag">IN</span></div>
+                    <div class="detail-label"><h2>Request</h2><span class="direction-tag">IN</span></div>
                     <div id="requestDetails" class="detail-content"></div>
                 </div>
                 <div class="detail-section">
-                    <div class="detail-label"><span>Response</span><span class="direction-tag response-tag">OUT</span></div>
+                    <div class="detail-label"><h2>Response</h2><span class="direction-tag response-tag">OUT</span></div>
                     <div id="responseDetails" class="detail-content"></div>
                 </div>
             </section>
