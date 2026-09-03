@@ -1,0 +1,11 @@
+# Build context only needs Go sources, modules, static UI, and examples.
+.git
+.github
+.gitignore
+.goreleaser.yaml
+docs
+*.md
+LICENSE
+tag-release.txt
+**/*_test.go
+**/testdata
