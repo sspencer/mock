@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Removed OpenAPI stub seeding (`-openapi`, `examples/openapi.json`, `examples/openapi.yaml`). Use `.http` files.
+
 ## v0.1.1 - 2026-09-02
 
 This release redesigns the request-log web interface as a clearer, more

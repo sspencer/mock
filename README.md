@@ -138,7 +138,6 @@ docker run --rm \
 ```text
 mock [flags] <file.http> [file.http...]
 mock [flags] <directory>
-mock -openapi openapi.yaml
 cat file.http | mock
 mock -version
 ```
@@ -152,7 +151,6 @@ Flags:
 | `-l` | `mock` | URL path for the request-log UI (`/mock/`) |
 | `-cors` | (off) | `Access-Control-Allow-Origin` value (`*` or an origin). Only browser preflight `OPTIONS` are short-circuited |
 | `-cert` / `-key` | (off) | Enable HTTPS with the given certificate and key |
-| `-openapi` | (off) | Seed stub routes from an OpenAPI 3 JSON/YAML file |
 | `-version` | | Print version and exit |
 
 If `-p` is omitted, `mock` uses the `MOCK_PORT` environment variable when it
@@ -349,27 +347,6 @@ Pause only freezes the live log in the browser; the mock server keeps serving
 traffic. Export HAR downloads the requests currently in the log as a HAR
 (HTTP Archive) JSON file.
 
-## OpenAPI Stubs
-
-Seed stub routes from an OpenAPI 3 document (JSON or YAML):
-
-```sh
-mock -openapi examples/openapi.json -p 8080
-mock -openapi examples/openapi.yaml -p 8080
-```
-
-Both examples define the same pets API: `GET/POST /pets` and
-`GET/PUT/PATCH/DELETE /pets/:id`.
-
-`-openapi` turns each path operation into a simple `200` JSON stub. Path
-parameters `{id}` become `:id`. You can combine `-openapi` with `.http` files;
-both are loaded, and the `.http` files are still watched for changes.
-
-Checked-in samples:
-
-- `examples/openapi.json` — OpenAPI 3 in JSON
-- `examples/openapi.yaml` — OpenAPI 3 in YAML
-
 ## CORS And TLS
 
 ```sh
@@ -391,7 +368,7 @@ unauthenticated and request logs may include `Authorization` headers and bodies.
 This repository is intentionally small:
 
 - `main.go` / `watch.go` / `version.go` wire CLI flags, input loading, watching, and lifecycle.
-- `restclient/` parses `.http` files and OpenAPI stubs.
+- `restclient/` parses `.http` files.
 - `mockhttp/` matches requests, renders responses, and streams request-log events.
 - `static/` contains the request log UI (embedded at build time).
 - `examples/` contains request files you can run locally.
