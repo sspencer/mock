@@ -14,7 +14,7 @@ Prism, or Mockoon, and not the Go unit-test mocking libraries (gomock, mockery).
 Requires [Go](https://go.dev/dl/) 1.26 or newer:
 
 ```sh
-go install github.com/sspencer/mock@v0.1.0
+go install github.com/sspencer/mock@v0.1.1
 mock -version
 ```
 
@@ -57,10 +57,10 @@ curl -X POST http://localhost:8080/users
 curl http://localhost:8080/names?type=cat
 ```
 
-Open the request log at [http://localhost:8080/mock/](http://localhost:8080/mock/).
-The UI shows each request and response with raw HTTP-style details, a live routes
-panel, filter/pause/clear controls, HAR export, a theme toggle, and a Help
-dialog that explains those controls.
+Open the request console at [http://localhost:8080/mock/](http://localhost:8080/mock/).
+The responsive UI shows each request and response with raw HTTP-style details,
+a collapsible live-routes panel, filter/pause/clear controls, HAR export, light
+and dark themes, and a Help dialog that explains those controls.
 
 ![Web Interface](./docs/web.png)
 

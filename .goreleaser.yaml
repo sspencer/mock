@@ -40,7 +40,7 @@ changelog:
 release:
   name_template: "{{.Tag}}"
   header: |
-    First tagged release of `mock`.
+    Release {{.Tag}} of `mock`.
 
     Install with Go 1.26+:
 

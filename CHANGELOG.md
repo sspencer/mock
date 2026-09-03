@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.1.1 - 2026-09-02
+
+This release redesigns the request-log web interface as a clearer, more
+practical console for inspecting local HTTP traffic.
+
+- Reworked the interface into a responsive two-column workspace with the
+  request log and configured routes on the left and full-width request and
+  response inspectors on the right
+- Added a persistent Hide / Show control for the configured-routes panel so
+  the request log can use the available vertical space
+- Added live connection state, request and route counters, compact HTTP method
+  and status badges, and a `/` keyboard shortcut for filtering
+- Refined light and dark themes, focus states, empty states, responsive
+  behavior, and control accessibility
+- Removed inspector transition flashes when selecting or receiving requests
+- Updated the README screenshot to show the redesigned interface in use
+
 ## v0.1.0 - 2026-08-29
 
 First tagged release.
