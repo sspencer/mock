@@ -651,7 +651,9 @@ ok
 
 	// Admin routes are mounted under the UI path.
 	clear := httptest.NewRecorder()
-	handler.ServeHTTP(clear, httptest.NewRequest(http.MethodPost, "/admin/clear", nil))
+	clearReq := httptest.NewRequest(http.MethodPost, "/admin/clear", nil)
+	clearReq.Header.Set("X-Requested-With", "XMLHttpRequest")
+	handler.ServeHTTP(clear, clearReq)
 	if clear.Code != http.StatusNoContent {
 		t.Fatalf("clear status = %d, want %d", clear.Code, http.StatusNoContent)
 	}
@@ -669,7 +671,9 @@ func TestWithCORS(t *testing.T) {
 	handler := withCORS(inner, "*")
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodOptions, "/users", nil))
+	preflight := httptest.NewRequest(http.MethodOptions, "/users", nil)
+	preflight.Header.Set("Access-Control-Request-Method", "POST")
+	handler.ServeHTTP(response, preflight)
 	if response.Code != http.StatusNoContent {
 		t.Fatalf("options status = %d, want %d", response.Code, http.StatusNoContent)
 	}

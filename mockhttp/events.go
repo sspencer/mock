@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/sspencer/mock/restclient"
@@ -20,16 +22,18 @@ type RequestEvent struct {
 }
 
 type EventRequest struct {
-	Method  string `json:"method"`
-	URL     string `json:"url"`
-	Time    string `json:"time"`
-	Details string `json:"details"`
+	Method    string `json:"method"`
+	URL       string `json:"url"`
+	Time      string `json:"time"`
+	StartedAt string `json:"startedAt"`
+	Details   string `json:"details"`
 }
 
 type EventResponse struct {
 	Status     int    `json:"status"`
 	StatusText string `json:"statusText"`
 	Time       string `json:"time"`
+	ElapsedMs  int64  `json:"elapsedMs"`
 	Details    string `json:"details"`
 }
 
@@ -88,15 +92,43 @@ func (s *Server) ServeEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServeClear handles POST to clear the in-memory request log and rotation counters.
+// Bare form-style POSTs are rejected; the dashboard sends X-Requested-With or JSON.
 func (s *Server) ServeClear(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !clearRequestAllowed(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	s.ClearEvents()
 	s.ResetCounters()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func clearRequestAllowed(r *http.Request) bool {
+	if strings.TrimSpace(r.Header.Get("X-Requested-With")) != "" {
+		return true
+	}
+	ct, _, _ := strings.Cut(r.Header.Get("Content-Type"), ";")
+	if strings.EqualFold(strings.TrimSpace(ct), "application/json") {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site"))) {
+	case "same-origin", "same-site":
+		return true
+	}
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		return false
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	return strings.EqualFold(u.Host, r.Host)
 }
 
 // ServeRoutes handles GET of the currently configured mock routes.
@@ -176,15 +208,17 @@ func writeEvent(w io.Writer, event RequestEvent) bool {
 func newRequestEvent(r *http.Request, requestBody loggedBody, response *responseCapture, status int, arrivedAt time.Time, elapsed time.Duration) RequestEvent {
 	return RequestEvent{
 		Request: EventRequest{
-			Method:  r.Method,
-			URL:     r.URL.RequestURI(),
-			Time:    formatRequestTime(arrivedAt),
-			Details: requestDetails(r, requestBody),
+			Method:    r.Method,
+			URL:       r.URL.RequestURI(),
+			Time:      formatRequestTime(arrivedAt),
+			StartedAt: arrivedAt.UTC().Format(time.RFC3339Nano),
+			Details:   requestDetails(r, requestBody),
 		},
 		Response: EventResponse{
 			Status:     status,
 			StatusText: statusText(status),
 			Time:       elapsed.Round(time.Microsecond).String(),
+			ElapsedMs:  elapsed.Milliseconds(),
 			Details:    responseDetails(r, response, status),
 		},
 	}

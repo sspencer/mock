@@ -1,0 +1,15 @@
+# Keep the image build context to runtime sources.
+.git
+.github
+docs
+*.md
+LICENSE
+Makefile
+.gitignore
+.goreleaser.yaml
+.idea
+.vscode
+bin
+dist
+**/*_test.go
+**/testdata

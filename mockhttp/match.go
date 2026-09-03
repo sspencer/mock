@@ -8,12 +8,12 @@ import (
 	"github.com/sspencer/mock/restclient"
 )
 
-func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]string, bool) {
-	type match struct {
-		method *restclient.Method
-		values map[string]string
-	}
+type routeMatch struct {
+	method *restclient.Method
+	values map[string]string
+}
 
+func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]string, bool) {
 	// Snapshot the methods slice under the lock so hot-reload via SetMethods
 	// cannot race with matching. Pointers into the snapshot remain valid for
 	// this request even after a later SetMethods replaces s.methods.
@@ -21,7 +21,7 @@ func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]str
 	methods := s.methods
 	s.mu.Unlock()
 
-	var matches []match
+	var matches []routeMatch
 	for i := range methods {
 		method := &methods[i]
 		if method.Method != r.Method {
@@ -39,27 +39,40 @@ func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]str
 				values[name] = queryValues[0]
 			}
 		}
-		matches = append(matches, match{method: method, values: values})
+		matches = append(matches, routeMatch{method: method, values: values})
 	}
 	if len(matches) == 0 {
 		return nil, nil, false
 	}
 
-	selected := s.nextMatch(r, len(matches))
+	selected := s.nextMatch(matches)
 	return matches[selected].method, matches[selected].values, true
 }
 
-func (s *Server) nextMatch(r *http.Request, count int) int {
+func (s *Server) nextMatch(matches []routeMatch) int {
+	count := len(matches)
 	if count == 1 {
 		return 0
 	}
-	key := r.Method + " " + r.URL.RequestURI()
+	key := rotationKey(matches)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	selected := s.counters[key] % count
 	s.counters[key]++
 	return selected
+}
+
+func rotationKey(matches []routeMatch) string {
+	parts := make([]string, 0, len(matches))
+	for _, m := range matches {
+		query := ""
+		if m.method.Query != nil {
+			query = m.method.Query.Encode()
+		}
+		parts = append(parts, m.method.Method+"\t"+m.method.Path+"\t"+query)
+	}
+	return strings.Join(parts, "|")
 }
 
 func matchPath(pattern string, requestPath string) (map[string]string, bool) {
