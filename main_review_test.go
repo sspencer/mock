@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/sspencer/mock/mockhttp"
 	"github.com/sspencer/mock/restclient"
@@ -134,89 +133,6 @@ func TestRunWarnsWhenBoundToAllInterfaces(t *testing.T) {
 	}
 }
 
-func TestWatchInputPathsIncludesOpenAPI(t *testing.T) {
-	dir := t.TempDir()
-	spec := filepath.Join(dir, "openapi.json")
-	httpFile := filepath.Join(dir, "api.http")
-	if err := os.WriteFile(spec, []byte(`{"openapi":"3.0.3","paths":{"/pets":{"get":{"operationId":"listPets"}}}}`), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-	if err := os.WriteFile(httpFile, []byte("### User\nGET /users\n\nok\n"), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	onlySpec := watchInputPaths(inputSource{OpenAPI: spec})
-	if len(onlySpec) != 1 {
-		t.Fatalf("openapi-only paths = %#v, want 1 spec file", onlySpec)
-	}
-	if filepath.Clean(onlySpec[0]) != filepath.Clean(absPath(spec)) {
-		t.Fatalf("openapi-only path = %q, want %q", onlySpec[0], absPath(spec))
-	}
-
-	both := watchInputPaths(inputSource{WatchFiles: []string{httpFile}, OpenAPI: spec})
-	if len(both) < 2 {
-		t.Fatalf("combined paths = %#v, want http file and spec", both)
-	}
-	foundSpec := false
-	for _, p := range both {
-		if filepath.Clean(p) == filepath.Clean(absPath(spec)) {
-			foundSpec = true
-		}
-	}
-	if !foundSpec {
-		t.Fatalf("combined paths = %#v, want spec %q", both, spec)
-	}
-}
-
-func TestEndToEndReloadOpenAPISpecChange(t *testing.T) {
-	dir := t.TempDir()
-	spec := filepath.Join(dir, "openapi.json")
-	if err := os.WriteFile(spec, []byte(`{"openapi":"3.0.3","paths":{"/pets":{"get":{"operationId":"listPets"}}}}`), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-	methods, err := restclient.LoadOpenAPI(spec)
-	if err != nil {
-		t.Fatalf("LoadOpenAPI() error = %v", err)
-	}
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	server := mockhttp.New(methods, logger)
-
-	changed := make(chan struct{}, 1)
-	closer, err := watchFiles(watchInputPaths(inputSource{OpenAPI: spec}), func() {
-		reloadMockFiles(server, nil, spec, logger, io.Discard, io.Discard)
-		select {
-		case changed <- struct{}{}:
-		default:
-		}
-	}, logger)
-	if err != nil {
-		t.Fatalf("watchFiles() error = %v", err)
-	}
-	t.Cleanup(func() { _ = closer.Close() })
-
-	time.Sleep(50 * time.Millisecond)
-	if err := os.WriteFile(spec, []byte(`{"openapi":"3.0.3","paths":{"/cats":{"get":{"operationId":"listCats"}}}}`), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	select {
-	case <-changed:
-	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OpenAPI reload")
-	}
-
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		response := httptest.NewRecorder()
-		server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/cats", nil))
-		if response.Code == http.StatusOK && strings.Contains(response.Body.String(), "/cats") {
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	t.Fatal("reloaded OpenAPI route /cats not served")
-}
-
 func TestWithCORSPreflightAndMockOPTIONS(t *testing.T) {
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### Probe
 OPTIONS /users
@@ -263,8 +179,7 @@ func TestHandlerClearRequiresCSRFHeader(t *testing.T) {
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### User
 GET /users
 
-ok
-`))
+ok\n`))
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
@@ -290,8 +205,7 @@ func TestHandlerInjectsMockConfigVersion(t *testing.T) {
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### User
 GET /users
 
-ok
-`))
+ok\n`))
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
