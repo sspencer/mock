@@ -52,10 +52,10 @@ func runError(format string, args ...any) error {
 }
 
 type config struct {
-	Mount, Bind, CORS, CertFile, KeyFile, OpenAPI string
-	Port                                         int
-	Version                                      bool
-	Args                                         []string
+	Mount, Bind, CORS, CertFile, KeyFile string
+	Port                                 int
+	Version                              bool
+	Args                                 []string
 }
 
 func parseConfig(args []string) (config, error) {
@@ -72,7 +72,6 @@ func parseConfig(args []string) (config, error) {
 	flagSet.StringVar(&cfg.CORS, "cors", "", "Access-Control-Allow-Origin value (e.g. * or https://app.local); only real preflights short-circuit; * exposes SSE to any origin")
 	flagSet.StringVar(&cfg.CertFile, "cert", "", "TLS certificate file (enables HTTPS)")
 	flagSet.StringVar(&cfg.KeyFile, "key", "", "TLS private key file")
-	flagSet.StringVar(&cfg.OpenAPI, "openapi", "", "OpenAPI 3 JSON/YAML file to seed stub routes")
 	flagSet.BoolVar(&cfg.Version, "version", false, "print version and exit")
 	if err := flagSet.Parse(args); err != nil {
 		return config{}, usageError("failed to parse flags: %v", err)
@@ -105,12 +104,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 	if cfg.CertFile != "" && cfg.KeyFile == "" || cfg.KeyFile != "" && cfg.CertFile == "" {
 		return usageError("both -cert and -key are required for TLS")
 	}
-	if len(cfg.Args) == 0 && cfg.OpenAPI == "" {
+	if len(cfg.Args) == 0 {
 		if f, ok := stdin.(*os.File); ok && stdinIsTerminal(f) {
-			return usageError("missing request input\nusage: mock [-l mock] [-p 8080] [-b addr] [-cors *] [-cert c -key k] [-openapi spec.yaml] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
+			return usageError("missing request input\nusage: mock [-l mock] [-p 8080] [-b addr] [-cors *] [-cert c -key k] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
 		}
 	}
-	input, err := loadInput(cfg.Args, stdin, cfg.OpenAPI)
+	input, err := loadInput(cfg.Args, stdin)
 	if err != nil {
 		return runError("%v", err)
 	}
@@ -132,7 +131,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 		handler = newHandler(mockServer, cfg.Mount, staticFS)
 		if files := input.WatchFiles; len(files) > 0 {
 			reload := func() {
-				reloadMockFiles(mockServer, files, input.OpenAPI, logger, stdout, stderr)
+				reloadMockFiles(mockServer, files, logger, stdout, stderr)
 			}
 			paths := resolveWatchPaths(files, restclient.FileDependencies(input.Methods))
 			watchCloser, err = watchFiles(paths, reload, logger)
@@ -228,17 +227,9 @@ type inputSource struct {
 	Methods    []restclient.Method
 	StaticDir  string
 	WatchFiles []string
-	OpenAPI    string
 }
 
-func loadInput(args []string, stdin io.Reader, openAPI string) (inputSource, error) {
-	if openAPI != "" && len(args) == 0 {
-		methods, err := restclient.LoadOpenAPI(openAPI)
-		if err != nil {
-			return inputSource{}, err
-		}
-		return inputSource{Methods: methods, OpenAPI: openAPI}, nil
-	}
+func loadInput(args []string, stdin io.Reader) (inputSource, error) {
 	if len(args) == 1 {
 		info, err := os.Stat(args[0])
 		if err != nil {
@@ -257,20 +248,11 @@ func loadInput(args []string, stdin io.Reader, openAPI string) (inputSource, err
 			return inputSource{}, fmt.Errorf("cannot mix static directory %q with other request inputs", arg)
 		}
 	}
-	var methods []restclient.Method
-	if openAPI != "" {
-		openAPIMethods, err := restclient.LoadOpenAPI(openAPI)
-		if err != nil {
-			return inputSource{}, err
-		}
-		methods = append(methods, openAPIMethods...)
-	}
-	fileMethods, err := loadMethods(args, stdin)
+	methods, err := loadMethods(args, stdin)
 	if err != nil {
 		return inputSource{}, err
 	}
-	methods = append(methods, fileMethods...)
-	src := inputSource{Methods: methods, OpenAPI: openAPI}
+	src := inputSource{Methods: methods}
 	if len(args) > 0 {
 		src.WatchFiles = append([]string(nil), args...)
 	}
@@ -358,24 +340,12 @@ func withCORS(next http.Handler, origin string) http.Handler {
 	})
 }
 
-func reloadMockFiles(mockServer *mockhttp.Server, files []string, openAPI string, logger *slog.Logger, out, errOut io.Writer) {
+func reloadMockFiles(mockServer *mockhttp.Server, files []string, logger *slog.Logger, out, errOut io.Writer) {
 	load := func() ([]restclient.Method, error) {
-		var methods []restclient.Method
-		if openAPI != "" {
-			openAPIMethods, err := restclient.LoadOpenAPI(openAPI)
-			if err != nil {
-				return nil, err
-			}
-			methods = append(methods, openAPIMethods...)
+		if len(files) == 0 {
+			return nil, nil
 		}
-		if len(files) > 0 {
-			fileMethods, err := restclient.Load(files)
-			if err != nil {
-				return nil, err
-			}
-			methods = append(methods, fileMethods...)
-		}
-		return methods, nil
+		return restclient.Load(files)
 	}
 	methods, err := load()
 	if err != nil {
