@@ -156,18 +156,60 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 				"source", method.Source,
 			)
 		}
-		for _, name := range []string{"Authorization", "Cookie", "Accept"} {
-			if method.Headers.Get(name) == "" {
-				continue
-			}
-			if method.MatchHeaders.Get(name) != "" {
-				continue
-			}
-			logger.Warn("header after the request line is a response header; use # $header."+name+"=... to match incoming requests",
-				"header", name,
-				"method", method.Name,
-				"source", method.Source,
-			)
+		warnIncomingHeadersUsedAsResponse(logger, method)
+	}
+}
+
+// wellKnownIncomingHeaders are typical request headers. After the request line
+// they are treated as response headers; warn unless a $header.* matcher is set.
+var wellKnownIncomingHeaders = map[string]struct{}{
+	"Accept":              {},
+	"Accept-Charset":      {},
+	"Accept-Encoding":     {},
+	"Accept-Language":     {},
+	"Authorization":       {},
+	"Connection":          {},
+	"Cookie":              {},
+	"Expect":              {},
+	"Forwarded":           {},
+	"From":                {},
+	"Host":                {},
+	"If-Match":            {},
+	"If-Modified-Since":   {},
+	"If-None-Match":       {},
+	"If-Range":            {},
+	"If-Unmodified-Since": {},
+	"Max-Forwards":        {},
+	"Origin":              {},
+	"Proxy-Authorization": {},
+	"Range":               {},
+	"Referer":             {},
+	"Te":                  {},
+	"Trailer":             {},
+	"Transfer-Encoding":   {},
+	"Upgrade":             {},
+	"User-Agent":          {},
+	"Via":                 {},
+	"X-Forwarded-For":     {},
+	"X-Forwarded-Host":    {},
+	"X-Forwarded-Proto":   {},
+	"X-Real-Ip":           {},
+	"X-Requested-With":    {},
+}
+
+func warnIncomingHeadersUsedAsResponse(logger *slog.Logger, method restclient.Method) {
+	for name := range method.Headers {
+		canonical := http.CanonicalHeaderKey(name)
+		if _, ok := wellKnownIncomingHeaders[canonical]; !ok {
+			continue
 		}
+		if method.MatchHeaders.Get(canonical) != "" {
+			continue
+		}
+		logger.Warn("header after the request line is a response header; use # $header."+canonical+"=value to match incoming requests",
+			"header", canonical,
+			"method", method.Name,
+			"source", method.Source,
+		)
 	}
 }
