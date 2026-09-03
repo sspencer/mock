@@ -179,7 +179,8 @@ func TestHandlerClearRequiresCSRFHeader(t *testing.T) {
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### User
 GET /users
 
-ok\n`))
+ok
+`))
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
@@ -205,7 +206,8 @@ func TestHandlerInjectsMockConfigVersion(t *testing.T) {
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### User
 GET /users
 
-ok\n`))
+ok
+`))
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
