@@ -8,11 +8,6 @@ import (
 	"github.com/sspencer/mock/restclient"
 )
 
-type match struct {
-	method *restclient.Method
-	values map[string]string
-}
-
 func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]string, bool) {
 	// Snapshot the methods slice under the lock so hot-reload via SetMethods
 	// cannot race with matching. Pointers into the snapshot remain valid for
@@ -21,7 +16,7 @@ func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]str
 	methods := s.methods
 	s.mu.Unlock()
 
-	var matches []match
+	var matches []routeMatch
 	for i := range methods {
 		method := &methods[i]
 		if method.Method != r.Method {
@@ -39,22 +34,20 @@ func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]str
 				values[name] = queryValues[0]
 			}
 		}
-		matches = append(matches, match{method: method, values: values})
+		matches = append(matches, routeMatch{method: method, values: values})
 	}
 	if len(matches) == 0 {
 		return nil, nil, false
 	}
 
-	selected := s.nextMatch(matches)
+	selected := s.nextMatch(rotationKey(matches), len(matches))
 	return matches[selected].method, matches[selected].values, true
 }
 
-func (s *Server) nextMatch(matches []match) int {
-	count := len(matches)
-	if count <= 1 {
+func (s *Server) nextMatch(key string, count int) int {
+	if count == 1 {
 		return 0
 	}
-	key := rotationKey(matches)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -63,20 +56,24 @@ func (s *Server) nextMatch(matches []match) int {
 	return selected
 }
 
-// rotationKey identifies the matched route set so unused extra query parameters
-// do not split rotation counters.
-func rotationKey(matches []match) string {
-	var b strings.Builder
-	b.WriteString(matches[0].method.Method)
-	for _, m := range matches {
-		b.WriteByte(' ')
-		b.WriteString(m.method.Path)
-		if q := m.method.Query.Encode(); q != "" {
-			b.WriteByte('?')
-			b.WriteString(q)
+type routeMatch struct {
+	method *restclient.Method
+	values map[string]string
+}
+
+// rotationKey identifies a matched route set by method, path pattern, and
+// required query — not the raw request URI — so unused query params do not
+// split rotation counters.
+func rotationKey(matches []routeMatch) string {
+	parts := make([]string, len(matches))
+	for i, m := range matches {
+		part := m.method.Method + " " + m.method.Path
+		if query := m.method.Query.Encode(); query != "" {
+			part += "?" + query
 		}
+		parts[i] = part
 	}
-	return b.String()
+	return strings.Join(parts, "\x00")
 }
 
 func matchPath(pattern string, requestPath string) (map[string]string, bool) {
