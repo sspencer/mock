@@ -152,7 +152,7 @@ Flags:
 | `-l` | `mock` | URL path for the request-log UI (`/mock/`) |
 | `-cors` | (off) | `Access-Control-Allow-Origin` value (`*` or an origin). Only browser preflight `OPTIONS` are short-circuited |
 | `-cert` / `-key` | (off) | Enable HTTPS with the given certificate and key |
-| `-openapi` | (off) | Seed stub routes from an OpenAPI 3 JSON/YAML file (the spec file is watched for changes) |
+| `-openapi` | (off) | Seed stub routes from an OpenAPI 3 JSON/YAML file |
 | `-version` | | Print version and exit |
 
 If `-p` is omitted, `mock` uses the `MOCK_PORT` environment variable when it
@@ -163,8 +163,7 @@ from stdin. Empty input fails fast with an error that points at the expected
 request-section format.
 
 Request files passed on the command line are watched for changes, including
-relative `$file` response bodies. An `-openapi` spec is watched as well, including
-when it is the only input. On save, `mock` reloads those files, swaps in
+relative `$file` response bodies. On save, `mock` reloads those files, swaps in
 the new routes without restarting the process, and prints the updated route list.
 SIGINT/SIGTERM shut the server down cleanly and stop the file watcher.
 
@@ -364,8 +363,7 @@ Both examples define the same pets API: `GET/POST /pets` and
 
 `-openapi` turns each path operation into a simple `200` JSON stub. Path
 parameters `{id}` become `:id`. You can combine `-openapi` with `.http` files;
-both are loaded. The OpenAPI file is watched for changes, including when it is
-used alone (`mock -openapi spec.yaml`).
+both are loaded, and the `.http` files are still watched for changes.
 
 Checked-in samples:
 
