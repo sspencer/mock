@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -75,8 +77,8 @@ func parseConfig(args []string) (config, error) {
 	}
 	flagSet.StringVar(&cfg.Mount, "l", "mock", "URL path for the admin web UI")
 	flagSet.IntVar(&cfg.Port, "p", portDefault, "HTTP port")
-	flagSet.StringVar(&cfg.Bind, "b", "", "bind address (default all interfaces)")
-	flagSet.StringVar(&cfg.CORS, "cors", "", "Access-Control-Allow-Origin value (e.g. * or https://app.local)")
+	flagSet.StringVar(&cfg.Bind, "b", "127.0.0.1", "bind address (default 127.0.0.1; use 0.0.0.0 for all interfaces)")
+	flagSet.StringVar(&cfg.CORS, "cors", "", "Access-Control-Allow-Origin value (e.g. * or https://app.local); preflight OPTIONS only")
 	flagSet.StringVar(&cfg.CertFile, "cert", "", "TLS certificate file (enables HTTPS)")
 	flagSet.StringVar(&cfg.KeyFile, "key", "", "TLS private key file")
 	flagSet.StringVar(&cfg.OpenAPI, "openapi", "", "OpenAPI 3 JSON/YAML file to seed stub routes")
@@ -145,24 +147,23 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 		mockServer = mockhttp.New(input.Methods, logger)
 		handler = newHandler(mockServer, cfg.Mount, staticFS)
 
-		if files := input.WatchFiles; len(files) > 0 {
+		if paths := watchInputPaths(input); len(paths) > 0 {
+			files := input.WatchFiles
 			reload := func() {
 				reloadMockFiles(mockServer, files, input.OpenAPI, logger, stdout, stderr)
 			}
-			paths := resolveWatchPaths(files, restclient.FileDependencies(input.Methods))
 			watchCloser, err = watchFiles(paths, reload, logger)
 			if err != nil {
 				return runError("failed to watch request files: %v", err)
 			}
 		}
 
-		fmt.Fprintf(stdout, "starting mock HTTP server on %s\n", listenAddress(cfg.Bind, cfg.Port))
-		bind := cfg.Bind
-		if bind == "" {
-			bind = "localhost"
+		addr := listenAddress(cfg.Bind, cfg.Port)
+		fmt.Fprintf(stdout, "starting mock HTTP server on %s\n", addr)
+		fmt.Fprintf(stdout, "admin UI at %s://%s%s/\n", listenScheme(cfg.CertFile), addr, normalizeMountPath(cfg.Mount))
+		if bindsAllInterfaces(cfg.Bind) {
+			fmt.Fprintln(stderr, "warning: bound to all interfaces; admin UI is unauthenticated and request logs may include Authorization headers and bodies")
 		}
-
-		fmt.Fprintf(stdout, "admin UI at http://%s%s/\n", listenAddress(bind, cfg.Port), normalizeMountPath(cfg.Mount))
 		if watchCloser != nil {
 			fmt.Fprintln(stdout, "watching request files for changes")
 		}
@@ -245,6 +246,38 @@ func shutdownHTTPServer(server *http.Server, grace time.Duration) error {
 
 func listenAddress(bind string, port int) string {
 	return net.JoinHostPort(bind, fmt.Sprintf("%d", port))
+}
+
+func listenScheme(certFile string) string {
+	if certFile != "" {
+		return "https"
+	}
+	return "http"
+}
+
+func bindsAllInterfaces(bind string) bool {
+	host := strings.Trim(bind, "[]")
+	return host == "" || host == "0.0.0.0" || host == "::" || host == "*"
+}
+
+// watchInputPaths returns files that should be watched for hot reload:
+// request files, their $file dependencies, and the OpenAPI spec when set.
+func watchInputPaths(input inputSource) []string {
+	paths := resolveWatchPaths(input.WatchFiles, restclient.FileDependencies(input.Methods))
+	if input.OpenAPI == "" {
+		return paths
+	}
+	abs, err := filepath.Abs(input.OpenAPI)
+	if err != nil {
+		return paths
+	}
+	abs = filepath.Clean(abs)
+	for _, p := range paths {
+		if p == abs {
+			return paths
+		}
+	}
+	return append(paths, abs)
 }
 
 type inputSource struct {
@@ -340,17 +373,47 @@ func newHandler(mockServer *mockhttp.Server, mount string, staticFS fs.FS) http.
 	mux.HandleFunc(mountRoot+"events", mockServer.ServeEvents)
 	mux.HandleFunc(mountRoot+"clear", mockServer.ServeClear)
 	mux.HandleFunc(mountRoot+"routes", mockServer.ServeRoutes)
-	mux.Handle(mountRoot, http.StripPrefix(mountRoot, http.FileServer(http.FS(staticFS))))
+	mux.Handle(mountRoot, http.StripPrefix(mountRoot, uiFileServer(staticFS, currentVersion())))
 	mux.Handle("/", mockServer)
 	return mux
+}
+
+// uiFileServer serves the embedded admin UI and injects a JSON bootstrap with the
+// running binary version so HAR exports report the real mock version.
+func uiFileServer(staticFS fs.FS, version string) http.Handler {
+	files := http.FileServer(http.FS(staticFS))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" && r.URL.Path != "/index.html" {
+			files.ServeHTTP(w, r)
+			return
+		}
+		data, err := fs.ReadFile(staticFS, "index.html")
+		if err != nil {
+			http.Error(w, "index.html missing", http.StatusInternalServerError)
+			return
+		}
+		payload, err := json.Marshal(map[string]string{"version": version})
+		if err != nil {
+			http.Error(w, "failed to encode UI config", http.StatusInternalServerError)
+			return
+		}
+		data = bytes.Replace(data, []byte(`{"version":"dev"}`), payload, 1)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(data)
+	})
 }
 
 func withCORS(next http.Handler, origin string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Add("Vary", "Origin")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Last-Event-ID")
-		if r.Method == http.MethodOptions {
+		if reqHeaders := r.Header.Get("Access-Control-Request-Headers"); reqHeaders != "" {
+			w.Header().Set("Access-Control-Allow-Headers", reqHeaders)
+		} else {
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Last-Event-ID")
+		}
+		if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
