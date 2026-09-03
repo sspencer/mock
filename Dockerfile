@@ -18,5 +18,4 @@ USER nobody
 
 EXPOSE 8080
 ENTRYPOINT ["mock"]
-# Bind all interfaces so published container ports are reachable.
 CMD ["-b", "0.0.0.0", "examples/user.http"]
