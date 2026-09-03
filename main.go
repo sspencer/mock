@@ -131,7 +131,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 		handler = newHandler(mockServer, cfg.Mount, staticFS)
 		if files := input.WatchFiles; len(files) > 0 {
 			reload := func() {
-				reloadMockFiles(mockServer, files, logger, stdout, stderr)
+				reloadMockFiles(mockServer, files, "", logger, stdout, stderr)
 			}
 			paths := resolveWatchPaths(files, restclient.FileDependencies(input.Methods))
 			watchCloser, err = watchFiles(paths, reload, logger)
@@ -229,7 +229,7 @@ type inputSource struct {
 	WatchFiles []string
 }
 
-func loadInput(args []string, stdin io.Reader) (inputSource, error) {
+func loadInput(args []string, stdin io.Reader, _ ...string) (inputSource, error) {
 	if len(args) == 1 {
 		info, err := os.Stat(args[0])
 		if err != nil {
@@ -340,7 +340,7 @@ func withCORS(next http.Handler, origin string) http.Handler {
 	})
 }
 
-func reloadMockFiles(mockServer *mockhttp.Server, files []string, logger *slog.Logger, out, errOut io.Writer) {
+func reloadMockFiles(mockServer *mockhttp.Server, files []string, _ string, logger *slog.Logger, out, errOut io.Writer) {
 	load := func() ([]restclient.Method, error) {
 		if len(files) == 0 {
 			return nil, nil
