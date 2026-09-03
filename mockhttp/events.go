@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/sspencer/mock/restclient"
@@ -91,6 +92,14 @@ func (s *Server) ServeEvents(w http.ResponseWriter, r *http.Request) {
 const clearCSRFHeader = "X-Requested-With"
 const clearCSRFValue = "XMLHttpRequest"
 
+func clearRequestAllowed(r *http.Request) bool {
+	if r.Header.Get(clearCSRFHeader) == clearCSRFValue {
+		return true
+	}
+	ct, _, _ := strings.Cut(r.Header.Get("Content-Type"), ";")
+	return strings.EqualFold(strings.TrimSpace(ct), "application/json")
+}
+
 // ServeClear handles POST to clear the in-memory request log and rotation counters.
 // Browser form POSTs are rejected; the dashboard sends X-Requested-With.
 func (s *Server) ServeClear(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +108,7 @@ func (s *Server) ServeClear(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if r.Header.Get(clearCSRFHeader) != clearCSRFValue {
+	if !clearRequestAllowed(r) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
