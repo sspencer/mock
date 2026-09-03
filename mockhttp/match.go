@@ -8,6 +8,11 @@ import (
 	"github.com/sspencer/mock/restclient"
 )
 
+type routeMatch struct {
+	method *restclient.Method
+	values map[string]string
+}
+
 func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]string, bool) {
 	// Snapshot the methods slice under the lock so hot-reload via SetMethods
 	// cannot race with matching. Pointers into the snapshot remain valid for
@@ -40,14 +45,16 @@ func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]str
 		return nil, nil, false
 	}
 
-	selected := s.nextMatch(rotationKey(matches), len(matches))
+	selected := s.nextMatch(matches)
 	return matches[selected].method, matches[selected].values, true
 }
 
-func (s *Server) nextMatch(key string, count int) int {
+func (s *Server) nextMatch(matches []routeMatch) int {
+	count := len(matches)
 	if count == 1 {
 		return 0
 	}
+	key := rotationKey(matches)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -56,24 +63,16 @@ func (s *Server) nextMatch(key string, count int) int {
 	return selected
 }
 
-type routeMatch struct {
-	method *restclient.Method
-	values map[string]string
-}
-
-// rotationKey identifies a matched route set by method, path pattern, and
-// required query — not the raw request URI — so unused query params do not
-// split rotation counters.
 func rotationKey(matches []routeMatch) string {
-	parts := make([]string, len(matches))
-	for i, m := range matches {
-		part := m.method.Method + " " + m.method.Path
-		if query := m.method.Query.Encode(); query != "" {
-			part += "?" + query
+	parts := make([]string, 0, len(matches))
+	for _, m := range matches {
+		query := ""
+		if m.method.Query != nil {
+			query = m.method.Query.Encode()
 		}
-		parts[i] = part
+		parts = append(parts, m.method.Method+"\t"+m.method.Path+"\t"+query)
 	}
-	return strings.Join(parts, "\x00")
+	return strings.Join(parts, "|")
 }
 
 func matchPath(pattern string, requestPath string) (map[string]string, bool) {
