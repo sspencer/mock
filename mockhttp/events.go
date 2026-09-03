@@ -89,19 +89,8 @@ func (s *Server) ServeEvents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-const clearCSRFHeader = "X-Requested-With"
-const clearCSRFValue = "XMLHttpRequest"
-
-func clearRequestAllowed(r *http.Request) bool {
-	if r.Header.Get(clearCSRFHeader) == clearCSRFValue {
-		return true
-	}
-	ct, _, _ := strings.Cut(r.Header.Get("Content-Type"), ";")
-	return strings.EqualFold(strings.TrimSpace(ct), "application/json")
-}
-
 // ServeClear handles POST to clear the in-memory request log and rotation counters.
-// Browser form POSTs are rejected; the dashboard sends X-Requested-With.
+// Bare form-style POSTs are rejected; the dashboard sends X-Requested-With or JSON.
 func (s *Server) ServeClear(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
@@ -115,6 +104,24 @@ func (s *Server) ServeClear(w http.ResponseWriter, r *http.Request) {
 	s.ClearEvents()
 	s.ResetCounters()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func clearRequestAllowed(r *http.Request) bool {
+	if r.Header.Get("X-Requested-With") == "XMLHttpRequest" {
+		return true
+	}
+	ct, _, _ := strings.Cut(r.Header.Get("Content-Type"), ";")
+	if strings.EqualFold(strings.TrimSpace(ct), "application/json") {
+		return true
+	}
+	if r.Header.Get("Origin") != "" {
+		return true
+	}
+	switch r.Header.Get("Sec-Fetch-Site") {
+	case "same-origin", "same-site":
+		return true
+	}
+	return false
 }
 
 // ServeRoutes handles GET of the currently configured mock routes.
