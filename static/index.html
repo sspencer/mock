@@ -7,7 +7,7 @@
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
     <meta name="theme-color" content="#10271e" />
     <title>Mock Server</title>
-    <link rel="stylesheet" href="style.css?v=20260903-title-alignment" />
+    <link rel="stylesheet" href="style.css?v=20260903-console-revamp" />
 </head>
 <body>
 <main class="app-shell">
@@ -41,9 +41,8 @@
         <section class="request-panel" aria-label="All requests">
             <div class="panel-header">
                 <div class="panel-heading">
-                    <p class="eyebrow">Traffic</p>
                     <div class="panel-title-line">
-                        <h2>Request log</h2>
+                        <h2>Traffic</h2>
                         <span id="requestCount" class="count-display" aria-label="0 requests">000/200</span>
                     </div>
                 </div>
@@ -55,10 +54,18 @@
                     </label>
                     <button id="clearRequestsButton" class="clear-button danger-button" type="button">Clear</button>
                 </div>
+                <p id="clearError" class="clear-error" role="alert" hidden></p>
             </div>
 
             <div class="table-container" aria-live="polite">
                 <table aria-label="Request log">
+                    <thead>
+                      <tr>
+                        <th scope="col">Time</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Request</th>
+                      </tr>
+                    </thead>
                     <tbody id="requestTableBody">
                     <tr>
                         <td colspan="3" class="empty-state">No requests yet</td>
@@ -69,9 +76,8 @@
             <section class="routes-panel" aria-label="Configured routes">
                 <div class="panel-header compact">
                     <div class="panel-heading">
-                        <p class="eyebrow">Registry</p>
                         <div class="panel-title-line">
-                            <h2>Configured routes</h2>
+                            <h2>Registry</h2>
                             <span id="routeCount" class="count-display compact-count" aria-label="Loading routes">—</span>
                         </div>
                     </div>
@@ -91,11 +97,17 @@
         <section class="side-panel" aria-label="Exchange inspector">
             <section class="detail-panel" aria-label="Request and response details">
                 <div class="detail-section">
-                    <div class="detail-label"><span>Request</span><span class="direction-tag">IN</span></div>
+                    <div class="detail-label">
+                        <h2>Request</h2>
+                        <span class="direction-tag">IN</span>
+                    </div>
                     <div id="requestDetails" class="detail-content"></div>
                 </div>
                 <div class="detail-section">
-                    <div class="detail-label"><span>Response</span><span class="direction-tag response-tag">OUT</span></div>
+                    <div class="detail-label">
+                        <h2>Response</h2>
+                        <span class="direction-tag response-tag">OUT</span>
+                    </div>
                     <div id="responseDetails" class="detail-content"></div>
                 </div>
             </section>
@@ -113,7 +125,7 @@
         <dl class="help-dialog-list">
             <div>
                 <dt>Pause / Resume</dt>
-                <dd>Stops adding new requests to the log. The mock server keeps serving traffic. Requests that arrive while paused are not recorded. Resume starts showing new requests again.</dd>
+                <dd>Pauses the live log on this page. The mock server keeps serving traffic. Events that arrive while paused are skipped here and will not appear when you resume.</dd>
             </div>
             <div>
                 <dt>Export HAR</dt>
@@ -126,6 +138,10 @@
             <div>
                 <dt>Filter</dt>
                 <dd>Shows only log entries whose method, path, or status match what you type.</dd>
+            </div>
+            <div>
+                <dt>Keyboard</dt>
+                <dd>Arrow keys move through the traffic log and load Request/Response details. Home and End jump to the first or last visible row. / focuses the filter.</dd>
             </div>
             <div>
                 <dt>Clear</dt>
@@ -156,9 +172,11 @@
     const themeToggleLabel = document.getElementById('themeToggleLabel');
     const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
     const requestTableBody = document.getElementById('requestTableBody');
+    const requestTable = requestTableBody.closest('table');
     const requestDetails = document.getElementById('requestDetails');
     const responseDetails = document.getElementById('responseDetails');
     const clearRequestsButton = document.getElementById('clearRequestsButton');
+    const clearError = document.getElementById('clearError');
     const pauseButton = document.getElementById('pauseButton');
     const pauseButtonLabel = pauseButton.querySelector('.button-label');
     const exportButton = document.getElementById('exportButton');
@@ -242,6 +260,60 @@
         }
     };
 
+    function getDataRows() {
+        return [...requestTableBody.querySelectorAll('tr[data-id]')];
+    }
+
+    function syncRowTabindex() {
+        const rows = getDataRows();
+        let focusTarget = null;
+        for (const row of rows) {
+            const isSelected = selectedId != null && row.dataset.id === String(selectedId);
+            row.tabIndex = -1;
+            row.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+            if (isSelected) {
+                focusTarget = row;
+            }
+        }
+        if (!focusTarget && rows[0]) {
+            focusTarget = rows[0];
+        }
+        if (focusTarget) {
+            focusTarget.tabIndex = 0;
+        }
+        return focusTarget;
+    }
+
+    function selectRow(row, http) {
+        selectedId = http.id;
+        for (const r of requestTableBody.querySelectorAll('tr[data-id]')) {
+            const isSelected = r === row;
+            r.classList.toggle('selected', isSelected);
+            r.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+            r.tabIndex = isSelected ? 0 : -1;
+        }
+        updateDetail(requestDetails, http.request.details || '');
+        updateDetail(responseDetails, http.response.details || '');
+    }
+
+    function selectRowByOffset(currentRow, index) {
+        const rows = getDataRows();
+        if (!rows.length) {
+            return;
+        }
+        const next = rows[Math.max(0, Math.min(index, rows.length - 1))];
+        if (!next) {
+            return;
+        }
+        const http = eventsById.get(Number(next.dataset.id));
+        if (!http) {
+            return;
+        }
+        selectRow(next, http);
+        next.focus();
+        next.scrollIntoView({ block: 'nearest' });
+    }
+
     requestTableBody.addEventListener('click', (e) => {
         const row = e.target.closest('tr');
         if (!row || !row.dataset.id) {
@@ -251,14 +323,66 @@
         const http = eventsById.get(id);
         if (http) {
             selectRow(row, http);
+            row.focus();
         }
     });
 
+    requestTableBody.addEventListener('keydown', (event) => {
+        if (event.target.matches('input, textarea, [contenteditable="true"]')) {
+            return;
+        }
+        const row = event.target.closest('tr[data-id]');
+        if (!row || !requestTableBody.contains(row)) {
+            return;
+        }
+        const rows = getDataRows();
+        const index = rows.indexOf(row);
+        if (index === -1) {
+            return;
+        }
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            selectRowByOffset(row, index + 1);
+        } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            selectRowByOffset(row, index - 1);
+        } else if (event.key === 'Home') {
+            event.preventDefault();
+            selectRowByOffset(row, 0);
+        } else if (event.key === 'End') {
+            event.preventDefault();
+            selectRowByOffset(row, rows.length - 1);
+        } else if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            const http = eventsById.get(Number(row.dataset.id));
+            if (http) {
+                selectRow(row, http);
+            }
+        }
+    });
+
+    function hideClearError() {
+        clearError.hidden = true;
+        clearError.textContent = '';
+    }
+
+    function showClearError() {
+        clearError.hidden = false;
+        clearError.textContent = "Couldn’t clear the log — the server didn’t confirm. Try again.";
+    }
+
     clearRequestsButton.addEventListener('click', async () => {
         try {
-            await fetch('clear', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            const res = await fetch('clear', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            if (!res.ok) {
+                console.error('failed to clear server events', res.status);
+                showClearError();
+                return;
+            }
         } catch (e) {
             console.error('failed to clear server events', e);
+            showClearError();
+            return;
         }
         eventsById.clear();
         eventOrder = [];
@@ -267,6 +391,7 @@
         renderEmptyState();
         updateDetail(requestDetails, '');
         updateDetail(responseDetails, '');
+        hideClearError();
     });
 
     pauseButton.addEventListener('click', () => {
@@ -376,6 +501,7 @@
     }
 
     function renderTable() {
+        const focusWasInTable = requestTable.contains(document.activeElement);
         const visible = eventOrder
             .map((id) => eventsById.get(id))
             .filter(Boolean)
@@ -390,6 +516,8 @@
         for (const http of visible) {
             const row = requestTableBody.insertRow();
             row.dataset.id = String(http.id);
+            row.tabIndex = -1;
+            row.setAttribute('aria-selected', 'false');
             if (selectedId === http.id) {
                 row.classList.add('selected');
             }
@@ -424,15 +552,11 @@
             urlSpan.textContent = ` ${http.request.url}`;
             c2.appendChild(urlSpan);
         }
-    }
 
-    function selectRow(row, http) {
-        selectedId = http.id;
-        for (const r of requestTableBody.getElementsByTagName('tr')) {
-            r.classList.toggle('selected', r === row);
+        const focusTarget = syncRowTabindex();
+        if (focusWasInTable && focusTarget) {
+            focusTarget.focus({ preventScroll: true });
         }
-        updateDetail(requestDetails, http.request.details || '');
-        updateDetail(responseDetails, http.response.details || '');
     }
 
     function updateDetail(element, newContent) {
