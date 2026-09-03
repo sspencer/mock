@@ -14,7 +14,7 @@ Prism, or Mockoon, and not the Go unit-test mocking libraries (gomock, mockery).
 Requires [Go](https://go.dev/dl/) 1.26 or newer:
 
 ```sh
-go install github.com/sspencer/mock@v0.1.1
+go install github.com/sspencer/mock@v0.1.2
 mock -version
 ```
 
