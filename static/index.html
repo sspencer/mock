@@ -1,1 +1,607 @@
-file:///tmp/patched_index.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="favicon.ico" type="image/x-icon" />
+    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
+    <meta name="theme-color" content="#10271e" />
+    <title>Mock Server</title>
+    <link rel="stylesheet" href="style.css?v=20260903-title-alignment" />
+</head>
+<body>
+<main class="app-shell">
+    <header class="topbar">
+        <div class="brand-lockup">
+            <div class="brand-mark" aria-hidden="true">
+                <span class="brand-mark-node"></span>
+                <span class="brand-mark-route"></span>
+                <span class="brand-mark-node"></span>
+            </div>
+            <div>
+                <p class="eyebrow status-line"><span class="live-pip"></span><span id="streamStatus">Connecting</span> <span class="eyebrow-divider">/</span> Local HTTP traffic</p>
+                <h1>Request console</h1>
+            </div>
+        </div>
+        <div class="topbar-actions" role="toolbar" aria-label="Console controls">
+            <button id="pauseButton" class="clear-button" type="button" aria-label="Pause request log" aria-pressed="false">
+                <span class="button-icon pause-icon" aria-hidden="true"></span><span class="button-label">Pause</span>
+            </button>
+            <button id="exportButton" class="clear-button" type="button" aria-label="Export request log as HAR">
+                <span class="button-icon export-icon" aria-hidden="true"></span><span class="button-label">Export HAR</span>
+            </button>
+            <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle color theme">
+                <span class="button-icon theme-icon" aria-hidden="true"></span><span id="themeToggleLabel" class="button-label">Dark</span>
+            </button>
+            <button id="helpButton" class="clear-button icon-button" type="button" aria-label="Help" aria-haspopup="dialog" aria-controls="helpDialog">?</button>
+        </div>
+    </header>
+
+    <section class="workspace" aria-label="Request log workspace">
+        <section class="request-panel" aria-label="All requests">
+            <div class="panel-header">
+                <div class="panel-heading">
+                    <p class="eyebrow">Traffic</p>
+                    <div class="panel-title-line">
+                        <h2>Request log</h2>
+                        <span id="requestCount" class="count-display" aria-label="0 requests">000/200</span>
+                    </div>
+                </div>
+                <div class="panel-actions">
+                    <label class="filter-control">
+                        <span class="filter-icon" aria-hidden="true"></span>
+                        <input id="filterInput" class="filter-input" type="search" placeholder="Filter traffic" aria-label="Filter requests by method, path, or status" />
+                        <span class="key-hint" aria-hidden="true">/</span>
+                    </label>
+                    <button id="clearRequestsButton" class="clear-button danger-button" type="button">Clear</button>
+                </div>
+            </div>
+
+            <div class="table-container" aria-live="polite">
+                <table aria-label="Request log">
+                    <tbody id="requestTableBody">
+                    <tr>
+                        <td colspan="3" class="empty-state">No requests yet</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <section class="routes-panel" aria-label="Configured routes">
+                <div class="panel-header compact">
+                    <div class="panel-heading">
+                        <p class="eyebrow">Registry</p>
+                        <div class="panel-title-line">
+                            <h2>Configured routes</h2>
+                            <span id="routeCount" class="count-display compact-count" aria-label="Loading routes">—</span>
+                        </div>
+                    </div>
+                    <div class="routes-panel-actions">
+                        <button id="routesToggleButton" class="clear-button route-toggle-button" type="button" aria-expanded="true" aria-controls="routesList" aria-label="Hide configured routes">
+                            <span class="button-icon collapse-icon" aria-hidden="true"></span><span id="routesToggleLabel" class="route-toggle-label">Hide</span>
+                        </button>
+                        <button id="refreshRoutesButton" class="clear-button" type="button"><span class="button-icon refresh-icon" aria-hidden="true"></span><span>Refresh</span></button>
+                    </div>
+                </div>
+                <ul id="routesList" class="routes-list">
+                    <li class="empty-state">Loading routes…</li>
+                </ul>
+            </section>
+        </section>
+
+        <section class="side-panel" aria-label="Exchange inspector">
+            <section class="detail-panel" aria-label="Request and response details">
+                <div class="detail-section">
+                    <div class="detail-label"><span>Request</span><span class="direction-tag">IN</span></div>
+                    <div id="requestDetails" class="detail-content"></div>
+                </div>
+                <div class="detail-section">
+                    <div class="detail-label"><span>Response</span><span class="direction-tag response-tag">OUT</span></div>
+                    <div id="responseDetails" class="detail-content"></div>
+                </div>
+            </section>
+        </section>
+    </section>
+</main>
+
+<dialog id="helpDialog" class="help-dialog" aria-labelledby="helpDialogTitle">
+    <div class="help-dialog-header">
+        <h2 id="helpDialogTitle">Help</h2>
+        <button id="helpCloseButton" class="help-dialog-x" type="button" aria-label="Close help">&times;</button>
+    </div>
+    <div class="help-dialog-body">
+        <p class="help-dialog-intro">This page is a live log of HTTP traffic handled by the mock server.</p>
+        <dl class="help-dialog-list">
+            <div>
+                <dt>Pause / Resume</dt>
+                <dd>Stops adding new requests to the log. The mock server keeps serving traffic. Requests that arrive while paused are not recorded. Resume starts showing new requests again.</dd>
+            </div>
+            <div>
+                <dt>Export HAR</dt>
+                <dd>Downloads the current request log as a HAR (HTTP Archive) file, a JSON format for captured HTTP traffic. Only requests already in the log are included.</dd>
+            </div>
+            <div>
+                <dt>Dark / Light</dt>
+                <dd>Switches the page between dark and light themes. The choice is remembered in this browser.</dd>
+            </div>
+            <div>
+                <dt>Filter</dt>
+                <dd>Shows only log entries whose method, path, or status match what you type.</dd>
+            </div>
+            <div>
+                <dt>Clear</dt>
+                <dd>Removes all logged requests from the page and the server. This also resets rotation counters used by repeating mock responses.</dd>
+            </div>
+            <div>
+                <dt>Refresh</dt>
+                <dd>Reloads the configured routes list. Routes also refresh automatically every few seconds after request files change.</dd>
+            </div>
+            <div>
+                <dt>Hide / Show routes</dt>
+                <dd>Collapses the route registry to give the request log more vertical space. The choice is remembered in this browser.</dd>
+            </div>
+        </dl>
+    </div>
+    <div class="help-dialog-footer">
+        <p class="help-dialog-hint">Press Escape, click outside, or use Close to dismiss.</p>
+        <form method="dialog">
+            <button class="clear-button" type="submit">Close</button>
+        </form>
+    </div>
+</dialog>
+
+<script id="mock-config">
+    const MAX_EVENTS = 200;
+    const MOCK_CONFIG = {"version":"dev"};
+    const themeToggle = document.getElementById('themeToggle');
+    const themeToggleLabel = document.getElementById('themeToggleLabel');
+    const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+    const requestTableBody = document.getElementById('requestTableBody');
+    const requestDetails = document.getElementById('requestDetails');
+    const responseDetails = document.getElementById('responseDetails');
+    const clearRequestsButton = document.getElementById('clearRequestsButton');
+    const pauseButton = document.getElementById('pauseButton');
+    const pauseButtonLabel = pauseButton.querySelector('.button-label');
+    const exportButton = document.getElementById('exportButton');
+    const helpButton = document.getElementById('helpButton');
+    const helpDialog = document.getElementById('helpDialog');
+    const helpCloseButton = document.getElementById('helpCloseButton');
+    const filterInput = document.getElementById('filterInput');
+    const routesList = document.getElementById('routesList');
+    const refreshRoutesButton = document.getElementById('refreshRoutesButton');
+    const routesToggleButton = document.getElementById('routesToggleButton');
+    const routesToggleLabel = document.getElementById('routesToggleLabel');
+    const requestPanel = document.querySelector('.request-panel');
+    const requestCount = document.getElementById('requestCount');
+    const routeCount = document.getElementById('routeCount');
+    const streamStatus = document.getElementById('streamStatus');
+
+    /** @type {Map<number, any>} */
+    const eventsById = new Map();
+    /** @type {number[]} newest-first ids */
+    let eventOrder = [];
+    let paused = false;
+    let selectedId = null;
+    let filterText = '';
+
+    function setTheme(theme) {
+        if (theme === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            themeToggleLabel.textContent = 'Light';
+            localStorage.setItem('theme', 'dark');
+        } else {
+            document.documentElement.removeAttribute('data-theme');
+            themeToggleLabel.textContent = 'Dark';
+            localStorage.setItem('theme', 'light');
+        }
+    }
+
+    function setRoutesCollapsed(collapsed) {
+        requestPanel.classList.toggle('routes-collapsed', collapsed);
+        routesToggleButton.setAttribute('aria-expanded', String(!collapsed));
+        routesToggleButton.setAttribute('aria-label', collapsed ? 'Show configured routes' : 'Hide configured routes');
+        routesToggleLabel.textContent = collapsed ? 'Show' : 'Hide';
+        localStorage.setItem('routesCollapsed', collapsed ? 'true' : 'false');
+    }
+
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+        setTheme('dark');
+    } else if (savedTheme === 'light') {
+        setTheme('light');
+    } else if (prefersDarkScheme.matches) {
+        setTheme('dark');
+    }
+    setRoutesCollapsed(localStorage.getItem('routesCollapsed') === 'true');
+
+    themeToggle.addEventListener('click', () => {
+        if (document.documentElement.getAttribute('data-theme') === 'dark') {
+            setTheme('light');
+        } else {
+            setTheme('dark');
+        }
+    });
+
+    const source = new EventSource('events');
+    source.onopen = function () {
+        document.body.classList.remove('stream-offline');
+        streamStatus.textContent = paused ? 'Paused' : 'Listening';
+    };
+    source.onerror = function () {
+        document.body.classList.add('stream-offline');
+        streamStatus.textContent = 'Reconnecting';
+    };
+    source.onmessage = function (event) {
+        if (paused) {
+            return;
+        }
+        try {
+            const data = JSON.parse(event.data);
+            upsertEvent(data);
+        } catch (e) {
+            console.error('Error parsing json', e);
+        }
+    };
+
+    requestTableBody.addEventListener('click', (e) => {
+        const row = e.target.closest('tr');
+        if (!row || !row.dataset.id) {
+            return;
+        }
+        const id = Number(row.dataset.id);
+        const http = eventsById.get(id);
+        if (http) {
+            selectRow(row, http);
+        }
+    });
+
+    clearRequestsButton.addEventListener('click', async () => {
+        try {
+            await fetch('clear', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        } catch (e) {
+            console.error('failed to clear server events', e);
+        }
+        eventsById.clear();
+        eventOrder = [];
+        selectedId = null;
+        updateRequestCount();
+        renderEmptyState();
+        updateDetail(requestDetails, '');
+        updateDetail(responseDetails, '');
+    });
+
+    pauseButton.addEventListener('click', () => {
+        paused = !paused;
+        pauseButtonLabel.textContent = paused ? 'Resume' : 'Pause';
+        pauseButton.classList.toggle('active', paused);
+        pauseButton.setAttribute('aria-pressed', String(paused));
+        pauseButton.setAttribute('aria-label', paused ? 'Resume request log' : 'Pause request log');
+        streamStatus.textContent = paused ? 'Paused' : 'Listening';
+        document.body.classList.toggle('stream-paused', paused);
+    });
+
+    exportButton.addEventListener('click', () => {
+        const har = buildHAR([...eventOrder].reverse().map((id) => eventsById.get(id)).filter(Boolean));
+        const blob = new Blob([JSON.stringify(har, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `mock-${new Date().toISOString().replace(/[:.]/g, '-')}.har`;
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+
+    function openHelp() {
+        if (typeof helpDialog.showModal !== 'function' || helpDialog.open) {
+            return;
+        }
+        const body = helpDialog.querySelector('.help-dialog-body');
+        if (body) {
+            body.scrollTop = 0;
+        }
+        helpDialog.showModal();
+    }
+
+    function closeHelp() {
+        if (helpDialog.open) {
+            helpDialog.close();
+        }
+    }
+
+    helpButton.addEventListener('click', openHelp);
+    helpCloseButton.addEventListener('click', closeHelp);
+    helpDialog.addEventListener('click', (event) => {
+        const rect = helpDialog.getBoundingClientRect();
+        const inside = event.clientX >= rect.left && event.clientX <= rect.right
+            && event.clientY >= rect.top && event.clientY <= rect.bottom;
+        if (!inside) {
+            closeHelp();
+        }
+    });
+
+    filterInput.addEventListener('input', () => {
+        filterText = filterInput.value.trim().toLowerCase();
+        renderTable();
+    });
+
+    document.addEventListener('keydown', (event) => {
+        const typing = event.target.matches('input, textarea, [contenteditable="true"]');
+        if (event.key === '/' && !typing && !helpDialog.open) {
+            event.preventDefault();
+            filterInput.focus();
+        }
+    });
+
+    refreshRoutesButton.addEventListener('click', loadRoutes);
+    routesToggleButton.addEventListener('click', () => {
+        setRoutesCollapsed(!requestPanel.classList.contains('routes-collapsed'));
+    });
+    loadRoutes();
+    // Refresh routes periodically so hot-reload is visible without a full page refresh.
+    setInterval(loadRoutes, 3000);
+
+    function upsertEvent(http) {
+        if (http.id == null) {
+            return;
+        }
+        const isNew = !eventsById.has(http.id);
+        eventsById.set(http.id, http);
+        if (isNew) {
+            eventOrder.unshift(http.id);
+            while (eventOrder.length > MAX_EVENTS) {
+                const dropped = eventOrder.pop();
+                eventsById.delete(dropped);
+            }
+        }
+        updateRequestCount();
+        renderTable();
+    }
+
+    function updateRequestCount() {
+        const value = String(eventOrder.length).padStart(3, '0');
+        requestCount.textContent = `${value}/${MAX_EVENTS}`;
+        requestCount.setAttribute('aria-label', `${eventOrder.length} requests`);
+    }
+
+    function eventMatchesFilter(http) {
+        if (!filterText) {
+            return true;
+        }
+        const hay = [
+            http.request.method,
+            http.request.url,
+            String(http.response.status),
+            http.response.statusText || '',
+        ].join(' ').toLowerCase();
+        return hay.includes(filterText);
+    }
+
+    function renderTable() {
+        const visible = eventOrder
+            .map((id) => eventsById.get(id))
+            .filter(Boolean)
+            .filter(eventMatchesFilter);
+
+        if (visible.length === 0) {
+            renderEmptyState(filterText ? 'No matching requests' : 'No requests yet');
+            return;
+        }
+
+        requestTableBody.replaceChildren();
+        for (const http of visible) {
+            const row = requestTableBody.insertRow();
+            row.dataset.id = String(http.id);
+            if (selectedId === http.id) {
+                row.classList.add('selected');
+            }
+
+            const c0 = row.insertCell(0);
+            c0.className = 'time-cell';
+            c0.textContent = http.request.time || '';
+
+            const c1 = row.insertCell(1);
+            const statusSpan = document.createElement('span');
+            const statusText = http.response.statusText || '';
+            statusSpan.textContent = `${http.response.status}`;
+            statusSpan.className = 'status-code';
+            if (statusText) {
+                statusSpan.title = statusText;
+                statusSpan.setAttribute('aria-label', `${http.response.status} ${statusText}`);
+            }
+            const status = parseInt(http.response.status, 10);
+            if (status >= 200 && status < 300) statusSpan.classList.add('status-2xx');
+            else if (status >= 300 && status < 400) statusSpan.classList.add('status-3xx');
+            else if (status >= 400 && status < 500) statusSpan.classList.add('status-4xx');
+            else if (status >= 500) statusSpan.classList.add('status-5xx');
+            c1.appendChild(statusSpan);
+
+            const c2 = row.insertCell(2);
+            c2.className = 'request-cell';
+            const methodSpan = document.createElement('span');
+            methodSpan.textContent = http.request.method;
+            methodSpan.className = `method-${(http.request.method || '').toLowerCase()}`;
+            c2.appendChild(methodSpan);
+            const urlSpan = document.createElement('span');
+            urlSpan.textContent = ` ${http.request.url}`;
+            c2.appendChild(urlSpan);
+        }
+    }
+
+    function selectRow(row, http) {
+        selectedId = http.id;
+        for (const r of requestTableBody.getElementsByTagName('tr')) {
+            r.classList.toggle('selected', r === row);
+        }
+        updateDetail(requestDetails, http.request.details || '');
+        updateDetail(responseDetails, http.response.details || '');
+    }
+
+    function updateDetail(element, newContent) {
+        element.textContent = newContent;
+    }
+
+    function renderEmptyState(message) {
+        requestTableBody.replaceChildren();
+        const row = requestTableBody.insertRow();
+        const cell = row.insertCell();
+        cell.colSpan = 3;
+        cell.className = 'empty-state';
+        cell.textContent = message || 'No requests yet';
+    }
+
+    async function loadRoutes() {
+        try {
+            const res = await fetch('routes');
+            if (!res.ok) {
+                throw new Error(`status ${res.status}`);
+            }
+            const routes = await res.json();
+            routeCount.textContent = String(routes.length).padStart(2, '0');
+            routeCount.setAttribute('aria-label', `${routes.length} configured routes`);
+            routesList.replaceChildren();
+            if (!routes.length) {
+                const li = document.createElement('li');
+                li.className = 'empty-state';
+                li.textContent = 'No routes configured';
+                routesList.appendChild(li);
+                return;
+            }
+            for (const route of routes) {
+                const li = document.createElement('li');
+                const method = document.createElement('span');
+                method.className = `method-${(route.method || '').toLowerCase()}`;
+                method.textContent = route.method;
+                const path = document.createElement('span');
+                path.className = 'route-path';
+                const routePath = `${route.path}${route.query ? '?' + route.query : ''}`;
+                path.textContent = routePath;
+                path.title = routePath;
+                const name = document.createElement('span');
+                name.className = 'route-name';
+                name.textContent = route.name || '';
+                if (route.name) {
+                    name.title = route.name;
+                }
+                li.append(method, path, name);
+                routesList.appendChild(li);
+            }
+        } catch (e) {
+            routeCount.textContent = '—';
+            routeCount.setAttribute('aria-label', 'Routes unavailable');
+            routesList.replaceChildren();
+            const li = document.createElement('li');
+            li.className = 'empty-state';
+            li.textContent = 'Failed to load routes';
+            routesList.appendChild(li);
+        }
+    }
+
+    function headerValue(headers, name) {
+        const want = name.toLowerCase();
+        for (const header of headers) {
+            if ((header.name || '').toLowerCase() === want) {
+                return header.value || '';
+            }
+        }
+        return '';
+    }
+
+    function parseHTTPMessage(details) {
+        const text = details || '';
+        let head = text;
+        let body = '';
+        const splitAt = text.indexOf('\n\n');
+        if (splitAt >= 0) {
+            head = text.slice(0, splitAt);
+            body = text.slice(splitAt + 2);
+        }
+        const lines = head.split('\n');
+        const startLine = lines[0] || '';
+        const headers = [];
+        for (let i = 1; i < lines.length; i++) {
+            const colon = lines[i].indexOf(':');
+            if (colon <= 0) {
+                continue;
+            }
+            headers.push({
+                name: lines[i].slice(0, colon).trim(),
+                value: lines[i].slice(colon + 1).trim(),
+            });
+        }
+        return { startLine, headers, body };
+    }
+
+    function httpVersionFromLine(startLine, fallback) {
+        const match = /\bHTTP\/[\d.]+/.exec(startLine || '');
+        return match ? match[0] : fallback;
+    }
+
+    function queryStringFromURL(url) {
+        const qIndex = (url || '').indexOf('?');
+        if (qIndex < 0) {
+            return [];
+        }
+        const params = new URLSearchParams(url.slice(qIndex + 1));
+        const out = [];
+        for (const [name, value] of params.entries()) {
+            out.push({ name, value });
+        }
+        return out;
+    }
+
+    function buildHAR(events) {
+        const entries = events.map((http) => {
+            const req = parseHTTPMessage(http.request.details);
+            const res = parseHTTPMessage(http.response.details);
+            const reqMime = headerValue(req.headers, 'Content-Type') || 'text/plain';
+            const resMime = headerValue(res.headers, 'Content-Type') || 'text/plain';
+            const host = headerValue(req.headers, 'Host');
+            let url = http.request.url || '';
+            if (host && url.startsWith('/')) {
+                url = 'http://' + host + url;
+            }
+            const started = http.request.startedAt || new Date().toISOString();
+            const elapsed = typeof http.response.elapsedMs === 'number' ? http.response.elapsedMs : 0;
+            return {
+                startedDateTime: started,
+                time: elapsed,
+                request: {
+                    method: http.request.method,
+                    url,
+                    httpVersion: httpVersionFromLine(req.startLine, 'HTTP/1.1'),
+                    cookies: [],
+                    headers: req.headers,
+                    queryString: queryStringFromURL(http.request.url),
+                    headersSize: -1,
+                    bodySize: req.body ? req.body.length : 0,
+                    postData: req.body ? { mimeType: reqMime, text: req.body } : undefined,
+                },
+                response: {
+                    status: http.response.status,
+                    statusText: http.response.statusText || '',
+                    httpVersion: httpVersionFromLine(res.startLine, 'HTTP/1.1'),
+                    cookies: [],
+                    headers: res.headers,
+                    content: {
+                        size: res.body.length,
+                        mimeType: resMime,
+                        text: res.body,
+                    },
+                    redirectURL: headerValue(res.headers, 'Location') || '',
+                    headersSize: -1,
+                    bodySize: res.body.length,
+                },
+                cache: {},
+                timings: { send: 0, wait: 0, receive: 0 },
+            };
+        });
+        return {
+            log: {
+                version: '1.2',
+                creator: { name: 'mock', version: MOCK_CONFIG.version },
+                entries,
+            },
+        };
+    }
+</script>
+</body>
+</html>
