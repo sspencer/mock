@@ -251,9 +251,10 @@ h1 {
 }
 
 h2 {
-    font-size: 1rem;
+    font-size: 1.28rem;
     font-weight: 700;
-    letter-spacing: -0.025em;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
 }
 
 .topbar-actions,
@@ -702,14 +703,16 @@ tbody tr.selected {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 10px;
     min-height: 28px;
     margin-bottom: 9px;
-    color: var(--muted);
-    font-family: var(--mono);
-    font-size: 0.65rem;
+}
+
+.detail-label h2 {
+    font-size: 1.28rem;
     font-weight: 700;
-    letter-spacing: 0.13em;
-    text-transform: uppercase;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
 }
 
 .direction-tag {
