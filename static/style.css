@@ -677,8 +677,8 @@ tbody tr[data-id]:hover {
 
 tbody tr.selected,
 tbody tr.selected[data-id]:hover {
-    background: color-mix(in srgb, var(--copper) 16%, var(--surface));
-    box-shadow: inset 4px 0 0 var(--copper);
+    background: color-mix(in srgb, var(--jade) 40%, var(--surface));
+    box-shadow: inset 4px 0 0 var(--jade);
 }
 
 tbody tr[data-id]:focus-visible {
@@ -688,7 +688,7 @@ tbody tr[data-id]:focus-visible {
 }
 
 tbody tr.selected:focus-visible {
-    background: color-mix(in srgb, var(--copper) 22%, var(--surface));
+    background: color-mix(in srgb, var(--jade) 46%, var(--surface));
 }
 
 .empty-state {
