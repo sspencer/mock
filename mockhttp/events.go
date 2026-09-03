@@ -22,12 +22,11 @@ type RequestEvent struct {
 }
 
 type EventRequest struct {
-	Method          string `json:"method"`
-	URL             string `json:"url"`
-	Time            string `json:"time"`
-	StartedDateTime string `json:"startedDateTime,omitempty"`
-	StartedAt       string `json:"startedAt,omitempty"`
-	Details         string `json:"details"`
+	Method    string `json:"method"`
+	URL       string `json:"url"`
+	Time      string `json:"time"`
+	StartedAt string `json:"startedAt"`
+	Details   string `json:"details"`
 }
 
 type EventResponse struct {
@@ -117,6 +116,10 @@ func clearRequestAllowed(r *http.Request) bool {
 	if strings.EqualFold(strings.TrimSpace(ct), "application/json") {
 		return true
 	}
+	switch strings.ToLower(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site"))) {
+	case "same-origin", "same-site":
+		return true
+	}
 	origin := strings.TrimSpace(r.Header.Get("Origin"))
 	if origin == "" {
 		return false
@@ -203,15 +206,13 @@ func writeEvent(w io.Writer, event RequestEvent) bool {
 }
 
 func newRequestEvent(r *http.Request, requestBody loggedBody, response *responseCapture, status int, arrivedAt time.Time, elapsed time.Duration) RequestEvent {
-	started := arrivedAt.UTC().Format(time.RFC3339Nano)
 	return RequestEvent{
 		Request: EventRequest{
-			Method:          r.Method,
-			URL:             r.URL.RequestURI(),
-			Time:            formatRequestTime(arrivedAt),
-			StartedDateTime: started,
-			StartedAt:       started,
-			Details:         requestDetails(r, requestBody),
+			Method:    r.Method,
+			URL:       r.URL.RequestURI(),
+			Time:      formatRequestTime(arrivedAt),
+			StartedAt: arrivedAt.UTC().Format(time.RFC3339Nano),
+			Details:   requestDetails(r, requestBody),
 		},
 		Response: EventResponse{
 			Status:     status,

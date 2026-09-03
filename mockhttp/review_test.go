@@ -115,7 +115,7 @@ ok
 	if len(server.events) != 1 {
 		t.Fatalf("len(events) = %d, want 1", len(server.events))
 	}
-	if _, err := time.Parse(time.RFC3339Nano, server.events[0].Request.StartedDateTime); err != nil {
-		t.Fatalf("startedDateTime = %q, want RFC3339", server.events[0].Request.StartedDateTime)
+	if _, err := time.Parse(time.RFC3339Nano, server.events[0].Request.StartedAt); err != nil {
+		t.Fatalf("startedAt = %q, want RFC3339", server.events[0].Request.StartedAt)
 	}
 }
