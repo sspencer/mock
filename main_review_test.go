@@ -20,11 +20,14 @@ import (
 )
 
 func TestListenScheme(t *testing.T) {
-	if got := listenScheme(""); got != "http" {
+	if got := listenScheme("", ""); got != "http" {
 		t.Fatalf("listenScheme empty = %q, want http", got)
 	}
-	if got := listenScheme("cert.pem"); got != "https" {
-		t.Fatalf("listenScheme(cert.pem) = %q, want https", got)
+	if got := listenScheme("cert.pem", "key.pem"); got != "https" {
+		t.Fatalf("listenScheme(cert.pem, key.pem) = %q, want https", got)
+	}
+	if got := listenScheme("cert.pem", ""); got != "http" {
+		t.Fatalf("listenScheme(cert only) = %q, want http until key is also set", got)
 	}
 }
 
