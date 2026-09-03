@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -21,19 +22,19 @@ type RequestEvent struct {
 }
 
 type EventRequest struct {
-	Method    string `json:"method"`
-	URL       string `json:"url"`
-	Time      string `json:"time"`
-	StartedAt string `json:"startedAt"`
-	Details   string `json:"details"`
+	Method          string `json:"method"`
+	URL             string `json:"url"`
+	Time            string `json:"time"`
+	StartedDateTime string `json:"startedDateTime,omitempty"`
+	Details         string `json:"details"`
 }
 
 type EventResponse struct {
-	Status     int     `json:"status"`
-	StatusText string  `json:"statusText"`
-	Time       string  `json:"time"`
-	ElapsedMs  float64 `json:"elapsedMs"`
-	Details    string  `json:"details"`
+	Status     int    `json:"status"`
+	StatusText string `json:"statusText"`
+	Time       string `json:"time"`
+	ElapsedMs  int64  `json:"elapsedMs"`
+	Details    string `json:"details"`
 }
 
 // RouteInfo is a JSON-friendly description of a configured mock route.
@@ -91,16 +92,15 @@ func (s *Server) ServeEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServeClear handles POST to clear the in-memory request log and rotation counters.
-// Mutations require X-Requested-With or JSON Content-Type so a cross-site form
-// POST cannot reset the log or rotation counters.
+// Bare form-style POSTs are rejected; the dashboard sends X-Requested-With or JSON.
 func (s *Server) ServeClear(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !allowAdminMutation(r) {
-		http.Error(w, "forbidden: send X-Requested-With or JSON Content-Type", http.StatusForbidden)
+	if !clearRequestAllowed(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	s.ClearEvents()
@@ -108,12 +108,23 @@ func (s *Server) ServeClear(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func allowAdminMutation(r *http.Request) bool {
+func clearRequestAllowed(r *http.Request) bool {
 	if strings.TrimSpace(r.Header.Get("X-Requested-With")) != "" {
 		return true
 	}
 	ct, _, _ := strings.Cut(r.Header.Get("Content-Type"), ";")
-	return strings.TrimSpace(strings.ToLower(ct)) == "application/json"
+	if strings.EqualFold(strings.TrimSpace(ct), "application/json") {
+		return true
+	}
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		return false
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	return strings.EqualFold(u.Host, r.Host)
 }
 
 // ServeRoutes handles GET of the currently configured mock routes.
@@ -193,17 +204,17 @@ func writeEvent(w io.Writer, event RequestEvent) bool {
 func newRequestEvent(r *http.Request, requestBody loggedBody, response *responseCapture, status int, arrivedAt time.Time, elapsed time.Duration) RequestEvent {
 	return RequestEvent{
 		Request: EventRequest{
-			Method:    r.Method,
-			URL:       r.URL.RequestURI(),
-			Time:      formatRequestTime(arrivedAt),
-			StartedAt: arrivedAt.UTC().Format(time.RFC3339Nano),
-			Details:   requestDetails(r, requestBody),
+			Method:          r.Method,
+			URL:             r.URL.RequestURI(),
+			Time:            formatRequestTime(arrivedAt),
+			StartedDateTime: arrivedAt.UTC().Format(time.RFC3339Nano),
+			Details:         requestDetails(r, requestBody),
 		},
 		Response: EventResponse{
 			Status:     status,
 			StatusText: statusText(status),
 			Time:       elapsed.Round(time.Microsecond).String(),
-			ElapsedMs:  float64(elapsed) / float64(time.Millisecond),
+			ElapsedMs:  elapsed.Milliseconds(),
 			Details:    responseDetails(r, response, status),
 		},
 	}
