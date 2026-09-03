@@ -133,8 +133,6 @@ func TestRunWarnsWhenBoundToAllInterfaces(t *testing.T) {
 	}
 }
 
-
-
 func TestWithCORSPreflightAndMockOPTIONS(t *testing.T) {
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### Probe
 OPTIONS /users
