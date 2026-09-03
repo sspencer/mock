@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## v0.1.2 - 2026-09-03
 
+- Gave the selected request row in the Traffic panel its own bolder jade-green
+  background and accent bar so it is clearly distinct from the lighter hover
+  highlight, including when the selected row itself is hovered
 - Removed OpenAPI stub seeding (`-openapi`, `examples/openapi.json`, `examples/openapi.yaml`). Use `.http` files.
 
 ## v0.1.1 - 2026-09-02
