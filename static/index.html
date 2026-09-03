@@ -8,7 +8,6 @@
     <meta name="theme-color" content="#10271e" />
     <title>Mock Server</title>
     <link rel="stylesheet" href="style.css?v=20260903-title-alignment" />
-    <script type="application/json" id="mock-config">{"version":"dev"}</script>
 </head>
 <body>
 <main class="app-shell">
@@ -150,8 +149,9 @@
     </div>
 </dialog>
 
-<script>
+<script id="mock-config">
     const MAX_EVENTS = 200;
+    const MOCK_CONFIG = {"version":"dev"};
     const themeToggle = document.getElementById('themeToggle');
     const themeToggleLabel = document.getElementById('themeToggleLabel');
     const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
@@ -182,23 +182,6 @@
     let paused = false;
     let selectedId = null;
     let filterText = '';
-
-    function readMockConfig() {
-        const el = document.getElementById('mock-config');
-        if (!el) {
-            return { version: 'dev' };
-        }
-        try {
-            const cfg = JSON.parse(el.textContent);
-            if (cfg && typeof cfg.version === 'string' && cfg.version) {
-                return cfg;
-            }
-        } catch (e) {
-            // keep default
-        }
-        return { version: 'dev' };
-    }
-    const mockConfig = readMockConfig();
 
     function setTheme(theme) {
         if (theme === 'dark') {
@@ -512,149 +495,108 @@
         }
     }
 
-    function splitMessage(details) {
-        const text = details || '';
-        const idx = text.indexOf('\n\n');
-        if (idx < 0) {
-            return { head: text, body: '' };
-        }
-        return { head: text.slice(0, idx), body: text.slice(idx + 2) };
-    }
-
-    function parseHeaders(lines) {
-        const headers = [];
-        for (const line of lines) {
-            const idx = line.indexOf(':');
-            if (idx <= 0) {
-                continue;
-            }
-            headers.push({ name: line.slice(0, idx).trim(), value: line.slice(idx + 1).trim() });
-        }
-        return headers;
-    }
-
     function headerValue(headers, name) {
         const want = name.toLowerCase();
         for (const header of headers) {
-            if (header.name.toLowerCase() === want) {
-                return header.value;
+            if ((header.name || '').toLowerCase() === want) {
+                return header.value || '';
             }
         }
         return '';
     }
 
-    function parseCookieHeader(value) {
-        if (!value) {
+    function parseHTTPMessage(details) {
+        const text = details || '';
+        let head = text;
+        let body = '';
+        const splitAt = text.indexOf('\n\n');
+        if (splitAt >= 0) {
+            head = text.slice(0, splitAt);
+            body = text.slice(splitAt + 2);
+        }
+        const lines = head.split('\n');
+        const startLine = lines[0] || '';
+        const headers = [];
+        for (let i = 1; i < lines.length; i++) {
+            const colon = lines[i].indexOf(':');
+            if (colon <= 0) {
+                continue;
+            }
+            headers.push({
+                name: lines[i].slice(0, colon).trim(),
+                value: lines[i].slice(colon + 1).trim(),
+            });
+        }
+        return { startLine, headers, body };
+    }
+
+    function httpVersionFromLine(startLine, fallback) {
+        const match = /\bHTTP\/[\d.]+/.exec(startLine || '');
+        return match ? match[0] : fallback;
+    }
+
+    function queryStringFromURL(url) {
+        const qIndex = (url || '').indexOf('?');
+        if (qIndex < 0) {
             return [];
         }
-        return value.split(';').map((part) => {
-            const idx = part.indexOf('=');
-            if (idx < 0) {
-                return { name: part.trim(), value: '' };
-            }
-            return { name: part.slice(0, idx).trim(), value: part.slice(idx + 1).trim() };
-        }).filter((cookie) => cookie.name);
-    }
-
-    function parseSetCookies(headers) {
-        return headers
-            .filter((header) => header.name.toLowerCase() === 'set-cookie')
-            .map((header) => {
-                const first = header.value.split(';')[0];
-                const idx = first.indexOf('=');
-                if (idx < 0) {
-                    return { name: first.trim(), value: '' };
-                }
-                return { name: first.slice(0, idx).trim(), value: first.slice(idx + 1).trim() };
-            })
-            .filter((cookie) => cookie.name);
-    }
-
-    function queryStringFromURL(urlString) {
-        try {
-            const parsed = new URL(urlString, 'http://localhost');
-            return [...parsed.searchParams.entries()].map(([name, value]) => ({ name, value }));
-        } catch (e) {
-            return [];
+        const params = new URLSearchParams(url.slice(qIndex + 1));
+        const out = [];
+        for (const [name, value] of params.entries()) {
+            out.push({ name, value });
         }
-    }
-
-    function absoluteRequestURL(http, headers) {
-        const raw = http.request.url || '/';
-        if (/^https?:\/\//i.test(raw)) {
-            return raw;
-        }
-        const host = headerValue(headers, 'Host');
-        let origin = 'http://localhost';
-        try {
-            origin = host ? `${window.location.protocol}//${host}` : window.location.origin;
-        } catch (e) {
-            if (host) {
-                origin = `http://${host}`;
-            }
-        }
-        try {
-            return new URL(raw, origin).href;
-        } catch (e) {
-            return raw;
-        }
+        return out;
     }
 
     function buildHAR(events) {
         const entries = events.map((http) => {
-            const reqMsg = splitMessage(http.request.details || '');
-            const resMsg = splitMessage(http.response.details || '');
-            const reqHeaderLines = reqMsg.head.split('\n');
-            const resHeaderLines = resMsg.head.split('\n');
-            const reqHeaders = parseHeaders(reqHeaderLines.slice(1));
-            const resHeaders = parseHeaders(resHeaderLines.slice(1));
-            const reqVersion = (reqHeaderLines[0] || '').split(' ')[2] || 'HTTP/1.1';
-            const resVersion = (resHeaderLines[0] || '').split(' ')[0] || 'HTTP/1.1';
-            const url = absoluteRequestURL(http, reqHeaders);
-            const reqMime = headerValue(reqHeaders, 'Content-Type') || 'application/octet-stream';
-            const resMime = headerValue(resHeaders, 'Content-Type') || 'application/octet-stream';
-            const started = http.request.startedAt || new Date().toISOString();
-            const elapsed = typeof http.response.elapsedMs === 'number' ? http.response.elapsedMs : 0;
-            const entry = {
+            const req = parseHTTPMessage(http.request.details);
+            const res = parseHTTPMessage(http.response.details);
+            const reqMime = headerValue(req.headers, 'Content-Type') || 'text/plain';
+            const resMime = headerValue(res.headers, 'Content-Type') || 'text/plain';
+            const host = headerValue(req.headers, 'Host');
+            let url = http.request.url || '';
+            if (host && url.startsWith('/')) {
+                url = 'http://' + host + url;
+            }
+            const started = http.request.startedDateTime || new Date().toISOString();
+            return {
                 startedDateTime: started,
-                time: elapsed,
+                time: 0,
                 request: {
                     method: http.request.method,
                     url,
-                    httpVersion: reqVersion,
-                    cookies: parseCookieHeader(headerValue(reqHeaders, 'Cookie')),
-                    headers: reqHeaders,
-                    queryString: queryStringFromURL(url),
+                    httpVersion: httpVersionFromLine(req.startLine, 'HTTP/1.1'),
+                    cookies: [],
+                    headers: req.headers,
+                    queryString: queryStringFromURL(http.request.url),
                     headersSize: -1,
-                    bodySize: reqMsg.body.length,
+                    bodySize: req.body ? req.body.length : 0,
+                    postData: req.body ? { mimeType: reqMime, text: req.body } : undefined,
                 },
                 response: {
                     status: http.response.status,
                     statusText: http.response.statusText || '',
-                    httpVersion: resVersion,
-                    cookies: parseSetCookies(resHeaders),
-                    headers: resHeaders,
+                    httpVersion: httpVersionFromLine(res.startLine, 'HTTP/1.1'),
+                    cookies: [],
+                    headers: res.headers,
                     content: {
-                        size: resMsg.body.length,
+                        size: res.body.length,
                         mimeType: resMime,
-                        text: resMsg.body,
+                        text: res.body,
                     },
-                    redirectURL: headerValue(resHeaders, 'Location'),
+                    redirectURL: headerValue(res.headers, 'Location') || '',
                     headersSize: -1,
-                    bodySize: resMsg.body.length,
+                    bodySize: res.body.length,
                 },
                 cache: {},
-                timings: { send: 0, wait: elapsed, receive: 0 },
+                timings: { send: 0, wait: 0, receive: 0 },
             };
-            if (reqMsg.body) {
-                entry.request.postData = { mimeType: reqMime, text: reqMsg.body };
-            }
-            return entry;
         });
         return {
             log: {
                 version: '1.2',
-                creator: { name: 'mock', version: mockConfig.version || 'dev' },
+                creator: { name: 'mock', version: MOCK_CONFIG.version },
                 entries,
             },
         };
