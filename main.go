@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -23,9 +25,6 @@ import (
 )
 
 func main() {
-	// Operational logs (reload success, requests) go to stdout via slog.
-	// Startup banners print plain text to stdout. User-facing failures print
-	// plain text to stderr so parse/load errors are readable.
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	if err := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, logger); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
@@ -37,7 +36,6 @@ func main() {
 	}
 }
 
-// exitError is a fatal CLI failure with a human-readable message for stderr.
 type exitError struct {
 	code int
 	msg  string
@@ -54,15 +52,10 @@ func runError(format string, args ...any) error {
 }
 
 type config struct {
-	Mount    string
-	Port     int
-	Bind     string
-	CORS     string
-	CertFile string
-	KeyFile  string
-	OpenAPI  string
-	Version  bool
-	Args     []string
+	Mount, Bind, CORS, CertFile, KeyFile, OpenAPI string
+	Port                                         int
+	Version                                      bool
+	Args                                         []string
 }
 
 func parseConfig(args []string) (config, error) {
@@ -75,8 +68,8 @@ func parseConfig(args []string) (config, error) {
 	}
 	flagSet.StringVar(&cfg.Mount, "l", "mock", "URL path for the admin web UI")
 	flagSet.IntVar(&cfg.Port, "p", portDefault, "HTTP port")
-	flagSet.StringVar(&cfg.Bind, "b", "", "bind address (default all interfaces)")
-	flagSet.StringVar(&cfg.CORS, "cors", "", "Access-Control-Allow-Origin value (e.g. * or https://app.local)")
+	flagSet.StringVar(&cfg.Bind, "b", "127.0.0.1", "bind address (default 127.0.0.1; use 0.0.0.0 for all interfaces)")
+	flagSet.StringVar(&cfg.CORS, "cors", "", "Access-Control-Allow-Origin value (e.g. * or https://app.local); only real preflights short-circuit; * exposes SSE to any origin")
 	flagSet.StringVar(&cfg.CertFile, "cert", "", "TLS certificate file (enables HTTPS)")
 	flagSet.StringVar(&cfg.KeyFile, "key", "", "TLS private key file")
 	flagSet.StringVar(&cfg.OpenAPI, "openapi", "", "OpenAPI 3 JSON/YAML file to seed stub routes")
@@ -88,8 +81,6 @@ func parseConfig(args []string) (config, error) {
 	return cfg, nil
 }
 
-// portFromEnv returns MOCK_PORT when set, otherwise the built-in default of 8080.
-// A set but unparseable value is a usage error so a typo is not silently ignored.
 func portFromEnv() (int, error) {
 	raw := strings.TrimSpace(os.Getenv("MOCK_PORT"))
 	if raw == "" {
@@ -119,17 +110,13 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 			return usageError("missing request input\nusage: mock [-l mock] [-p 8080] [-b addr] [-cors *] [-cert c -key k] [-openapi spec.yaml] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
 		}
 	}
-
 	input, err := loadInput(cfg.Args, stdin, cfg.OpenAPI)
 	if err != nil {
-		// Parse/load errors already include file:line; print them directly.
 		return runError("%v", err)
 	}
-
 	var handler http.Handler
 	var mockServer *mockhttp.Server
 	var watchCloser io.Closer
-
 	if input.StaticDir != "" {
 		handler = newStaticFileHandler(input.StaticDir)
 		logger.Info("starting static HTTP server", "addr", listenAddress(cfg.Bind, cfg.Port), "dir", input.StaticDir)
@@ -137,14 +124,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 		if err := validateMethods(input.Methods, cfg.Args); err != nil {
 			return runError("%v", err)
 		}
-
 		staticFS, err := staticFileSystem()
 		if err != nil {
 			return runError("failed to load static files: %v", err)
 		}
 		mockServer = mockhttp.New(input.Methods, logger)
 		handler = newHandler(mockServer, cfg.Mount, staticFS)
-
 		if files := input.WatchFiles; len(files) > 0 {
 			reload := func() {
 				reloadMockFiles(mockServer, files, input.OpenAPI, logger, stdout, stderr)
@@ -155,33 +140,21 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 				return runError("failed to watch request files: %v", err)
 			}
 		}
-
-		fmt.Fprintf(stdout, "starting mock HTTP server on %s\n", listenAddress(cfg.Bind, cfg.Port))
-		bind := cfg.Bind
-		if bind == "" {
-			bind = "localhost"
+		addr := listenAddress(cfg.Bind, cfg.Port)
+		fmt.Fprintf(stdout, "starting mock HTTP server on %s\n", addr)
+		fmt.Fprintf(stdout, "admin UI at %s://%s%s/\n", listenScheme(cfg.CertFile, cfg.KeyFile), addr, normalizeMountPath(cfg.Mount))
+		if bindsAllInterfaces(cfg.Bind) {
+			fmt.Fprintln(stderr, "warning: bound to all interfaces; admin UI is unauthenticated and request logs may include Authorization headers and bodies")
 		}
-
-		fmt.Fprintf(stdout, "admin UI at http://%s%s/\n", listenAddress(bind, cfg.Port), normalizeMountPath(cfg.Mount))
 		if watchCloser != nil {
 			fmt.Fprintln(stdout, "watching request files for changes")
 		}
 		printMethods(stdout, input.Methods)
 	}
-
 	if cfg.CORS != "" {
 		handler = withCORS(handler, cfg.CORS)
 	}
-
-	server := &http.Server{
-		Addr:              listenAddress(cfg.Bind, cfg.Port),
-		Handler:           handler,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		// WriteTimeout must stay 0 so SSE streams and long $delay routes are not cut off.
-		IdleTimeout: 60 * time.Second,
-	}
-
+	server := &http.Server{Addr: listenAddress(cfg.Bind, cfg.Port), Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
 	errCh := make(chan error, 1)
 	go func() {
 		var serveErr error
@@ -193,16 +166,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 		}
 		errCh <- serveErr
 	}()
-
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigCh)
-
 	select {
 	case sig := <-sigCh:
 		logger.Info("shutting down", "signal", sig.String())
-		// Brief graceful window, then force-close. Open SSE streams and long
-		// $delay handlers otherwise hold Shutdown until the full timeout.
 		if err := shutdownHTTPServer(server, 400*time.Millisecond); err != nil {
 			if watchCloser != nil {
 				_ = watchCloser.Close()
@@ -225,14 +194,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 	}
 }
 
-// shutdownHTTPServer stops the listener, waits briefly for in-flight requests,
-// then force-closes anything still open (SSE, delayed mocks).
 func shutdownHTTPServer(server *http.Server, grace time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), grace)
 	defer cancel()
-
 	err := server.Shutdown(ctx)
-	// Always Close so lingering long-lived connections cannot block process exit.
 	closeErr := server.Close()
 	if err == nil || errors.Is(err, http.ErrServerClosed) || errors.Is(err, context.DeadlineExceeded) {
 		if closeErr != nil && !errors.Is(closeErr, http.ErrServerClosed) {
@@ -245,6 +210,18 @@ func shutdownHTTPServer(server *http.Server, grace time.Duration) error {
 
 func listenAddress(bind string, port int) string {
 	return net.JoinHostPort(bind, fmt.Sprintf("%d", port))
+}
+
+func listenScheme(certFile, keyFile string) string {
+	if certFile != "" && keyFile != "" {
+		return "https"
+	}
+	return "http"
+}
+
+func bindsAllInterfaces(bind string) bool {
+	host := strings.Trim(bind, "[]")
+	return host == "" || host == "0.0.0.0" || host == "::" || host == "*"
 }
 
 type inputSource struct {
@@ -262,7 +239,6 @@ func loadInput(args []string, stdin io.Reader, openAPI string) (inputSource, err
 		}
 		return inputSource{Methods: methods, OpenAPI: openAPI}, nil
 	}
-
 	if len(args) == 1 {
 		info, err := os.Stat(args[0])
 		if err != nil {
@@ -281,7 +257,6 @@ func loadInput(args []string, stdin io.Reader, openAPI string) (inputSource, err
 			return inputSource{}, fmt.Errorf("cannot mix static directory %q with other request inputs", arg)
 		}
 	}
-
 	var methods []restclient.Method
 	if openAPI != "" {
 		openAPIMethods, err := restclient.LoadOpenAPI(openAPI)
@@ -331,7 +306,6 @@ func newStaticFileHandler(dir string) http.Handler {
 
 func newHandler(mockServer *mockhttp.Server, mount string, staticFS fs.FS) http.Handler {
 	mountPath := normalizeMountPath(mount)
-
 	mountRoot := mountPath + "/"
 	mux := http.NewServeMux()
 	mux.HandleFunc(mountPath, func(w http.ResponseWriter, r *http.Request) {
@@ -340,17 +314,43 @@ func newHandler(mockServer *mockhttp.Server, mount string, staticFS fs.FS) http.
 	mux.HandleFunc(mountRoot+"events", mockServer.ServeEvents)
 	mux.HandleFunc(mountRoot+"clear", mockServer.ServeClear)
 	mux.HandleFunc(mountRoot+"routes", mockServer.ServeRoutes)
-	mux.Handle(mountRoot, http.StripPrefix(mountRoot, http.FileServer(http.FS(staticFS))))
+	mux.Handle(mountRoot, http.StripPrefix(mountRoot, uiFileServer(staticFS, currentVersion())))
 	mux.Handle("/", mockServer)
 	return mux
+}
+
+func uiFileServer(staticFS fs.FS, version string) http.Handler {
+	files := http.FileServer(http.FS(staticFS))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" && r.URL.Path != "/index.html" {
+			files.ServeHTTP(w, r)
+			return
+		}
+		data, err := fs.ReadFile(staticFS, "index.html")
+		if err != nil {
+			http.Error(w, "index.html missing", http.StatusInternalServerError)
+			return
+		}
+		payload, err := json.Marshal(map[string]string{"version": version})
+		if err != nil {
+			http.Error(w, "failed to encode UI config", http.StatusInternalServerError)
+			return
+		}
+		data = bytes.Replace(data, []byte(`{"version":"dev"}`), payload, 1)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(data)
+	})
 }
 
 func withCORS(next http.Handler, origin string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Add("Vary", "Origin")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Last-Event-ID")
-		if r.Method == http.MethodOptions {
+		if reqHeaders := r.Header.Get("Access-Control-Request-Headers"); reqHeaders != "" {
+			w.Header().Set("Access-Control-Allow-Headers", reqHeaders)
+		}
+		if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -377,10 +377,8 @@ func reloadMockFiles(mockServer *mockhttp.Server, files []string, openAPI string
 		}
 		return methods, nil
 	}
-
 	methods, err := load()
 	if err != nil {
-		// Editors often emit Write before the full file is flushed; retry once.
 		time.Sleep(50 * time.Millisecond)
 		methods, err = load()
 	}
@@ -417,7 +415,6 @@ func printMethods(w io.Writer, methods []restclient.Method) {
 	}
 }
 
-// absPath is used by tests.
 func absPath(path string) string {
 	abs, err := filepath.Abs(path)
 	if err != nil {

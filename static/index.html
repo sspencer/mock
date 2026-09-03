@@ -149,8 +149,9 @@
     </div>
 </dialog>
 
-<script>
+<script id="mock-config">
     const MAX_EVENTS = 200;
+    const MOCK_CONFIG = {"version":"dev"};
     const themeToggle = document.getElementById('themeToggle');
     const themeToggleLabel = document.getElementById('themeToggleLabel');
     const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
@@ -255,7 +256,7 @@
 
     clearRequestsButton.addEventListener('click', async () => {
         try {
-            await fetch('clear', { method: 'POST' });
+            await fetch('clear', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
         } catch (e) {
             console.error('failed to clear server events', e);
         }
@@ -494,43 +495,109 @@
         }
     }
 
+    function headerValue(headers, name) {
+        const want = name.toLowerCase();
+        for (const header of headers) {
+            if ((header.name || '').toLowerCase() === want) {
+                return header.value || '';
+            }
+        }
+        return '';
+    }
+
+    function parseHTTPMessage(details) {
+        const text = details || '';
+        let head = text;
+        let body = '';
+        const splitAt = text.indexOf('\n\n');
+        if (splitAt >= 0) {
+            head = text.slice(0, splitAt);
+            body = text.slice(splitAt + 2);
+        }
+        const lines = head.split('\n');
+        const startLine = lines[0] || '';
+        const headers = [];
+        for (let i = 1; i < lines.length; i++) {
+            const colon = lines[i].indexOf(':');
+            if (colon <= 0) {
+                continue;
+            }
+            headers.push({
+                name: lines[i].slice(0, colon).trim(),
+                value: lines[i].slice(colon + 1).trim(),
+            });
+        }
+        return { startLine, headers, body };
+    }
+
+    function httpVersionFromLine(startLine, fallback) {
+        const match = /\bHTTP\/[\d.]+/.exec(startLine || '');
+        return match ? match[0] : fallback;
+    }
+
+    function queryStringFromURL(url) {
+        const qIndex = (url || '').indexOf('?');
+        if (qIndex < 0) {
+            return [];
+        }
+        const params = new URLSearchParams(url.slice(qIndex + 1));
+        const out = [];
+        for (const [name, value] of params.entries()) {
+            out.push({ name, value });
+        }
+        return out;
+    }
+
     function buildHAR(events) {
-        const entries = events.map((http) => ({
-            startedDateTime: new Date().toISOString(),
-            time: 0,
-            request: {
-                method: http.request.method,
-                url: http.request.url,
-                httpVersion: 'HTTP/1.1',
-                cookies: [],
-                headers: [],
-                queryString: [],
-                headersSize: -1,
-                bodySize: -1,
-                postData: http.request.details ? { mimeType: 'text/plain', text: http.request.details } : undefined,
-            },
-            response: {
-                status: http.response.status,
-                statusText: http.response.statusText || '',
-                httpVersion: 'HTTP/1.1',
-                cookies: [],
-                headers: [],
-                content: {
-                    size: (http.response.details || '').length,
-                    mimeType: 'text/plain',
-                    text: http.response.details || '',
+        const entries = events.map((http) => {
+            const req = parseHTTPMessage(http.request.details);
+            const res = parseHTTPMessage(http.response.details);
+            const reqMime = headerValue(req.headers, 'Content-Type') || 'text/plain';
+            const resMime = headerValue(res.headers, 'Content-Type') || 'text/plain';
+            const host = headerValue(req.headers, 'Host');
+            let url = http.request.url || '';
+            if (host && url.startsWith('/')) {
+                url = 'http://' + host + url;
+            }
+            const started = http.request.startedAt || new Date().toISOString();
+            const elapsed = typeof http.response.elapsedMs === 'number' ? http.response.elapsedMs : 0;
+            return {
+                startedDateTime: started,
+                time: elapsed,
+                request: {
+                    method: http.request.method,
+                    url,
+                    httpVersion: httpVersionFromLine(req.startLine, 'HTTP/1.1'),
+                    cookies: [],
+                    headers: req.headers,
+                    queryString: queryStringFromURL(http.request.url),
+                    headersSize: -1,
+                    bodySize: req.body ? req.body.length : 0,
+                    postData: req.body ? { mimeType: reqMime, text: req.body } : undefined,
                 },
-                redirectURL: '',
-                headersSize: -1,
-                bodySize: -1,
-            },
-            cache: {},
-            timings: { send: 0, wait: 0, receive: 0 },
-        }));
+                response: {
+                    status: http.response.status,
+                    statusText: http.response.statusText || '',
+                    httpVersion: httpVersionFromLine(res.startLine, 'HTTP/1.1'),
+                    cookies: [],
+                    headers: res.headers,
+                    content: {
+                        size: res.body.length,
+                        mimeType: resMime,
+                        text: res.body,
+                    },
+                    redirectURL: headerValue(res.headers, 'Location') || '',
+                    headersSize: -1,
+                    bodySize: res.body.length,
+                },
+                cache: {},
+                timings: { send: 0, wait: 0, receive: 0 },
+            };
+        });
         return {
             log: {
                 version: '1.2',
-                creator: { name: 'mock', version: 'dev' },
+                creator: { name: 'mock', version: MOCK_CONFIG.version },
                 entries,
             },
         };

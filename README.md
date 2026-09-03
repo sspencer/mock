@@ -34,11 +34,12 @@ go run . examples/user.http
 ```
 
 The server prints a short banner with the listen address, the admin UI URL, and
-whether it is watching files, then the route list, and listens on `:8080`:
+whether it is watching files, then the route list, and listens on `127.0.0.1:8080`
+by default:
 
 ```text
-starting mock HTTP server on :8080
-admin UI at http://localhost:8080/mock/
+starting mock HTTP server on 127.0.0.1:8080
+admin UI at http://127.0.0.1:8080/mock/
 watching request files for changes
 Available mock methods:
   GET     /                              Return home page external html file
@@ -106,13 +107,15 @@ Build the image:
 docker build -t mock .
 ```
 
-Run it with a `.http` file from your host machine:
+Run it with a `.http` file from your host machine. Containers must bind
+`0.0.0.0` so published ports are reachable from the host (`-b` defaults to
+localhost):
 
 ```sh
 docker run --rm \
   -p 8080:8080 \
   -v "$PWD/examples/user.http:/mock/user.http:ro" \
-  mock /mock/user.http
+  mock -b 0.0.0.0 /mock/user.http
 ```
 
 The bind mount keeps the request file outside the image. Rebuild the image only
@@ -127,7 +130,7 @@ relative file references are available inside the container:
 docker run --rm \
   -p 8080:8080 \
   -v "$PWD/examples:/mock/examples:ro" \
-  mock /mock/examples/user.http
+  mock -b 0.0.0.0 /mock/examples/user.http
 ```
 
 ## CLI
@@ -145,9 +148,9 @@ Flags:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `-p` | `8080`, or `MOCK_PORT` | HTTP port |
-| `-b` | (all interfaces) | Bind address, e.g. `127.0.0.1` |
+| `-b` | `127.0.0.1` | Bind address. Use `0.0.0.0` to listen on all interfaces |
 | `-l` | `mock` | URL path for the request-log UI (`/mock/`) |
-| `-cors` | (off) | `Access-Control-Allow-Origin` value (`*` or an origin) |
+| `-cors` | (off) | `Access-Control-Allow-Origin` value (`*` or an origin). Only browser preflight `OPTIONS` are short-circuited |
 | `-cert` / `-key` | (off) | Enable HTTPS with the given certificate and key |
 | `-openapi` | (off) | Seed stub routes from an OpenAPI 3 JSON/YAML file |
 | `-version` | | Print version and exit |
@@ -168,6 +171,13 @@ If you pass a single directory, `mock` serves that directory as a static file
 server from `/` instead of loading mock routes or the request-log UI.
 
 ## Request File Format
+
+**Headers after the request line are response headers.** To match incoming
+request headers such as `Authorization`, `Cookie`, or `Accept`, use
+`# $header.Name=value` above the request line — not a header below it.
+`Content-Type` after the request line is the usual way to set the mock response
+content type. `mock` warns at load time if a well-known incoming header is used
+as a response header without a matching `$header.*` matcher.
 
 Each response starts with `###`, followed by a name, optional variables, an HTTP
 request line, optional **response** headers, a blank line, and an optional body.
@@ -326,7 +336,7 @@ The UI is mounted under `-l` (default `/mock/`):
 |------|---------|
 | `/mock/` | Request log UI |
 | `/mock/events` | Server-sent events stream (with event `id` / `Last-Event-ID`) |
-| `/mock/clear` | `POST` clears stored events and rotation counters |
+| `/mock/clear` | `POST` clears stored events and rotation counters. Requires `X-Requested-With` or JSON `Content-Type` |
 | `/mock/routes` | `GET` JSON list of currently configured routes |
 
 **Path conflicts:** mock routes are registered on `/`. If a mock defines
@@ -366,6 +376,15 @@ Checked-in samples:
 mock -cors '*' examples/user.http
 mock -cert cert.pem -key key.pem -p 8443 examples/user.http
 ```
+
+`-cors` adds CORS headers to every response, including `Vary: Origin`. Browser
+preflight requests (`OPTIONS` with `Access-Control-Request-Method`) return `204`
+and reflect `Access-Control-Request-Headers`. Other `OPTIONS` requests run the
+mock route. `-cors '*'` lets any origin read the admin UI event stream (SSE).
+
+With `-cert`/`-key`, the startup banner prints `https://` for the admin UI.
+Binding to all interfaces (`-b 0.0.0.0`) prints a warning: the admin UI is
+unauthenticated and request logs may include `Authorization` headers and bodies.
 
 ## Development
 
