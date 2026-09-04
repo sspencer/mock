@@ -182,7 +182,6 @@ request line, optional **response** headers, a blank line, and an optional body.
 
 ```http
 ### Return user
-# $status=200
 GET /users/:id
 Content-Type: application/json
 
