@@ -1,478 +1,537 @@
 import { buildHAR } from './har.mjs';
+import { PendingTraffic, streamLabel } from './traffic.mjs';
 
-    const MAX_EVENTS = 200;
-    const MOCK_CONFIG = JSON.parse(document.getElementById("mock-config").textContent);
-    const themeToggle = document.getElementById('themeToggle');
-    const themeToggleLabel = document.getElementById('themeToggleLabel');
-    const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
-    const requestTableBody = document.getElementById('requestTableBody');
-    const requestTable = requestTableBody.closest('table');
-    const requestDetails = document.getElementById('requestDetails');
-    const responseDetails = document.getElementById('responseDetails');
-    const clearRequestsButton = document.getElementById('clearRequestsButton');
-    const clearError = document.getElementById('clearError');
-    const pauseButton = document.getElementById('pauseButton');
-    const pauseButtonLabel = pauseButton.querySelector('.button-label');
-    const exportButton = document.getElementById('exportButton');
-    const helpButton = document.getElementById('helpButton');
-    const helpDialog = document.getElementById('helpDialog');
-    const helpCloseButton = document.getElementById('helpCloseButton');
-    const filterInput = document.getElementById('filterInput');
-    const routesList = document.getElementById('routesList');
-    const refreshRoutesButton = document.getElementById('refreshRoutesButton');
-    const routesToggleButton = document.getElementById('routesToggleButton');
-    const routesToggleLabel = document.getElementById('routesToggleLabel');
-    const requestPanel = document.querySelector('.request-panel');
-    const requestCount = document.getElementById('requestCount');
-    const routeCount = document.getElementById('routeCount');
-    const streamStatus = document.getElementById('streamStatus');
+const MAX_EVENTS = 200;
+const MOCK_CONFIG = JSON.parse(document.getElementById("mock-config").textContent);
+const themeToggle = document.getElementById('themeToggle');
+const themeToggleLabel = document.getElementById('themeToggleLabel');
+const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+const requestTableBody = document.getElementById('requestTableBody');
+const requestTable = requestTableBody.closest('table');
+const requestDetails = document.getElementById('requestDetails');
+const responseDetails = document.getElementById('responseDetails');
+const clearRequestsButton = document.getElementById('clearRequestsButton');
+const clearError = document.getElementById('clearError');
+const pauseButton = document.getElementById('pauseButton');
+const pauseButtonLabel = pauseButton.querySelector('.button-label');
+const exportButton = document.getElementById('exportButton');
+const helpButton = document.getElementById('helpButton');
+const helpDialog = document.getElementById('helpDialog');
+const helpCloseButton = document.getElementById('helpCloseButton');
+const filterInput = document.getElementById('filterInput');
+const routesList = document.getElementById('routesList');
+const refreshRoutesButton = document.getElementById('refreshRoutesButton');
+const routesToggleButton = document.getElementById('routesToggleButton');
+const routesToggleLabel = document.getElementById('routesToggleLabel');
+const requestPanel = document.querySelector('.request-panel');
+const requestCount = document.getElementById('requestCount');
+const routeCount = document.getElementById('routeCount');
+const streamStatus = document.getElementById('streamStatus');
 
-    /** @type {Map<number, any>} */
-    const eventsById = new Map();
-    /** @type {number[]} newest-first ids */
-    let eventOrder = [];
-    let paused = false;
-    let selectedId = null;
-    let filterText = '';
- let streamSession = null;
- let clearedThrough = 0;
+/** @type {Map<number, any>} */
+const eventsById = new Map();
+/** @type {number[]} newest-first ids */
+let eventOrder = [];
+let paused = false;
+let selectedId = null;
+let filterText = '';
+let streamSession = null;
+let clearedThrough = 0;
+const pending = new PendingTraffic(MAX_EVENTS);
+let connected = false;
+let renderPending = false;
+const preferences = {
+    get(key) { try { return localStorage.getItem(key); } catch { return null; } },
+    set(key, value) { try { localStorage.setItem(key, value); } catch { /* Storage is optional. */ } },
+};
+function updateStreamStatus() {
+    streamStatus.textContent = streamLabel(connected, paused, pending.events.size, pending.dropped);
+}
+function scheduleRender() {
+    if (renderPending) return;
+    renderPending = true;
+    requestAnimationFrame(() => { renderPending = false; updateRequestCount(); renderTable(); });
+}
 
-    function setTheme(theme) {
-        if (theme === 'dark') {
-            document.documentElement.setAttribute('data-theme', 'dark');
-            themeToggleLabel.textContent = 'Light';
-            localStorage.setItem('theme', 'dark');
-        } else {
-            document.documentElement.removeAttribute('data-theme');
-            themeToggleLabel.textContent = 'Dark';
-            localStorage.setItem('theme', 'light');
-        }
+function setTheme(theme) {
+    if (theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        themeToggleLabel.textContent = 'Light';
+        preferences.set('theme', 'dark');
+    } else {
+        document.documentElement.removeAttribute('data-theme');
+        themeToggleLabel.textContent = 'Dark';
+        preferences.set('theme', 'light');
     }
+}
 
-    function setRoutesCollapsed(collapsed) {
-        requestPanel.classList.toggle('routes-collapsed', collapsed);
-        routesToggleButton.setAttribute('aria-expanded', String(!collapsed));
-        routesToggleButton.setAttribute('aria-label', collapsed ? 'Show configured routes' : 'Hide configured routes');
-        routesToggleLabel.textContent = collapsed ? 'Show' : 'Hide';
-        localStorage.setItem('routesCollapsed', collapsed ? 'true' : 'false');
-    }
+function setRoutesCollapsed(collapsed) {
+    requestPanel.classList.toggle('routes-collapsed', collapsed);
+    routesToggleButton.setAttribute('aria-expanded', String(!collapsed));
+    routesToggleButton.setAttribute('aria-label', collapsed ? 'Show configured routes' : 'Hide configured routes');
+    routesToggleLabel.textContent = collapsed ? 'Show' : 'Hide';
+    preferences.set('routesCollapsed', collapsed ? 'true' : 'false');
+}
 
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark') {
-        setTheme('dark');
-    } else if (savedTheme === 'light') {
+const savedTheme = preferences.get('theme');
+if (savedTheme === 'dark') {
+    setTheme('dark');
+} else if (savedTheme === 'light') {
+    setTheme('light');
+} else if (prefersDarkScheme.matches) {
+    setTheme('dark');
+}
+setRoutesCollapsed(preferences.get('routesCollapsed') === 'true');
+
+themeToggle.addEventListener('click', () => {
+    if (document.documentElement.getAttribute('data-theme') === 'dark') {
         setTheme('light');
-    } else if (prefersDarkScheme.matches) {
+    } else {
         setTheme('dark');
     }
-    setRoutesCollapsed(localStorage.getItem('routesCollapsed') === 'true');
+});
 
-    themeToggle.addEventListener('click', () => {
-        if (document.documentElement.getAttribute('data-theme') === 'dark') {
-            setTheme('light');
-        } else {
-            setTheme('dark');
-        }
-    });
-
-    const source = new EventSource('events');
-    function clearThrough(cursor = Infinity) {
-        for (const id of eventOrder) { if (id <= cursor) eventsById.delete(id); }
-        eventOrder = eventOrder.filter(id => eventsById.has(id));
-        if (!eventsById.has(selectedId)) {
-            selectedId = null;
-            updateDetail(requestDetails, '');
-            updateDetail(responseDetails, '');
-        }
-        updateRequestCount();
-        renderTable();
+const source = new EventSource('events');
+function clearThrough(cursor = Infinity) {
+    pending.clearThrough(cursor);
+    for (const id of eventOrder) { if (id <= cursor) eventsById.delete(id); }
+    eventOrder = eventOrder.filter(id => eventsById.has(id));
+    if (!eventsById.has(selectedId)) {
+        selectedId = null;
+        updateDetail(requestDetails, '');
+        updateDetail(responseDetails, '');
     }
-    source.addEventListener('reset', event => {
+    updateRequestCount();
+    renderTable();
+    updateStreamStatus();
+}
+source.addEventListener('reset', event => {
+    const data = JSON.parse(event.data);
+    streamSession = data.session;
+    clearedThrough = 0;
+    clearThrough();
+});
+source.addEventListener('clear', event => {
+    const data = JSON.parse(event.data);
+    streamSession = data.session;
+    clearedThrough = Math.max(clearedThrough, data.id);
+    clearThrough(clearedThrough);
+});
+source.onopen = function () {
+    connected = true;
+    document.body.classList.remove('stream-offline');
+       updateStreamStatus();
+};
+source.onerror = function () {
+    connected = false;
+    document.body.classList.add('stream-offline');
+    updateStreamStatus();
+};
+source.onmessage = function (event) {
+    try {
         const data = JSON.parse(event.data);
-        streamSession = data.session;
-        clearedThrough = 0;
-        clearThrough();
-    });
-    source.addEventListener('clear', event => {
-        const data = JSON.parse(event.data);
-        streamSession = data.session;
-        clearedThrough = Math.max(clearedThrough, data.id);
-        clearThrough(clearedThrough);
-    });
-    source.onopen = function () {
-        document.body.classList.remove('stream-offline');
-        streamStatus.textContent = paused ? 'Paused' : 'Listening';
-    };
-    source.onerror = function () {
-        document.body.classList.add('stream-offline');
-        streamStatus.textContent = 'Reconnecting';
-    };
-    source.onmessage = function (event) {
-        if (paused) {
-            return;
+        if (streamSession !== data.session) {
+            clearThrough();
+            clearedThrough = 0;
+            streamSession = data.session;
         }
-        try {
-            const data = JSON.parse(event.data);
- if (streamSession !== data.session) { clearThrough(); clearedThrough = 0; streamSession = data.session; }
- if (data.id > clearedThrough) upsertEvent(data);
-        } catch (e) {
-            console.error('Error parsing json', e);
+        if (data.id > clearedThrough) {
+            if (paused) pending.add(data);
+            else upsertEvent(data);
+            updateStreamStatus();
         }
-    };
-
-    function getDataRows() {
-        return [...requestTableBody.querySelectorAll('tr[data-id]')];
+    } catch (e) {
+        console.error('Error parsing json', e);
     }
+};
 
-    function syncRowTabindex() {
-        const rows = getDataRows();
-        let focusTarget = null;
-        for (const row of rows) {
-            const isSelected = selectedId != null && row.dataset.id === String(selectedId);
-            row.tabIndex = -1;
-            row.setAttribute('aria-selected', isSelected ? 'true' : 'false');
-            if (isSelected) {
-                focusTarget = row;
-            }
+function getDataRows() {
+    return [...requestTableBody.querySelectorAll('tr[data-id]')];
+}
+
+function syncRowTabindex() {
+    const rows = getDataRows();
+    let focusTarget = null;
+    for (const row of rows) {
+        const isSelected = selectedId != null && row.dataset.id === String(selectedId);
+        row.tabIndex = -1;
+        row.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+        if (isSelected) {
+            focusTarget = row;
         }
-        if (!focusTarget && rows[0]) {
-            focusTarget = rows[0];
-        }
-        if (focusTarget) {
-            focusTarget.tabIndex = 0;
-        }
-        return focusTarget;
     }
-
-    function selectRow(row, http) {
-        selectedId = http.id;
-        for (const r of requestTableBody.querySelectorAll('tr[data-id]')) {
-            const isSelected = r === row;
-            r.classList.toggle('selected', isSelected);
-            r.setAttribute('aria-selected', isSelected ? 'true' : 'false');
-            r.tabIndex = isSelected ? 0 : -1;
-        }
-        updateDetail(requestDetails, http.request.details || '');
-        updateDetail(responseDetails, http.response.details || '');
+    if (!focusTarget && rows[0]) {
+        focusTarget = rows[0];
     }
-
-    function selectRowByOffset(currentRow, index) {
-        const rows = getDataRows();
-        if (!rows.length) {
-            return;
-        }
-        const next = rows[Math.max(0, Math.min(index, rows.length - 1))];
-        if (!next) {
-            return;
-        }
-        const http = eventsById.get(Number(next.dataset.id));
-        if (!http) {
-            return;
-        }
-        selectRow(next, http);
-        next.focus();
-        next.scrollIntoView({ block: 'nearest' });
+    if (focusTarget) {
+        focusTarget.tabIndex = 0;
     }
+    return focusTarget;
+}
 
-    requestTableBody.addEventListener('click', (e) => {
-        const row = e.target.closest('tr');
-        if (!row || !row.dataset.id) {
-            return;
-        }
-        const id = Number(row.dataset.id);
-        const http = eventsById.get(id);
+function selectRow(row, http) {
+    selectedId = http.id;
+    for (const r of requestTableBody.querySelectorAll('tr[data-id]')) {
+        const isSelected = r === row;
+        r.classList.toggle('selected', isSelected);
+        r.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+        r.tabIndex = isSelected ? 0 : -1;
+    }
+    updateDetail(requestDetails, http.request.details || '');
+    updateDetail(responseDetails, http.response.details || '');
+}
+
+function selectRowByOffset(currentRow, index) {
+    const rows = getDataRows();
+    if (!rows.length) {
+        return;
+    }
+    const next = rows[Math.max(0, Math.min(index, rows.length - 1))];
+    if (!next) {
+        return;
+    }
+    const http = eventsById.get(Number(next.dataset.id));
+    if (!http) {
+        return;
+    }
+    selectRow(next, http);
+    next.focus();
+    next.scrollIntoView({ block: 'nearest' });
+}
+
+requestTableBody.addEventListener('click', (e) => {
+    const row = e.target.closest('tr');
+    if (!row || !row.dataset.id) {
+        return;
+    }
+    const id = Number(row.dataset.id);
+    const http = eventsById.get(id);
+    if (http) {
+        selectRow(row, http);
+        row.focus();
+    }
+});
+
+requestTableBody.addEventListener('keydown', (event) => {
+    if (event.target.matches('input, textarea, [contenteditable="true"]')) {
+        return;
+    }
+    const row = event.target.closest('tr[data-id]');
+    if (!row || !requestTableBody.contains(row)) {
+        return;
+    }
+    const rows = getDataRows();
+    const index = rows.indexOf(row);
+    if (index === -1) {
+        return;
+    }
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        selectRowByOffset(row, index + 1);
+    } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        selectRowByOffset(row, index - 1);
+    } else if (event.key === 'Home') {
+        event.preventDefault();
+        selectRowByOffset(row, 0);
+    } else if (event.key === 'End') {
+        event.preventDefault();
+        selectRowByOffset(row, rows.length - 1);
+    } else if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        const http = eventsById.get(Number(row.dataset.id));
         if (http) {
             selectRow(row, http);
-            row.focus();
         }
-    });
-
-    requestTableBody.addEventListener('keydown', (event) => {
-        if (event.target.matches('input, textarea, [contenteditable="true"]')) {
-            return;
-        }
-        const row = event.target.closest('tr[data-id]');
-        if (!row || !requestTableBody.contains(row)) {
-            return;
-        }
-        const rows = getDataRows();
-        const index = rows.indexOf(row);
-        if (index === -1) {
-            return;
-        }
-        if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            selectRowByOffset(row, index + 1);
-        } else if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            selectRowByOffset(row, index - 1);
-        } else if (event.key === 'Home') {
-            event.preventDefault();
-            selectRowByOffset(row, 0);
-        } else if (event.key === 'End') {
-            event.preventDefault();
-            selectRowByOffset(row, rows.length - 1);
-        } else if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            const http = eventsById.get(Number(row.dataset.id));
-            if (http) {
-                selectRow(row, http);
-            }
-        }
-    });
-
-    function hideClearError() {
-        clearError.hidden = true;
-        clearError.textContent = '';
     }
+});
 
-    function showClearError() {
-        clearError.hidden = false;
-        clearError.textContent = "Couldn’t clear the log — the server didn’t confirm. Try again.";
-    }
+function hideClearError() {
+    clearError.hidden = true;
+    clearError.textContent = '';
+}
 
-    clearRequestsButton.addEventListener('click', async () => {
-        let cursor = 0;
-        try {
-            const res = await fetch('clear', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-            if (!res.ok) {
-                console.error('failed to clear server events', res.status);
-                showClearError();
-                return;
-            }
-            cursor = Number(res.headers.get('X-Mock-Cursor'));
-        } catch (e) {
-            console.error('failed to clear server events', e);
+function showClearError() {
+    clearError.hidden = false;
+    clearError.textContent = "Couldn’t clear the log — the server didn’t confirm. Try again.";
+}
+
+clearRequestsButton.addEventListener('click', async () => {
+    let cursor = 0;
+    try {
+        const res = await fetch('clear', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        if (!res.ok) {
+            console.error('failed to clear server events', res.status);
             showClearError();
             return;
         }
-        clearedThrough = Math.max(clearedThrough, cursor);
-        clearThrough(clearedThrough);
-        hideClearError();
-    });
-
-    pauseButton.addEventListener('click', () => {
-        paused = !paused;
-        pauseButtonLabel.textContent = paused ? 'Resume' : 'Pause';
-        pauseButton.classList.toggle('active', paused);
-        pauseButton.setAttribute('aria-pressed', String(paused));
-        pauseButton.setAttribute('aria-label', paused ? 'Resume request log' : 'Pause request log');
-        streamStatus.textContent = paused ? 'Paused' : 'Listening';
-        document.body.classList.toggle('stream-paused', paused);
-    });
-
-    exportButton.addEventListener('click', () => {
-        const har = buildHAR([...eventOrder].reverse().map((id) => eventsById.get(id)).filter(Boolean), MOCK_CONFIG.version);
-        const blob = new Blob([JSON.stringify(har, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `mock-${new Date().toISOString().replace(/[:.]/g, '-')}.har`;
-        a.click();
-        URL.revokeObjectURL(url);
-    });
-
-    function openHelp() {
-        if (typeof helpDialog.showModal !== 'function' || helpDialog.open) {
-            return;
-        }
-        const body = helpDialog.querySelector('.help-dialog-body');
-        if (body) {
-            body.scrollTop = 0;
-        }
-        helpDialog.showModal();
+        cursor = Number(res.headers.get('X-Mock-Cursor'));
+    } catch (e) {
+        console.error('failed to clear server events', e);
+        showClearError();
+        return;
     }
+    clearedThrough = Math.max(clearedThrough, cursor);
+    clearThrough(clearedThrough);
+    hideClearError();
+});
 
-    function closeHelp() {
-        if (helpDialog.open) {
-            helpDialog.close();
-        }
+pauseButton.addEventListener('click', () => {
+    paused = !paused;
+    if (!paused) { for (const event of pending.drain()) upsertEvent(event); }
+    pauseButtonLabel.textContent = paused ? 'Resume' : 'Pause';
+    pauseButton.classList.toggle('active', paused);
+    pauseButton.setAttribute('aria-pressed', String(paused));
+    pauseButton.setAttribute('aria-label', paused ? 'Resume request log' : 'Pause request log');
+       updateStreamStatus();
+       document.body.classList.toggle('stream-paused', paused);
+});
+
+exportButton.addEventListener('click', () => {
+    const har = buildHAR([...eventOrder].reverse().map((id) => eventsById.get(id)).filter(Boolean), MOCK_CONFIG.version);
+    const blob = new Blob([JSON.stringify(har, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `mock-${new Date().toISOString().replace(/[:.]/g, '-')}.har`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
+function openHelp() {
+    if (typeof helpDialog.showModal !== 'function' || helpDialog.open) {
+        return;
     }
-
-    helpButton.addEventListener('click', openHelp);
-    helpCloseButton.addEventListener('click', closeHelp);
-    helpDialog.addEventListener('click', (event) => {
-        const rect = helpDialog.getBoundingClientRect();
-        const inside = event.clientX >= rect.left && event.clientX <= rect.right
-            && event.clientY >= rect.top && event.clientY <= rect.bottom;
-        if (!inside) {
-            closeHelp();
-        }
-    });
-
-    filterInput.addEventListener('input', () => {
-        filterText = filterInput.value.trim().toLowerCase();
-        renderTable();
-    });
-
-    document.addEventListener('keydown', (event) => {
-        const typing = event.target.matches('input, textarea, [contenteditable="true"]');
-        if (event.key === '/' && !typing && !helpDialog.open) {
-            event.preventDefault();
-            filterInput.focus();
-        }
-    });
-
-    refreshRoutesButton.addEventListener('click', loadRoutes);
-    routesToggleButton.addEventListener('click', () => {
-        setRoutesCollapsed(!requestPanel.classList.contains('routes-collapsed'));
-    });
-    loadRoutes();
-    // Refresh routes periodically so hot-reload is visible without a full page refresh.
-    setInterval(loadRoutes, 3000);
-
-    function upsertEvent(http) {
-        if (http.id == null) {
-            return;
-        }
-        const isNew = !eventsById.has(http.id);
-        eventsById.set(http.id, http);
-        if (isNew) {
-            eventOrder.unshift(http.id);
-            while (eventOrder.length > MAX_EVENTS) {
-                const dropped = eventOrder.pop();
-                eventsById.delete(dropped);
-            }
-        }
-        updateRequestCount();
-        renderTable();
+    const body = helpDialog.querySelector('.help-dialog-body');
+    if (body) {
+        body.scrollTop = 0;
     }
+    helpDialog.showModal();
+}
 
-    function updateRequestCount() {
-        const value = String(eventOrder.length).padStart(3, '0');
-        requestCount.textContent = `${value}/${MAX_EVENTS}`;
-        requestCount.setAttribute('aria-label', `${eventOrder.length} requests`);
+function closeHelp() {
+    if (helpDialog.open) {
+        helpDialog.close();
     }
+}
 
-    function eventMatchesFilter(http) {
-        if (!filterText) {
-            return true;
-        }
-        const hay = [
-            http.request.method,
-            http.request.url,
-            String(http.response.status),
-            http.response.statusText || '',
-        ].join(' ').toLowerCase();
-        return hay.includes(filterText);
+helpButton.addEventListener('click', openHelp);
+helpCloseButton.addEventListener('click', closeHelp);
+helpDialog.addEventListener('click', (event) => {
+    const rect = helpDialog.getBoundingClientRect();
+    const inside = event.clientX >= rect.left && event.clientX <= rect.right
+        && event.clientY >= rect.top && event.clientY <= rect.bottom;
+    if (!inside) {
+        closeHelp();
     }
+});
 
-    function renderTable() {
-        const focusWasInTable = requestTable.contains(document.activeElement);
-        const visible = eventOrder
-            .map((id) => eventsById.get(id))
-            .filter(Boolean)
-            .filter(eventMatchesFilter);
+filterInput.addEventListener('input', () => {
+    filterText = filterInput.value.trim().toLowerCase();
+    renderTable();
+});
 
-        if (visible.length === 0) {
-            renderEmptyState(filterText ? 'No matching requests' : 'No requests yet');
-            return;
-        }
+document.addEventListener('keydown', (event) => {
+    const typing = event.target.matches('input, textarea, [contenteditable="true"]');
+    if (event.key === '/' && !typing && !helpDialog.open) {
+        event.preventDefault();
+        filterInput.focus();
+    }
+});
 
-        requestTableBody.replaceChildren();
-        for (const http of visible) {
-            const row = requestTableBody.insertRow();
-            row.dataset.id = String(http.id);
-            row.tabIndex = -1;
-            row.setAttribute('aria-selected', 'false');
-            if (selectedId === http.id) {
-                row.classList.add('selected');
-            }
+let loadingRoutes = false;
+let lastRoutesJSON = null;
 
-            const c0 = row.insertCell(0);
-            c0.className = 'time-cell';
-            c0.textContent = http.request.time || '';
+refreshRoutesButton.addEventListener('click', loadRoutes);
+routesToggleButton.addEventListener('click', () => {
+    setRoutesCollapsed(!requestPanel.classList.contains('routes-collapsed'));
+});
+loadRoutes();
+// Refresh routes periodically so hot-reload is visible without a full page refresh.
+setInterval(loadRoutes, 3000);
 
-            const c1 = row.insertCell(1);
-            const statusSpan = document.createElement('span');
-            const statusText = http.response.statusText || '';
-            statusSpan.textContent = `${http.response.status}`;
-            statusSpan.className = 'status-code';
-            if (statusText) {
-                statusSpan.title = statusText;
-                statusSpan.setAttribute('aria-label', `${http.response.status} ${statusText}`);
-            }
-            const status = parseInt(http.response.status, 10);
-            if (status >= 200 && status < 300) statusSpan.classList.add('status-2xx');
-            else if (status >= 300 && status < 400) statusSpan.classList.add('status-3xx');
-            else if (status >= 400 && status < 500) statusSpan.classList.add('status-4xx');
-            else if (status >= 500) statusSpan.classList.add('status-5xx');
-            c1.appendChild(statusSpan);
-
-            const c2 = row.insertCell(2);
-            c2.className = 'request-cell';
-            const methodSpan = document.createElement('span');
-            methodSpan.textContent = http.request.method;
-            methodSpan.className = `method-${(http.request.method || '').toLowerCase()}`;
-            c2.appendChild(methodSpan);
-            const urlSpan = document.createElement('span');
-            urlSpan.textContent = ` ${http.request.url}`;
-            c2.appendChild(urlSpan);
-        }
-
-        const focusTarget = syncRowTabindex();
-        if (focusWasInTable && focusTarget) {
-            focusTarget.focus({ preventScroll: true });
+function upsertEvent(http) {
+    if (http.id == null) {
+        return;
+    }
+    const isNew = !eventsById.has(http.id);
+    eventsById.set(http.id, http);
+    if (isNew) {
+        eventOrder.push(http.id);
+        eventOrder.sort((a,b) => b-a);
+        while (eventOrder.length > MAX_EVENTS) {
+            const dropped = eventOrder.pop();
+            eventsById.delete(dropped);
         }
     }
+    if (selectedId != null && !eventsById.has(selectedId)) {
+        selectedId = null;
+        updateDetail(requestDetails, '');
+        updateDetail(responseDetails, '');
+    }
+    scheduleRender();
+}
 
-    function updateDetail(element, newContent) {
-        element.textContent = newContent;
+function updateRequestCount() {
+    const value = String(eventOrder.length).padStart(3, '0');
+    requestCount.textContent = `${value}/${MAX_EVENTS}`;
+    requestCount.setAttribute('aria-label', `${eventOrder.length} requests`);
+}
+
+function eventMatchesFilter(http) {
+    if (!filterText) {
+        return true;
+    }
+    const hay = [
+        http.request.method,
+        http.request.url,
+        String(http.response.status),
+        http.response.statusText || '',
+    ].join(' ').toLowerCase();
+    return hay.includes(filterText);
+}
+
+function renderTable() {
+    const focusWasInTable = requestTable.contains(document.activeElement);
+    const visible = eventOrder
+        .map((id) => eventsById.get(id))
+        .filter(Boolean)
+        .filter(eventMatchesFilter);
+
+    if (visible.length === 0) {
+        selectedId = null;
+        updateDetail(requestDetails, '');
+        updateDetail(responseDetails, '');
+        renderEmptyState(filterText ? 'No matching requests' : 'No requests yet');
+        return;
     }
 
-    function renderEmptyState(message) {
-        requestTableBody.replaceChildren();
-        const row = requestTableBody.insertRow();
-        const cell = row.insertCell();
-        cell.colSpan = 3;
-        cell.className = 'empty-state';
-        cell.textContent = message || 'No requests yet';
+    const existing = new Map(getDataRows().map(row => [Number(row.dataset.id), row]));
+    const visibleIDs = new Set(visible.map(event => event.id));
+    for (const row of requestTableBody.querySelectorAll('tr')) {
+        if (!row.dataset.id || !visibleIDs.has(Number(row.dataset.id))) row.remove();
+    }
+    if (selectedId != null && !visibleIDs.has(selectedId)) {
+        selectedId = null;
+        updateDetail(requestDetails, '');
+        updateDetail(responseDetails, '');
+    }
+    let previous = null;
+    for (const http of visible) {
+        let row = existing.get(http.id);
+        if (row) { previous = row; continue; }
+        row = document.createElement('tr');
+        requestTableBody.insertBefore(row, previous ? previous.nextSibling : requestTableBody.firstChild);
+        previous = row;
+        row.dataset.id = String(http.id);
+        row.tabIndex = -1;
+        row.setAttribute('aria-selected', 'false');
+        if (selectedId === http.id) {
+            row.classList.add('selected');
+        }
+
+        const c0 = row.insertCell(0);
+        c0.className = 'time-cell';
+        c0.textContent = http.request.time || '';
+
+        const c1 = row.insertCell(1);
+        const statusSpan = document.createElement('span');
+        const statusText = http.response.statusText || '';
+        statusSpan.textContent = `${http.response.status}`;
+        statusSpan.className = 'status-code';
+        if (statusText) {
+            statusSpan.title = statusText;
+            statusSpan.setAttribute('aria-label', `${http.response.status} ${statusText}`);
+        }
+        const status = parseInt(http.response.status, 10);
+        if (status >= 200 && status < 300) statusSpan.classList.add('status-2xx');
+        else if (status >= 300 && status < 400) statusSpan.classList.add('status-3xx');
+        else if (status >= 400 && status < 500) statusSpan.classList.add('status-4xx');
+        else if (status >= 500) statusSpan.classList.add('status-5xx');
+        c1.appendChild(statusSpan);
+
+        const c2 = row.insertCell(2);
+        c2.className = 'request-cell';
+        const methodSpan = document.createElement('span');
+        methodSpan.textContent = http.request.method;
+        methodSpan.className = `method-${(http.request.method || '').toLowerCase()}`;
+        c2.appendChild(methodSpan);
+        const urlSpan = document.createElement('span');
+        urlSpan.textContent = ` ${http.request.url}`;
+        urlSpan.title = http.request.url;
+        row.title = `${http.request.method} ${http.request.url} · ${http.response.time}`;
+        c2.appendChild(urlSpan);
     }
 
-    async function loadRoutes() {
-        try {
-            const res = await fetch('routes');
-            if (!res.ok) {
-                throw new Error(`status ${res.status}`);
-            }
-            const routes = await res.json();
-            routeCount.textContent = String(routes.length).padStart(2, '0');
-            routeCount.setAttribute('aria-label', `${routes.length} configured routes`);
-            routesList.replaceChildren();
-            if (!routes.length) {
-                const li = document.createElement('li');
-                li.className = 'empty-state';
-                li.textContent = 'No routes configured';
-                routesList.appendChild(li);
-                return;
-            }
-            for (const route of routes) {
-                const li = document.createElement('li');
-                const method = document.createElement('span');
-                method.className = `method-${(route.method || '').toLowerCase()}`;
-                method.textContent = route.method;
-                const path = document.createElement('span');
-                path.className = 'route-path';
-                const routePath = `${route.path}${route.query ? '?' + route.query : ''}`;
-                path.textContent = routePath;
-                path.title = routePath;
-                const name = document.createElement('span');
-                name.className = 'route-name';
-                name.textContent = route.name || '';
-                if (route.name) {
-                    name.title = route.name;
-                }
-                li.append(method, path, name);
-                routesList.appendChild(li);
-            }
-        } catch (e) {
-            routeCount.textContent = '—';
-            routeCount.setAttribute('aria-label', 'Routes unavailable');
-            routesList.replaceChildren();
+    const focusTarget = syncRowTabindex();
+    if (focusWasInTable && focusTarget) {
+        focusTarget.focus({ preventScroll: true });
+    }
+}
+
+function updateDetail(element, newContent) {
+    element.textContent = newContent;
+}
+
+function renderEmptyState(message) {
+    requestTableBody.replaceChildren();
+    const row = requestTableBody.insertRow();
+    const cell = row.insertCell();
+    cell.colSpan = 3;
+    cell.className = 'empty-state';
+    cell.textContent = message || 'No requests yet';
+}
+
+async function loadRoutes() {
+    if (loadingRoutes) return;
+    loadingRoutes = true;
+    try {
+        const res = await fetch('routes', { signal: AbortSignal.timeout(5000) });
+        if (!res.ok) {
+            throw new Error(`status ${res.status}`);
+        }
+        const routes = await res.json();
+        const routesJSON = JSON.stringify(routes);
+        if (routesJSON === lastRoutesJSON) return;
+        lastRoutesJSON = routesJSON;
+        routeCount.textContent = String(routes.length).padStart(2, '0');
+        routeCount.setAttribute('aria-label', `${routes.length} configured routes`);
+        routesList.replaceChildren();
+        if (!routes.length) {
             const li = document.createElement('li');
             li.className = 'empty-state';
-            li.textContent = 'Failed to load routes';
+            li.textContent = 'No routes configured';
+            routesList.appendChild(li);
+            return;
+        }
+        for (const route of routes) {
+            const li = document.createElement('li');
+            const method = document.createElement('span');
+            method.className = `method-${(route.method || '').toLowerCase()}`;
+            method.textContent = route.method;
+            const path = document.createElement('span');
+            path.className = 'route-path';
+            const routePath = `${route.path}${route.query ? '?' + route.query : ''}`;
+            path.textContent = routePath;
+            path.title = routePath;
+            const name = document.createElement('span');
+            name.className = 'route-name';
+            name.textContent = route.name || '';
+            if (route.name) {
+                name.title = route.name;
+            }
+            li.append(method, path, name);
             routesList.appendChild(li);
         }
-    }
+    } catch (e) {
+        lastRoutesJSON = null;
+        routeCount.textContent = '—';
+        routeCount.setAttribute('aria-label', 'Routes unavailable');
+        routesList.replaceChildren();
+        const li = document.createElement('li');
+        li.className = 'empty-state';
+        li.textContent = 'Failed to load routes';
+        routesList.appendChild(li);
+    } finally { loadingRoutes = false; }
+}
 

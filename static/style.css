@@ -450,7 +450,7 @@ h2 {
 
 .request-panel {
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) 50%;
+    grid-template-rows: auto minmax(0, 1fr) minmax(100px, 30%);
     border-right: 1px solid var(--line);
     background: var(--surface);
 }
@@ -1170,4 +1170,13 @@ tbody tr.selected:focus-visible {
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
     }
+}
+
+/* Keep controls understandable on narrow screens and keyboard detail panes usable. */
+@media (max-width: 640px) {
+    .topbar-actions .button-label { display: inline; }
+    .topbar-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .workspace { grid-template-rows: minmax(420px, 55vh) minmax(520px, auto); }
+    .detail-panel { min-height: 520px; }
+    .side-panel { min-height: 520px; }
 }
