@@ -2,98 +2,127 @@ package main
 
 import (
 	"fmt"
-	"io"
+	"github.com/fsnotify/fsnotify"
+	"github.com/sspencer/mock/restclient"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
-
-	"github.com/fsnotify/fsnotify"
 )
 
-// reloadDebounce coalesces rapid editor save events (Write + Create, atomic renames).
 const reloadDebounce = 250 * time.Millisecond
 
-// watchFiles watches the parent directories of the given files and invokes onChange
-// when any of those files is written or recreated. The parent directory is watched
-// instead of the file itself so atomic editor saves (rename) are observed.
-//
-// The returned closer stops the watcher. onChange may be invoked from a background
-// goroutine and should be safe for concurrent use with the HTTP server.
-func watchFiles(paths []string, onChange func(), logger *slog.Logger) (io.Closer, error) {
-	if len(paths) == 0 {
-		return io.NopCloser(nil), nil
-	}
+// watchFiles serializes debounced callbacks. Close waits for any active reload.
+func watchFiles(paths []string, onChange func(), logger *slog.Logger) (*fileWatcher, error) {
 	if onChange == nil {
 		return nil, fmt.Errorf("onChange callback is required")
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
-
-	watched := make(map[string]struct{}, len(paths))
-	dirs := make(map[string]struct{})
-	for _, path := range paths {
-		abs, err := filepath.Abs(path)
-		if err != nil {
-			return nil, err
-		}
-		abs = filepath.Clean(abs)
-		// Dependency files may not exist yet; still watch their directory.
-		if info, err := os.Lstat(abs); err == nil && info.IsDir() {
-			return nil, fmt.Errorf("%q is a directory, not a file", path)
-		} else if err != nil && !os.IsNotExist(err) {
-			return nil, err
-		}
-		watched[abs] = struct{}{}
-		dirs[filepath.Dir(abs)] = struct{}{}
-	}
-
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
 	}
-	for dir := range dirs {
-		if err := watcher.Add(dir); err != nil {
-			_ = watcher.Close()
-			return nil, fmt.Errorf("watch %s: %w", dir, err)
-		}
-	}
-
-	w := &fileWatcher{
-		watcher:  watcher,
-		watched:  watched,
-		onChange: onChange,
-		logger:   logger,
+	w := &fileWatcher{watcher: watcher, onChange: onChange, logger: logger, stop: make(chan struct{}), done: make(chan struct{}), dirs: make(map[string]struct{})}
+	if err := w.Reconcile(paths); err != nil {
+		watcher.Close()
+		return nil, err
 	}
 	go w.loop()
 	return w, nil
 }
 
 type fileWatcher struct {
-	watcher  *fsnotify.Watcher
-	watched  map[string]struct{}
-	onChange func()
-	logger   *slog.Logger
+	watcher    *fsnotify.Watcher
+	watched    map[string]struct{}
+	dirs       map[string]struct{}
+	onChange   func()
+	logger     *slog.Logger
+	mu         sync.Mutex
+	once       sync.Once
+	stop, done chan struct{}
+}
 
-	mu    sync.Mutex
-	timer *time.Timer
+// Reconcile preserves each dependency's source ownership and watches the nearest
+// existing ancestor, allowing missing nested dependency directories to appear.
+func (w *fileWatcher) Reconcile(paths []string) error {
+	watched, dirs := make(map[string]struct{}), make(map[string]struct{})
+	for _, path := range paths {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return err
+		}
+		if info, err := os.Stat(abs); err == nil && info.IsDir() {
+			return fmt.Errorf("%q is a directory, not a file", path)
+		} else if err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		watched[abs] = struct{}{}
+		dir := filepath.Dir(abs)
+		for {
+			info, err := os.Stat(dir)
+			if err == nil && info.IsDir() {
+				break
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				return fmt.Errorf("no watchable parent for %s", path)
+			}
+			dir = parent
+		}
+		dirs[dir] = struct{}{}
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	var added []string
+	for dir := range dirs {
+		if _, ok := w.dirs[dir]; ok {
+			continue
+		}
+		if err := w.watcher.Add(dir); err != nil {
+			for _, d := range added {
+				_ = w.watcher.Remove(d)
+			}
+			return fmt.Errorf("watch %s: %w", dir, err)
+		}
+		added = append(added, dir)
+	}
+	for dir := range w.dirs {
+		if _, ok := dirs[dir]; !ok {
+			_ = w.watcher.Remove(dir)
+		}
+	}
+	w.watched, w.dirs = watched, dirs
+	return nil
 }
 
 func (w *fileWatcher) Close() error {
-	w.mu.Lock()
-	if w.timer != nil {
-		w.timer.Stop()
-		w.timer = nil
-	}
-	w.mu.Unlock()
-	return w.watcher.Close()
+	w.once.Do(func() { close(w.stop) })
+	<-w.done
+	return nil
 }
 
 func (w *fileWatcher) loop() {
+	defer close(w.done)
+	defer w.watcher.Close()
+	timer := time.NewTimer(time.Hour)
+	timer.Stop()
+	defer timer.Stop()
+	var tick <-chan time.Time
 	for {
 		select {
+		case <-w.stop:
+			return
+		case <-tick:
+			tick = nil
+			select {
+			case <-w.stop:
+				return
+			default:
+			}
+			w.onChange()
 		case err, ok := <-w.watcher.Errors:
 			if !ok {
 				return
@@ -103,57 +132,56 @@ func (w *fileWatcher) loop() {
 			if !ok {
 				return
 			}
-			if !event.Has(fsnotify.Write) && !event.Has(fsnotify.Create) && !event.Has(fsnotify.Rename) {
+			if !event.Has(fsnotify.Write) && !event.Has(fsnotify.Create) && !event.Has(fsnotify.Rename) && !event.Has(fsnotify.Remove) {
 				continue
 			}
 			abs, err := filepath.Abs(event.Name)
 			if err != nil {
 				continue
 			}
-			abs = filepath.Clean(abs)
-			if _, ok := w.watched[abs]; !ok {
-				continue
+			relevant := false
+			w.mu.Lock()
+			for path := range w.watched {
+				for candidate := path; ; candidate = filepath.Dir(candidate) {
+					if candidate == abs {
+						relevant = true
+						break
+					}
+					if candidate == filepath.Dir(candidate) {
+						break
+					}
+				}
+				if relevant {
+					break
+				}
 			}
-			w.schedule()
+			w.mu.Unlock()
+			if relevant {
+				timer.Reset(reloadDebounce)
+				tick = timer.C
+			}
 		}
 	}
 }
 
-func (w *fileWatcher) schedule() {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.timer != nil {
-		w.timer.Stop()
-	}
-	w.timer = time.AfterFunc(reloadDebounce, w.onChange)
-}
-
-func resolveWatchPaths(httpFiles []string, relativeDeps []string) []string {
-	seen := make(map[string]struct{})
+func resolveWatchPaths(httpFiles []string, methods []restclient.Method) []string {
+	seen := make(map[string]bool)
 	var paths []string
-	add := func(p string) {
-		abs, err := filepath.Abs(p)
-		if err != nil {
-			return
+	add := func(path string) {
+		abs, err := filepath.Abs(path)
+		if err == nil && !seen[abs] {
+			seen[abs] = true
+			paths = append(paths, abs)
 		}
-		abs = filepath.Clean(abs)
-		if _, ok := seen[abs]; ok {
-			return
-		}
-		seen[abs] = struct{}{}
-		paths = append(paths, abs)
 	}
-	for _, f := range httpFiles {
-		add(f)
+	for _, file := range httpFiles {
+		add(file)
 	}
-	// relativeDeps are relative to each http file's directory; resolve against all parents.
-	for _, httpFile := range httpFiles {
-		dir := filepath.Dir(httpFile)
-		for _, dep := range relativeDeps {
-			if filepath.IsAbs(dep) {
-				continue
+	for _, method := range methods {
+		if raw, ok := method.Variables["file"]; ok {
+			if path, err := restclient.ResolveFile(method.Source, raw); err == nil {
+				add(path)
 			}
-			add(filepath.Join(dir, dep))
 		}
 	}
 	return paths

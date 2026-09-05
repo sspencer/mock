@@ -683,7 +683,7 @@ func TestWithCORS(t *testing.T) {
 }
 
 func TestResolveWatchPathsIncludesDependencies(t *testing.T) {
-	paths := resolveWatchPaths([]string{"examples/user.http"}, []string{"users.json", "index.html"})
+	paths := resolveWatchPaths([]string{"examples/user.http"}, []restclient.Method{{Source: "examples/user.http", Variables: map[string]string{"file": "users.json"}}, {Source: "examples/user.http", Variables: map[string]string{"file": "index.html"}}})
 	if len(paths) < 3 {
 		t.Fatalf("paths = %#v, want http file plus dependencies", paths)
 	}

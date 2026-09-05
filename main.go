@@ -130,11 +130,20 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 		mockServer = mockhttp.New(input.Methods, logger)
 		handler = newHandler(mockServer, cfg.Mount, staticFS)
 		if files := input.WatchFiles; len(files) > 0 {
+			var watcher *fileWatcher
+			ready := make(chan struct{})
 			reload := func() {
+				<-ready
 				reloadMockFiles(mockServer, files, "", logger, stdout, stderr)
+				if err := watcher.Reconcile(resolveWatchPaths(files, mockServer.Methods())); err != nil {
+					logger.Error("failed to update dependency watches", "error", err)
+				}
 			}
-			paths := resolveWatchPaths(files, restclient.FileDependencies(input.Methods))
-			watchCloser, err = watchFiles(paths, reload, logger)
+			watcher, err = watchFiles(resolveWatchPaths(files, input.Methods), reload, logger)
+			close(ready)
+			if watcher != nil {
+				watchCloser = watcher
+			}
 			if err != nil {
 				return runError("failed to watch request files: %v", err)
 			}
