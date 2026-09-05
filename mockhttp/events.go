@@ -20,6 +20,7 @@ const maxRequestEvents = 200
 type RequestEvent struct {
 	Session  string        `json:"session"`
 	Kind     string        `json:"kind,omitempty"`
+	Reason   string        `json:"reason,omitempty"`
 	ID       uint64        `json:"id"`
 	Request  EventRequest  `json:"request"`
 	Response EventResponse `json:"response"`
@@ -88,7 +89,13 @@ func (s *Server) ServeEvents(w http.ResponseWriter, r *http.Request) {
 	previousSession, _, hasSession := strings.Cut(raw, "/")
 	gap := lastID > latest || lastID < cleared || len(events) > 0 && lastID > 0 && lastID+1 < events[0].ID
 	if raw != "" && (hasSession && previousSession != session || gap) {
-		if !send(RequestEvent{Session: session, Kind: "reset"}) {
+		reason := "history-gap"
+		if hasSession && previousSession != session {
+			reason = "server-restarted"
+		} else if lastID < cleared {
+			reason = "history-cleared"
+		}
+		if !send(RequestEvent{Session: session, Kind: "reset", Reason: reason}) {
 			return
 		}
 		lastID = 0
@@ -150,6 +157,7 @@ func (s *Server) ServeClear(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.clearLocked(true)
 	w.Header().Set("X-Mock-Cursor", strconv.FormatUint(s.clearedThrough, 10))
+	w.Header().Set("X-Mock-Session", s.session)
 	s.mu.Unlock()
 	w.WriteHeader(http.StatusNoContent)
 }

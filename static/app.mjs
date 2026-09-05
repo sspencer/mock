@@ -40,12 +40,13 @@ let clearedThrough = 0;
 const pending = new PendingTraffic(MAX_EVENTS);
 let connected = false;
 let renderPending = false;
+let streamNotice = '';
 const preferences = {
     get(key) { try { return localStorage.getItem(key); } catch { return null; } },
     set(key, value) { try { localStorage.setItem(key, value); } catch { /* Storage is optional. */ } },
 };
 function updateStreamStatus() {
-    streamStatus.textContent = streamLabel(connected, paused, pending.events.size, pending.dropped);
+    streamStatus.textContent = streamLabel(connected, paused, pending.events.size, pending.dropped) + streamNotice;
 }
 function scheduleRender() {
     if (renderPending) return;
@@ -107,12 +108,14 @@ function clearThrough(cursor = Infinity) {
 }
 source.addEventListener('reset', event => {
     const data = JSON.parse(event.data);
+    streamNotice = data.reason === 'history-gap' ? ' · History gap; showing retained traffic' : '';
     streamSession = data.session;
     clearedThrough = 0;
     clearThrough();
 });
 source.addEventListener('clear', event => {
     const data = JSON.parse(event.data);
+    streamNotice = '';
     streamSession = data.session;
     clearedThrough = Math.max(clearedThrough, data.id);
     clearThrough(clearedThrough);
@@ -120,7 +123,7 @@ source.addEventListener('clear', event => {
 source.onopen = function () {
     connected = true;
     document.body.classList.remove('stream-offline');
-       updateStreamStatus();
+    updateStreamStatus();
 };
 source.onerror = function () {
     connected = false;
@@ -138,7 +141,7 @@ source.onmessage = function (event) {
         if (data.id > clearedThrough) {
             if (paused) pending.add(data);
             else upsertEvent(data);
-            updateStreamStatus();
+         updateStreamStatus();
         }
     } catch (e) {
         console.error('Error parsing json', e);
@@ -265,6 +268,8 @@ clearRequestsButton.addEventListener('click', async () => {
             showClearError();
             return;
         }
+        const responseSession = res.headers.get('X-Mock-Session');
+        if (streamSession && responseSession !== streamSession) return;
         cursor = Number(res.headers.get('X-Mock-Cursor'));
     } catch (e) {
         console.error('failed to clear server events', e);
@@ -283,7 +288,7 @@ pauseButton.addEventListener('click', () => {
     pauseButton.classList.toggle('active', paused);
     pauseButton.setAttribute('aria-pressed', String(paused));
     pauseButton.setAttribute('aria-label', paused ? 'Resume request log' : 'Pause request log');
-       updateStreamStatus();
+    updateStreamStatus();
        document.body.classList.toggle('stream-paused', paused);
 });
 
