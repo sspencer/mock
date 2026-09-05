@@ -1,6 +1,7 @@
 package mockhttp
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -19,7 +20,7 @@ func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]str
 	// this request even after a later SetMethods replaces s.methods.
 	s.mu.Lock()
 	methods := s.methods
-	s.mu.Unlock()
+	defer s.mu.Unlock()
 
 	var matches []routeMatch
 	for i := range methods {
@@ -27,7 +28,7 @@ func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]str
 		if method.Method != r.Method {
 			continue
 		}
-		values, ok := matchPath(method.Path, r.URL.Path)
+		values, ok := matchPath(method.Path, r.URL.EscapedPath())
 		if !ok || !queryMatches(method.Query, r.URL.Query()) {
 			continue
 		}
@@ -35,7 +36,7 @@ func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]str
 			continue
 		}
 		for name, queryValues := range r.URL.Query() {
-			if len(queryValues) > 0 {
+			if _, exists := values[name]; !exists && len(queryValues) > 0 {
 				values[name] = queryValues[0]
 			}
 		}
@@ -55,22 +56,15 @@ func (s *Server) nextMatch(matches []routeMatch) int {
 		return 0
 	}
 	key := rotationKey(matches)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	selected := s.counters[key] % count
-	s.counters[key]++
+	s.counters[key] = (selected + 1) % count
 	return selected
 }
 
 func rotationKey(matches []routeMatch) string {
 	parts := make([]string, 0, len(matches))
 	for _, m := range matches {
-		query := ""
-		if m.method.Query != nil {
-			query = m.method.Query.Encode()
-		}
-		parts = append(parts, m.method.Method+"\t"+m.method.Path+"\t"+query)
+		parts = append(parts, fmt.Sprintf("%p", m.method))
 	}
 	return strings.Join(parts, "|")
 }
@@ -98,7 +92,8 @@ func matchPath(pattern string, requestPath string) (map[string]string, bool) {
 			values[key] = value
 			continue
 		}
-		if patternParts[i] != requestParts[i] {
+		literal, err := url.PathUnescape(requestParts[i])
+		if err != nil || patternParts[i] != literal {
 			return nil, false
 		}
 	}

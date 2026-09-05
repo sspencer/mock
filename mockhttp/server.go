@@ -23,7 +23,7 @@ type Server struct {
 
 func New(methods []restclient.Method, logger *slog.Logger) *Server {
 	s := &Server{
-		methods:     methods,
+		methods:     cloneMethods(methods),
 		logger:      logger,
 		counters:    make(map[string]int),
 		subscribers: make(map[chan RequestEvent]struct{}),
@@ -37,7 +37,7 @@ func New(methods []restclient.Method, logger *slog.Logger) *Server {
 func (s *Server) SetMethods(methods []restclient.Method) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.methods = methods
+	s.methods = cloneMethods(methods)
 	s.counters = make(map[string]int)
 	warnMethodConfig(s.logger, methods)
 }
@@ -46,7 +46,7 @@ func (s *Server) SetMethods(methods []restclient.Method) {
 func (s *Server) Methods() []restclient.Method {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return append([]restclient.Method(nil), s.methods...)
+	return cloneMethods(s.methods)
 }
 
 // ClearEvents drops stored request-log events. Live SSE clients keep their
@@ -212,4 +212,23 @@ func warnIncomingHeadersUsedAsResponse(logger *slog.Logger, method restclient.Me
 			"source", method.Source,
 		)
 	}
+}
+
+// cloneMethods gives the server ownership of all mutable route configuration.
+func cloneMethods(methods []restclient.Method) []restclient.Method {
+	out := append([]restclient.Method(nil), methods...)
+	for i := range out {
+		out[i].Headers = methods[i].Headers.Clone()
+		out[i].MatchHeaders = methods[i].MatchHeaders.Clone()
+		out[i].Comments = append([]string(nil), methods[i].Comments...)
+		out[i].Variables = make(map[string]string, len(methods[i].Variables))
+		for k, v := range methods[i].Variables {
+			out[i].Variables[k] = v
+		}
+		out[i].Query = make(map[string][]string, len(methods[i].Query))
+		for k, v := range methods[i].Query {
+			out[i].Query[k] = append([]string(nil), v...)
+		}
+	}
+	return out
 }
