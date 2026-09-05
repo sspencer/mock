@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"log/slog"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -42,11 +41,12 @@ func New(methods []restclient.Method, logger *slog.Logger) *Server {
 // SetMethods replaces the mock routes served by this server.
 // Rotation counters are reset so duplicate routes start from the first match again.
 func (s *Server) SetMethods(methods []restclient.Method) {
+	compiled := cloneMethods(methods)
+	warnMethodConfig(s.logger, compiled)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.methods = cloneMethods(methods)
+	s.methods = compiled
 	s.counters = make(map[string]int)
-	warnMethodConfig(s.logger, methods)
 }
 
 // Methods returns a snapshot of the currently configured mock routes.
@@ -93,7 +93,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_ = controller.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	filePath, hasFile := resolveFilePath(method)
 
-	status = statusFromVariables(s.logger, method.Variables)
+	status = method.Status
 	body, err := renderBody(*method, values, filePath, hasFile)
 	if err != nil {
 		s.logResponseRenderError(err)
@@ -139,19 +139,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) delay(ctx context.Context, method *restclient.Method) bool {
-	raw, ok := method.Variables["delay"]
-	if !ok {
-		return true
-	}
-	delay, err := time.ParseDuration(raw)
-	if err != nil {
-		logger := s.logger
-		if logger == nil {
-			logger = slog.Default()
-		}
-		logger.Warn("ignoring invalid $delay", "delay", raw, "method", method.Name, "error", err)
-		return true
-	}
+	delay := method.Delay
 	if delay <= 0 {
 		return true
 	}
@@ -183,7 +171,7 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 		}
 		checked := method
 		if path, ok := resolveFilePath(&method); ok && method.Body == "" {
-			if body, err := os.ReadFile(path); err == nil && isMostlyText(body) {
+			if body, err := readResponseFile(method, path); err == nil && fileTemplatesEnabled(method, path) && isMostlyText(body) {
 				checked.Body = string(body)
 			}
 		}
@@ -257,6 +245,17 @@ func warnIncomingHeadersUsedAsResponse(logger *slog.Logger, method restclient.Me
 func cloneMethods(methods []restclient.Method) []restclient.Method {
 	out := append([]restclient.Method(nil), methods...)
 	for i := range out {
+		out[i].Status = http.StatusOK
+		if raw, ok := methods[i].Variables["status"]; ok {
+			if status, err := parseStatusCode(raw); err == nil {
+				out[i].Status = status
+			}
+		} else if methods[i].Status >= 200 && methods[i].Status <= 999 {
+			out[i].Status = methods[i].Status
+		}
+		if raw, ok := methods[i].Variables["delay"]; ok {
+			out[i].Delay, _ = time.ParseDuration(raw)
+		}
 		out[i].Headers = methods[i].Headers.Clone()
 		out[i].MatchHeaders = methods[i].MatchHeaders.Clone()
 		out[i].Comments = append([]string(nil), methods[i].Comments...)

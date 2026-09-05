@@ -1,1 +1,1 @@
-Bad status: DELETE /bread/1 delay=0s status=204 header=0 body=0
+testdata/baddelay.http:3: $delay must be a non-negative duration

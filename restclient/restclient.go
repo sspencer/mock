@@ -10,7 +10,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Method is one mock request section from a REST Client-style .http file.
@@ -29,6 +31,8 @@ type Method struct {
 	Body         string
 	Source       string
 	Line         int
+	Status       int
+	Delay        time.Duration
 }
 
 var commentVariablePattern = regexp.MustCompile(`^\$([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(.*)$`)
@@ -130,6 +134,7 @@ func Parse(source string, r io.Reader) ([]Method, error) {
 }
 
 func parseSection(method Method, lines []string, bodyStartLine, sectionNameLine int, source string) (Method, error) {
+	method.Status = http.StatusOK
 	lineAt := func(index int) int {
 		if index < 0 {
 			return sectionNameLine
@@ -171,6 +176,20 @@ func parseSection(method Method, lines []string, bodyStartLine, sectionNameLine 
 					if _, err := ResolveFile(source, value); err != nil {
 						return method, parseErrorf(source, lineAt(i), "%v", err)
 					}
+				}
+				switch key {
+				case "status":
+					status, err := strconv.Atoi(value)
+					if err != nil || status < 200 || status > 999 {
+						return method, parseErrorf(source, lineAt(i), "$status must be a final HTTP status between 200 and 999")
+					}
+					method.Status = status
+				case "delay":
+					delay, err := time.ParseDuration(value)
+					if err != nil || delay < 0 {
+						return method, parseErrorf(source, lineAt(i), "$delay must be a non-negative duration")
+					}
+					method.Delay = delay
 				}
 				method.Variables[key] = value
 			}

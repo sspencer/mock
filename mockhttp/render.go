@@ -1,6 +1,7 @@
 package mockhttp
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -80,20 +82,20 @@ func renderBody(method restclient.Method, values map[string]string, filePath str
 			return nil, fmt.Errorf("invalid $file path")
 		}
 		if hasFile {
-			body, err := os.ReadFile(filePath)
+			body, err := readResponseFile(method, filePath)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", filePath, err)
 			}
 			// Expand placeholders only when the file looks like text.
-			if isMostlyText(body) {
-				return []byte(expandPlaceholders(string(body), method, values)), nil
+			if fileTemplatesEnabled(method, filePath) && isMostlyText(body) {
+				return []byte(expandBodyPlaceholders(string(body), method, values)), nil
 			}
 			return body, nil
 		}
 		return nil, nil
 	}
 
-	return []byte(expandPlaceholders(method.Body, method, values)), nil
+	return []byte(expandBodyPlaceholders(method.Body, method, values)), nil
 }
 
 func expandPlaceholders(input string, method restclient.Method, values map[string]string) string {
@@ -197,4 +199,74 @@ func isGeneratedKey(key string) bool {
 	default:
 		return false
 	}
+}
+
+// readResponseFile uses a rooted filesystem to prevent symlinks from escaping
+// the fixture directory, including when a dependency is replaced during reload.
+func readResponseFile(method restclient.Method, path string) ([]byte, error) {
+	root, err := os.OpenRoot(filepath.Dir(method.Source))
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	relative, err := filepath.Rel(filepath.Dir(method.Source), path)
+	if err != nil {
+		return nil, err
+	}
+	return root.ReadFile(relative)
+}
+
+// JSON string interpolation must escape request values without changing raw
+// numeric/boolean placeholders outside strings. Other body formats stay literal.
+func expandBodyPlaceholders(input string, method restclient.Method, values map[string]string) string {
+	contentType, _, _ := strings.Cut(method.Headers.Get("Content-Type"), ";")
+	contentType = strings.ToLower(strings.TrimSpace(contentType))
+	if contentType == "" {
+		if path, ok := resolveFilePath(&method); ok {
+			contentType, _, _ = strings.Cut(mime.TypeByExtension(filepath.Ext(path)), ";")
+		}
+	}
+	if contentType != "application/json" && !strings.HasSuffix(contentType, "+json") {
+		return expandPlaceholders(input, method, values)
+	}
+	var out strings.Builder
+	inString, escaped := false, false
+	previous := 0
+	for _, index := range placeholderPattern.FindAllStringIndex(input, -1) {
+		prefix := input[previous:index[0]]
+		for _, c := range prefix {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if inString && c == '\\' {
+				escaped = true
+				continue
+			}
+			if c == '"' {
+				inString = !inString
+			}
+		}
+		out.WriteString(prefix)
+		value := expandPlaceholders(input[index[0]:index[1]], method, values)
+		if inString {
+			encoded, _ := json.Marshal(value)
+			out.Write(encoded[1 : len(encoded)-1])
+		} else {
+			out.WriteString(value)
+		}
+		previous = index[1]
+	}
+	out.WriteString(input[previous:])
+	return out.String()
+}
+
+func fileTemplatesEnabled(method restclient.Method, path string) bool {
+	contentType := method.Headers.Get("Content-Type")
+	if contentType == "" {
+		contentType = mime.TypeByExtension(filepath.Ext(path))
+	}
+	contentType, _, _ = strings.Cut(contentType, ";")
+	contentType = strings.ToLower(strings.TrimSpace(contentType))
+	return strings.HasPrefix(contentType, "text/") || contentType == "application/json" || strings.HasSuffix(contentType, "+json") || contentType == "application/xml" || strings.HasSuffix(contentType, "+xml") || contentType == "application/javascript"
 }

@@ -16,3 +16,11 @@ func FuzzParse(f *testing.F) {
 	f.Add("### route\nGET /x?q=a\n\n{{$name}}")
 	f.Fuzz(func(t *testing.T, input string) { Parse("fuzz.http", strings.NewReader(input)) })
 }
+
+func TestRejectInvalidDirectives(t *testing.T) {
+	for _, directive := range []string{"status=103", "status=0", "status=oops", "delay=-1s", "delay=zero"} {
+		if _, err := Parse("test.http", strings.NewReader("### route\n# $"+directive+"\nGET /x")); err == nil {
+			t.Errorf("accepted %s", directive)
+		}
+	}
+}
