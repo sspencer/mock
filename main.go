@@ -69,7 +69,7 @@ func parseConfig(args []string) (config, error) {
 	flagSet.StringVar(&cfg.Mount, "l", "mock", "URL path for the admin web UI")
 	flagSet.IntVar(&cfg.Port, "p", portDefault, "HTTP port")
 	flagSet.StringVar(&cfg.Bind, "b", "127.0.0.1", "bind address (default 127.0.0.1; use 0.0.0.0 for all interfaces)")
-	flagSet.StringVar(&cfg.CORS, "cors", "", "Access-Control-Allow-Origin value (e.g. * or https://app.local); only real preflights short-circuit; * exposes SSE to any origin")
+	flagSet.StringVar(&cfg.CORS, "cors", "", "Access-Control-Allow-Origin value (e.g. * or https://app.local); only real preflights short-circuit; admin endpoints remain same-origin")
 	flagSet.StringVar(&cfg.CertFile, "cert", "", "TLS certificate file (enables HTTPS)")
 	flagSet.StringVar(&cfg.KeyFile, "key", "", "TLS private key file")
 	flagSet.BoolVar(&cfg.Version, "version", false, "print version and exit")
@@ -77,6 +77,13 @@ func parseConfig(args []string) (config, error) {
 		return config{}, usageError("failed to parse flags: %v", err)
 	}
 	cfg.Args = flagSet.Args()
+	if cfg.Port < 0 || cfg.Port > 65535 {
+		return config{}, usageError("port must be between 0 and 65535")
+	}
+	mount := normalizeMountPath(cfg.Mount)
+	if strings.ContainsAny(mount, "{} \t\r\n?#%") || strings.Contains(mount, "//") || strings.Contains(mount, "/../") || strings.HasSuffix(mount, "/..") || strings.Contains(mount, "/./") || strings.HasSuffix(mount, "/.") {
+		return config{}, usageError("invalid admin UI mount path %q", cfg.Mount)
+	}
 	return cfg, nil
 }
 
@@ -160,9 +167,13 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 		printMethods(stdout, input.Methods)
 	}
 	if cfg.CORS != "" {
-		handler = withCORS(handler, cfg.CORS)
+		if input.StaticDir != "" {
+			handler = withCORS(handler, cfg.CORS)
+		} else {
+			handler = withCORS(handler, cfg.CORS, cfg.Mount)
+		}
 	}
-	server := &http.Server{Addr: listenAddress(cfg.Bind, cfg.Port), Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
+	server := &http.Server{Addr: listenAddress(cfg.Bind, cfg.Port), Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, WriteTimeout: 30 * time.Second}
 	errCh := make(chan error, 1)
 	go func() {
 		var serveErr error
@@ -333,8 +344,15 @@ func uiFileServer(staticFS fs.FS, version string) http.Handler {
 	})
 }
 
-func withCORS(next http.Handler, origin string) http.Handler {
+func withCORS(next http.Handler, origin string, adminMount ...string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if len(adminMount) > 0 {
+			mount := normalizeMountPath(adminMount[0])
+			if r.URL.Path == mount || strings.HasPrefix(r.URL.Path, mount+"/") {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Add("Vary", "Origin")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD")

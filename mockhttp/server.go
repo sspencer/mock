@@ -310,8 +310,13 @@ func (s *Server) clearLocked(reset bool) {
 	event := RequestEvent{ID: s.clearedThrough, Session: s.session, Kind: "clear"}
 	for subscriber := range s.subscribers {
 		// Discard queued pre-clear traffic before publishing the clear boundary.
-		for len(subscriber) > 0 {
-			<-subscriber
+	drain:
+		for {
+			select {
+			case <-subscriber:
+			default:
+				break drain
+			}
 		}
 		subscriber <- event
 	}

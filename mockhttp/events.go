@@ -155,26 +155,23 @@ func (s *Server) ServeClear(w http.ResponseWriter, r *http.Request) {
 }
 
 func clearRequestAllowed(r *http.Request) bool {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin != "" {
+		u, err := url.Parse(origin)
+		if err != nil || u.Host == "" || !strings.EqualFold(u.Host, r.Host) || u.Scheme != requestScheme(r) {
+			return false
+		}
+	}
+	site := strings.ToLower(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site")))
+	if site == "cross-site" || site == "same-site" {
+		return false
+	}
 	if strings.TrimSpace(r.Header.Get("X-Requested-With")) != "" {
 		return true
 	}
 	ct, _, _ := strings.Cut(r.Header.Get("Content-Type"), ";")
-	if strings.EqualFold(strings.TrimSpace(ct), "application/json") {
-		return true
-	}
-	switch strings.ToLower(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site"))) {
-	case "same-origin", "same-site":
-		return true
-	}
-	origin := strings.TrimSpace(r.Header.Get("Origin"))
-	if origin == "" {
-		return false
-	}
-	u, err := url.Parse(origin)
-	if err != nil || u.Host == "" {
-		return false
-	}
-	return strings.EqualFold(u.Host, r.Host)
+	return strings.EqualFold(strings.TrimSpace(ct), "application/json") || site == "same-origin" || origin != ""
+
 }
 
 // ServeRoutes handles GET of the currently configured mock routes.
