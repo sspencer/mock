@@ -16,6 +16,8 @@ import (
 const maxRequestEvents = 200
 
 type RequestEvent struct {
+	Session  string        `json:"session"`
+	Kind     string        `json:"kind,omitempty"`
 	ID       uint64        `json:"id"`
 	Request  EventRequest  `json:"request"`
 	Response EventResponse `json:"response"`
@@ -51,7 +53,7 @@ func (s *Server) ServeEvents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	flusher, ok := w.(http.Flusher)
+	_, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
@@ -62,29 +64,61 @@ func (s *Server) ServeEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 
 	lastID := parseLastEventID(r)
-	events, subscriber := s.subscribe()
+	s.mu.Lock()
+	events, subscriber := s.subscribeLocked()
+	session, cleared, latest := s.session, s.clearedThrough, s.nextEventID.Load()
+	s.mu.Unlock()
 	defer s.unsubscribe(subscriber)
-
+	controller := http.NewResponseController(w)
+	send := func(event RequestEvent) bool {
+		_ = controller.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		return writeEvent(w, event) && controller.Flush() == nil
+	}
+	raw := r.Header.Get("Last-Event-ID")
+	previousSession, _, hasSession := strings.Cut(raw, "/")
+	gap := lastID > latest || lastID < cleared || len(events) > 0 && lastID > 0 && lastID+1 < events[0].ID
+	if raw != "" && (hasSession && previousSession != session || gap) {
+		if !send(RequestEvent{Session: session, Kind: "reset"}) {
+			return
+		}
+		lastID = 0
+	}
 	for _, event := range events {
 		if event.ID <= lastID {
 			continue
 		}
-		if !writeEvent(w, event) {
+		if !send(event) {
 			return
 		}
+		lastID = event.ID
 	}
-	flusher.Flush()
-
+	_ = controller.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	if controller.Flush() != nil {
+		return
+	}
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
 	for {
 		select {
-		case event := <-subscriber:
+		case event, open := <-subscriber:
+			if !open {
+				return
+			} // Reconnect and replay retained history after overflow.
 			if event.ID <= lastID {
 				continue
 			}
-			if !writeEvent(w, event) {
+			if !send(event) {
 				return
 			}
-			flusher.Flush()
+			lastID = event.ID
+		case <-heartbeat.C:
+			_ = controller.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if _, err := io.WriteString(w, ": heartbeat\n\n"); err != nil {
+				return
+			}
+			if controller.Flush() != nil {
+				return
+			}
 		case <-r.Context().Done():
 			return
 		}
@@ -103,8 +137,10 @@ func (s *Server) ServeClear(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	s.ClearEvents()
-	s.ResetCounters()
+	s.mu.Lock()
+	s.clearLocked(true)
+	w.Header().Set("X-Mock-Cursor", strconv.FormatUint(s.clearedThrough, 10))
+	s.mu.Unlock()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -156,6 +192,10 @@ func (s *Server) subscribe() ([]RequestEvent, chan RequestEvent) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	return s.subscribeLocked()
+}
+
+func (s *Server) subscribeLocked() ([]RequestEvent, chan RequestEvent) {
 	events := append([]RequestEvent(nil), s.events...)
 	subscriber := make(chan RequestEvent, 16)
 	s.subscribers[subscriber] = struct{}{}
@@ -170,28 +210,22 @@ func (s *Server) unsubscribe(subscriber chan RequestEvent) {
 }
 
 func (s *Server) publishRequest(event RequestEvent) {
-	if event.ID == 0 {
-		event.ID = s.nextEventID.Add(1)
-	}
-
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	event.ID = s.nextEventID.Add(1)
+	event.Session = s.session
 	if len(s.events) == maxRequestEvents {
 		copy(s.events, s.events[1:])
 		s.events[len(s.events)-1] = event
 	} else {
 		s.events = append(s.events, event)
 	}
-
-	subscribers := make([]chan RequestEvent, 0, len(s.subscribers))
 	for subscriber := range s.subscribers {
-		subscribers = append(subscribers, subscriber)
-	}
-	s.mu.Unlock()
-
-	for _, subscriber := range subscribers {
 		select {
 		case subscriber <- event:
 		default:
+			close(subscriber)
+			delete(s.subscribers, subscriber)
 		}
 	}
 }
@@ -201,7 +235,11 @@ func writeEvent(w io.Writer, event RequestEvent) bool {
 	if err != nil {
 		return false
 	}
-	_, err = fmt.Fprintf(w, "id: %d\ndata: %s\n\n", event.ID, data)
+	kind := ""
+	if event.Kind != "" {
+		kind = "event: " + event.Kind + "\n"
+	}
+	_, err = fmt.Fprintf(w, "id: %s/%d\n%sdata: %s\n\n", event.Session, event.ID, kind, data)
 	return err == nil
 }
 
@@ -232,6 +270,9 @@ func parseLastEventID(r *http.Request) uint64 {
 	raw := r.Header.Get("Last-Event-ID")
 	if raw == "" {
 		return 0
+	}
+	if _, after, ok := strings.Cut(raw, "/"); ok {
+		raw = after
 	}
 	id, err := strconv.ParseUint(raw, 10, 64)
 	if err != nil {

@@ -2,6 +2,7 @@ package mockhttp
 
 import (
 	"context"
+	"crypto/rand"
 	"log/slog"
 	"net/http"
 	"os"
@@ -14,18 +15,21 @@ import (
 )
 
 type Server struct {
-	methods     []restclient.Method
-	logger      *slog.Logger
-	counters    map[string]int
-	events      []RequestEvent
-	subscribers map[chan RequestEvent]struct{}
-	nextEventID atomic.Uint64
-	mu          sync.Mutex
+	methods        []restclient.Method
+	logger         *slog.Logger
+	counters       map[string]int
+	events         []RequestEvent
+	subscribers    map[chan RequestEvent]struct{}
+	nextEventID    atomic.Uint64
+	session        string
+	clearedThrough uint64
+	mu             sync.Mutex
 }
 
 func New(methods []restclient.Method, logger *slog.Logger) *Server {
 	s := &Server{
 		methods:     cloneMethods(methods),
+		session:     rand.Text(),
 		logger:      logger,
 		counters:    make(map[string]int),
 		subscribers: make(map[chan RequestEvent]struct{}),
@@ -56,7 +60,7 @@ func (s *Server) Methods() []restclient.Method {
 func (s *Server) ClearEvents() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.events = nil
+	s.clearLocked(false)
 }
 
 // ResetCounters resets duplicate-route rotation counters.
@@ -267,5 +271,21 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method) {
 			known[key] = true
 			logger.Warn("unresolved placeholder preserved literally (may be supplied by a request query)", "placeholder", key, "source", method.Source, "line", method.Line, "method", method.Name)
 		}
+	}
+}
+
+func (s *Server) clearLocked(reset bool) {
+	s.events = nil
+	if reset {
+		s.counters = make(map[string]int)
+	}
+	s.clearedThrough = s.nextEventID.Add(1)
+	event := RequestEvent{ID: s.clearedThrough, Session: s.session, Kind: "clear"}
+	for subscriber := range s.subscribers {
+		// Discard queued pre-clear traffic before publishing the clear boundary.
+		for len(subscriber) > 0 {
+			<-subscriber
+		}
+		subscriber <- event
 	}
 }

@@ -200,6 +200,8 @@
     let paused = false;
     let selectedId = null;
     let filterText = '';
+ let streamSession = null;
+ let clearedThrough = 0;
 
     function setTheme(theme) {
         if (theme === 'dark') {
@@ -240,6 +242,29 @@
     });
 
     const source = new EventSource('events');
+    function clearThrough(cursor = Infinity) {
+        for (const id of eventOrder) { if (id <= cursor) eventsById.delete(id); }
+        eventOrder = eventOrder.filter(id => eventsById.has(id));
+        if (!eventsById.has(selectedId)) {
+            selectedId = null;
+            updateDetail(requestDetails, '');
+            updateDetail(responseDetails, '');
+        }
+        updateRequestCount();
+        renderTable();
+    }
+    source.addEventListener('reset', event => {
+        const data = JSON.parse(event.data);
+        streamSession = data.session;
+        clearedThrough = 0;
+        clearThrough();
+    });
+    source.addEventListener('clear', event => {
+        const data = JSON.parse(event.data);
+        streamSession = data.session;
+        clearedThrough = Math.max(clearedThrough, data.id);
+        clearThrough(clearedThrough);
+    });
     source.onopen = function () {
         document.body.classList.remove('stream-offline');
         streamStatus.textContent = paused ? 'Paused' : 'Listening';
@@ -254,7 +279,8 @@
         }
         try {
             const data = JSON.parse(event.data);
-            upsertEvent(data);
+ if (streamSession !== data.session) { clearThrough(); clearedThrough = 0; streamSession = data.session; }
+ if (data.id > clearedThrough) upsertEvent(data);
         } catch (e) {
             console.error('Error parsing json', e);
         }
@@ -372,6 +398,7 @@
     }
 
     clearRequestsButton.addEventListener('click', async () => {
+        let cursor = 0;
         try {
             const res = await fetch('clear', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
             if (!res.ok) {
@@ -379,18 +406,14 @@
                 showClearError();
                 return;
             }
+            cursor = Number(res.headers.get('X-Mock-Cursor'));
         } catch (e) {
             console.error('failed to clear server events', e);
             showClearError();
             return;
         }
-        eventsById.clear();
-        eventOrder = [];
-        selectedId = null;
-        updateRequestCount();
-        renderEmptyState();
-        updateDetail(requestDetails, '');
-        updateDetail(responseDetails, '');
+        clearedThrough = Math.max(clearedThrough, cursor);
+        clearThrough(clearedThrough);
         hideClearError();
     });
 
