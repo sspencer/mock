@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -27,6 +28,7 @@ type Method struct {
 	Headers      http.Header
 	Body         string
 	Source       string
+	Line         int
 }
 
 var commentVariablePattern = regexp.MustCompile(`^\$([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(.*)$`)
@@ -95,6 +97,7 @@ func Parse(source string, r io.Reader) ([]Method, error) {
 				MatchHeaders: make(http.Header),
 				Headers:      make(http.Header),
 				Source:       source,
+				Line:         lineNumber,
 			}
 			section = section[:0]
 			sectionNameLine = lineNumber
@@ -159,8 +162,16 @@ func parseSection(method Method, lines []string, bodyStartLine, sectionNameLine 
 					return method, parseErrorf(source, lineAt(i),
 						`section %q: $header. requires a header name (example: "# $header.Authorization=Bearer token")`, method.Name)
 				}
+				if !ValidHeaderName(headerName) || !ValidHeaderValue(value) {
+					return method, parseErrorf(source, lineAt(i), "invalid request header matcher %q", headerName)
+				}
 				method.MatchHeaders.Add(headerName, value)
 			} else {
+				if key == "file" {
+					if _, err := ResolveFile(source, value); err != nil {
+						return method, parseErrorf(source, lineAt(i), "%v", err)
+					}
+				}
 				method.Variables[key] = value
 			}
 		}
@@ -217,7 +228,10 @@ func parseSection(method Method, lines []string, bodyStartLine, sectionNameLine 
 	if method.Path == "" {
 		method.Path = "/"
 	}
-	method.Query = target.Query()
+	method.Query, err = url.ParseQuery(target.RawQuery)
+	if err != nil {
+		return method, parseErrorf(source, lineAt(i), "section %q: invalid query: %v", method.Name, err)
+	}
 	i++
 
 	for i < len(lines) {
@@ -237,6 +251,9 @@ func parseSection(method Method, lines []string, bodyStartLine, sectionNameLine 
 			return method, parseErrorf(source, lineAt(i),
 				`section %q has an invalid response header line %s (header name is required before ":")`,
 				method.Name, quoteSnippet(line))
+		}
+		if !ValidHeaderName(headerName) || !ValidHeaderValue(value) {
+			return method, parseErrorf(source, lineAt(i), "invalid response header %q", headerName)
 		}
 		method.Headers.Add(headerName, strings.TrimSpace(value))
 		i++
@@ -295,7 +312,7 @@ var controlVariables = map[string]struct{}{
 }
 
 // placeholderPattern matches {{$name}} placeholders in bodies and headers.
-var placeholderPattern = regexp.MustCompile(`\{\{\$([A-Za-z_][A-Za-z0-9_]*)}}`)
+var PlaceholderPattern = regexp.MustCompile(`\{\{\$([A-Za-z_][A-Za-z0-9_.-]*)}}`)
 
 // FileDependencies returns relative $file paths referenced by methods, for watching.
 func FileDependencies(methods []Method) []string {
@@ -344,7 +361,7 @@ func UnusedCustomVariables(method Method) []string {
 func placeholderNames(method Method) map[string]bool {
 	used := make(map[string]bool)
 	collect := func(text string) {
-		for _, match := range placeholderPattern.FindAllStringSubmatch(text, -1) {
+		for _, match := range PlaceholderPattern.FindAllStringSubmatch(text, -1) {
 			if len(match) == 2 {
 				used[match[1]] = true
 			}
@@ -357,4 +374,42 @@ func placeholderNames(method Method) map[string]bool {
 		}
 	}
 	return used
+}
+
+// ResolveFile validates a response dependency relative to its owning source.
+func ResolveFile(source, raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || filepath.IsAbs(raw) {
+		return "", fmt.Errorf("$file must be a non-empty relative path")
+	}
+	for _, part := range strings.Split(filepath.ToSlash(raw), "/") {
+		if part == ".." {
+			return "", fmt.Errorf("$file cannot contain .. path segments")
+		}
+	}
+	if filepath.Clean(raw) == "." {
+		return "", fmt.Errorf("$file must name a file")
+	}
+	return filepath.Join(filepath.Dir(source), raw), nil
+}
+
+func ValidHeaderName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, c := range name {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("!#$%&'*+-.^_`|~", c)) {
+			return false
+		}
+	}
+	return true
+}
+
+func ValidHeaderValue(value string) bool {
+	for _, c := range value {
+		if c == 127 || c < 32 && c != '\t' {
+			return false
+		}
+	}
+	return true
 }

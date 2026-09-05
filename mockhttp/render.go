@@ -8,18 +8,17 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/sspencer/mock/restclient"
 
 	"github.com/jaswdr/faker"
 )
 
-var placeholderPattern = regexp.MustCompile(`\{\{\$([A-Za-z_][A-Za-z0-9_]*)}}`)
+var placeholderPattern = restclient.PlaceholderPattern
 
 var fakerPool = sync.Pool{
 	New: func() any {
@@ -48,14 +47,14 @@ func parseStatusCode(raw string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if status < 100 || status > 999 {
+	if status < 200 || status > 999 {
 		return 0, fmt.Errorf("status %d out of range", status)
 	}
 	return status, nil
 }
 
 func statusAllowsBody(status int) bool {
-	return status != http.StatusNoContent && status != http.StatusNotModified && (status < 100 || status >= 200)
+	return status != http.StatusNoContent && status != http.StatusNotModified && (status < 200 || status >= 200)
 }
 
 func responseHeaders(method restclient.Method, values map[string]string, filePath string) http.Header {
@@ -77,6 +76,9 @@ func responseHeaders(method restclient.Method, values map[string]string, filePat
 
 func renderBody(method restclient.Method, values map[string]string, filePath string, hasFile bool) ([]byte, error) {
 	if method.Body == "" {
+		if _, configured := method.Variables["file"]; configured && !hasFile {
+			return nil, fmt.Errorf("invalid $file path")
+		}
 		if hasFile {
 			body, err := os.ReadFile(filePath)
 			if err != nil {
@@ -107,7 +109,10 @@ func expandPlaceholders(input string, method restclient.Method, values map[strin
 		if value, ok := method.Variables[key]; ok {
 			return value
 		}
-		return generatedValue(key)
+		if value := generatedValue(key); value != "" {
+			return value
+		}
+		return match
 	})
 }
 
@@ -115,20 +120,15 @@ func isMostlyText(body []byte) bool {
 	if len(body) == 0 {
 		return true
 	}
-	sample := body
-	if len(sample) > 512 {
-		sample = sample[:512]
+	if !utf8.Valid(body) {
+		return false
 	}
-	var nonPrintable int
-	for _, b := range sample {
-		if b == 0 {
+	for _, b := range body {
+		if b < 0x20 && b != '\t' && b != '\n' && b != '\r' || b == 127 {
 			return false
 		}
-		if b < 0x09 || (b > 0x0d && b < 0x20) {
-			nonPrintable++
-		}
 	}
-	return nonPrintable*10 <= len(sample)
+	return true
 }
 
 func resolveFilePath(method *restclient.Method) (string, bool) {
@@ -136,16 +136,8 @@ func resolveFilePath(method *restclient.Method) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	raw = strings.TrimSpace(raw)
-	if raw == "" || filepath.IsAbs(raw) {
-		return "", false
-	}
-	cleaned := filepath.Clean(raw)
-	sep := string(filepath.Separator)
-	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, ".."+sep) {
-		return "", false
-	}
-	return filepath.Join(filepath.Dir(method.Source), cleaned), true
+	path, err := restclient.ResolveFile(method.Source, raw)
+	return path, err == nil
 }
 
 func generatedValue(key string) string {
@@ -195,5 +187,14 @@ func generatedValue(key string) string {
 		return f.Lorem().Paragraph(5 + rand.IntN(3))
 	default:
 		return ""
+	}
+}
+
+func isGeneratedKey(key string) bool {
+	switch key {
+	case "integer", "float", "bool", "uuid", "guid", "timestamp", "isoTimestamp", "name", "firstName", "lastName", "phone", "user", "email", "url", "server", "hash", "file", "sentence", "paragraph", "article":
+		return true
+	default:
+		return false
 	}
 }

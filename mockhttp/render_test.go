@@ -1,6 +1,10 @@
 package mockhttp
 
-import "testing"
+import (
+	"github.com/sspencer/mock/restclient"
+	"strings"
+	"testing"
+)
 
 func TestGeneratedValueSupportsDocumentedKeys(t *testing.T) {
 	keys := []string{
@@ -38,5 +42,18 @@ func TestGeneratedValueSupportsDocumentedKeys(t *testing.T) {
 func TestGeneratedValueReturnsEmptyForUnknownKey(t *testing.T) {
 	if got := generatedValue("missing"); got != "" {
 		t.Fatalf("generatedValue(missing) = %q, want empty string", got)
+	}
+}
+
+func TestTextClassificationChecksEntireBody(t *testing.T) {
+	body := append([]byte(strings.Repeat("a", 1024)), 0)
+	if isMostlyText(body) {
+		t.Fatal("binary suffix classified as text")
+	}
+}
+func TestPlaceholderGrammarAndUnknownPreservation(t *testing.T) {
+	method := restclient.Method{Variables: map[string]string{"user-name": "Alice", "user.name": "Bob"}}
+	if got := expandPlaceholders("{{$user-name}} {{$user.name}} {{$typo}}", method, nil); got != "Alice Bob {{$typo}}" {
+		t.Fatal(got)
 	}
 }

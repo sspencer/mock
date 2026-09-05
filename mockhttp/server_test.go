@@ -455,28 +455,9 @@ func TestServerRejectsFilePathTraversal(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "secret.html"), []byte("secret"), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	methods, err := restclient.Parse(filepath.Join(restClientDir, "user.http"), strings.NewReader(`### Unsafe File
-# $file=../secret.html
-GET /unsafe
-`))
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
-	}
-
-	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	request := httptest.NewRequest(http.MethodGet, "/unsafe", nil)
-	response := httptest.NewRecorder()
-
-	server.ServeHTTP(response, request)
-
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
-	}
-	if body := response.Body.String(); body != "" {
-		t.Fatalf("body = %q, want empty body for unsafe file path", body)
-	}
-	if contentType := response.Header().Get("Content-Type"); contentType != "" {
-		t.Fatalf("content type = %q, want none for unsafe file path", contentType)
+	_, err := restclient.Parse(filepath.Join(restClientDir, "user.http"), strings.NewReader("### Unsafe File\n# $file=../secret.html\nGET /unsafe\n"))
+	if err == nil {
+		t.Fatal("expected unsafe file dependency to fail at load time")
 	}
 }
 

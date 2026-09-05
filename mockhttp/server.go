@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -148,10 +150,16 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 				logger.Warn("invalid $delay will be ignored", "delay", raw, "method", method.Name, "source", method.Source, "error", err)
 			}
 		}
-		for _, name := range restclient.UnusedCustomVariables(method) {
+		checked := method
+		if path, ok := resolveFilePath(&method); ok && method.Body == "" {
+			if body, err := os.ReadFile(path); err == nil && isMostlyText(body) {
+				checked.Body = string(body)
+			}
+		}
+		warnUnknownPlaceholders(logger, checked)
+		for _, name := range restclient.UnusedCustomVariables(checked) {
 			logger.Warn("unused custom variable (not referenced as {{$"+name+"}} in body or response headers)",
 				"variable", "$"+name,
-				"value", method.Variables[name],
 				"method", method.Name,
 				"source", method.Source,
 			)
@@ -231,4 +239,33 @@ func cloneMethods(methods []restclient.Method) []restclient.Method {
 		}
 	}
 	return out
+}
+
+func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method) {
+	known := make(map[string]bool)
+	for k := range method.Variables {
+		known[k] = true
+	}
+	for k := range method.Query {
+		known[k] = true
+	}
+	for _, part := range strings.Split(method.Path, "/") {
+		if strings.HasPrefix(part, ":") {
+			known[part[1:]] = true
+		}
+	}
+	texts := []string{method.Body}
+	for _, values := range method.Headers {
+		texts = append(texts, values...)
+	}
+	for _, text := range texts {
+		for _, match := range restclient.PlaceholderPattern.FindAllStringSubmatch(text, -1) {
+			key := match[1]
+			if known[key] || isGeneratedKey(key) {
+				continue
+			}
+			known[key] = true
+			logger.Warn("unresolved placeholder preserved literally (may be supplied by a request query)", "placeholder", key, "source", method.Source, "line", method.Line, "method", method.Name)
+		}
+	}
 }
