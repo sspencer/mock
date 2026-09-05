@@ -1,6 +1,7 @@
 package mockhttp
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/sspencer/mock/restclient"
 )
@@ -24,19 +26,27 @@ type RequestEvent struct {
 }
 
 type EventRequest struct {
-	Method    string `json:"method"`
-	URL       string `json:"url"`
-	Time      string `json:"time"`
-	StartedAt string `json:"startedAt"`
-	Details   string `json:"details"`
+	Method      string      `json:"method"`
+	Scheme      string      `json:"scheme"`
+	Host        string      `json:"host"`
+	HTTPVersion string      `json:"httpVersion"`
+	Headers     http.Header `json:"headers"`
+	Body        EventBody   `json:"body"`
+	URL         string      `json:"url"`
+	Time        string      `json:"time"`
+	StartedAt   string      `json:"startedAt"`
+	Details     string      `json:"details"`
 }
 
 type EventResponse struct {
-	Status     int    `json:"status"`
-	StatusText string `json:"statusText"`
-	Time       string `json:"time"`
-	ElapsedMs  int64  `json:"elapsedMs"`
-	Details    string `json:"details"`
+	Status      int         `json:"status"`
+	HTTPVersion string      `json:"httpVersion"`
+	Headers     http.Header `json:"headers"`
+	Body        EventBody   `json:"body"`
+	StatusText  string      `json:"statusText"`
+	Time        string      `json:"time"`
+	ElapsedMs   int64       `json:"elapsedMs"`
+	Details     string      `json:"details"`
 }
 
 // RouteInfo is a JSON-friendly description of a configured mock route.
@@ -246,14 +256,17 @@ func writeEvent(w io.Writer, event RequestEvent) bool {
 func newRequestEvent(r *http.Request, requestBody loggedBody, response *responseCapture, status int, arrivedAt time.Time, elapsed time.Duration) RequestEvent {
 	return RequestEvent{
 		Request: EventRequest{
-			Method:    r.Method,
+			Method: r.Method,
+			Scheme: requestScheme(r), Host: r.Host, HTTPVersion: r.Proto,
+			Headers: requestEventHeaders(r), Body: eventBody(requestBody, requestBodySize(r, requestBody)),
 			URL:       r.URL.RequestURI(),
 			Time:      formatRequestTime(arrivedAt),
 			StartedAt: arrivedAt.UTC().Format(time.RFC3339Nano),
 			Details:   requestDetails(r, requestBody),
 		},
 		Response: EventResponse{
-			Status:     status,
+			Status:      status,
+			HTTPVersion: r.Proto, Headers: response.sentHeaders(), Body: eventBody(response.loggedBody(), int64(response.bodyLength())),
 			StatusText: statusText(status),
 			Time:       elapsed.Round(time.Microsecond).String(),
 			ElapsedMs:  elapsed.Milliseconds(),
@@ -293,4 +306,51 @@ func RoutesFromMethods(methods []restclient.Method) []RouteInfo {
 		})
 	}
 	return routes
+}
+
+// EventBody retains byte counts and binary data separately from display markers.
+type EventBody struct {
+	Text         string `json:"text"`
+	Encoding     string `json:"encoding,omitempty"`
+	Size         int64  `json:"size"`
+	CapturedSize int    `json:"capturedSize"`
+	Truncated    bool   `json:"truncated"`
+	Error        string `json:"error,omitempty"`
+}
+
+func eventBody(body loggedBody, size int64) EventBody {
+	out := EventBody{Text: body.text, Size: size, CapturedSize: len(body.text), Truncated: body.truncated, Error: body.readError}
+	if !utf8.ValidString(body.text) || strings.ContainsRune(body.text, 0) {
+		out.Text = base64.StdEncoding.EncodeToString([]byte(body.text))
+		out.Encoding = "base64"
+	}
+	return out
+}
+func requestScheme(r *http.Request) string {
+	if r.TLS != nil {
+		return "https"
+	}
+	return "http"
+}
+func requestBodySize(r *http.Request, b loggedBody) int64 {
+	if r.ContentLength >= 0 && r.Body != nil {
+		return r.ContentLength
+	}
+	if b.truncated || b.readError != "" {
+		return -1
+	}
+	return int64(len(b.text))
+}
+func requestEventHeaders(r *http.Request) http.Header {
+	headers := r.Header.Clone()
+	if r.Host != "" {
+		headers.Set("Host", r.Host)
+	}
+	if r.ContentLength > 0 {
+		headers.Set("Content-Length", strconv.FormatInt(r.ContentLength, 10))
+	}
+	if len(r.TransferEncoding) > 0 {
+		headers.Set("Transfer-Encoding", strings.Join(r.TransferEncoding, ", "))
+	}
+	return headers
 }

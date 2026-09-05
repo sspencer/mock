@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -72,12 +73,15 @@ func (s *Server) ResetCounters() {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	arrivedAt := time.Now()
+	controller := http.NewResponseController(w)
+	_ = controller.SetWriteDeadline(time.Time{}) // Configured delays do not spend the write budget.
 	requestBody := readRequestBody(r)
 	capture := newResponseCapture(w)
 
 	method, values, ok := s.findMethod(r)
 	status := http.StatusNotFound
 	if !ok {
+		_ = controller.SetWriteDeadline(time.Now().Add(30 * time.Second))
 		http.NotFound(capture, r)
 		status = capture.statusCode()
 		s.logRequest(r, requestBody, capture, status, "", arrivedAt, time.Since(arrivedAt))
@@ -86,6 +90,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !s.delay(r.Context(), method) {
 		return
 	}
+	_ = controller.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	filePath, hasFile := resolveFilePath(method)
 
 	status = statusFromVariables(s.logger, method.Variables)
@@ -100,11 +105,33 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	headers := responseHeaders(*method, values, filePath)
 	for name, headerValues := range headers {
 		for _, value := range headerValues {
+			if !restclient.ValidHeaderName(name) || !restclient.ValidHeaderValue(value) {
+				http.Error(capture, "mock: invalid rendered response header", http.StatusInternalServerError)
+				s.logRequest(r, requestBody, capture, capture.statusCode(), method.Name, arrivedAt, time.Since(arrivedAt))
+				return
+			}
+		}
+		for _, value := range headerValues {
 			capture.Header().Add(name, value)
 		}
 	}
+	// Set authoritative metadata before committing headers; net/http may otherwise
+	// infer headers which the request journal cannot observe.
+	if capture.Header().Get("Date") == "" {
+		capture.Header().Set("Date", time.Now().UTC().Format(http.TimeFormat))
+	}
+	if statusAllowsBody(status) {
+		if capture.Header().Get("Content-Type") == "" && len(body) > 0 {
+			capture.Header().Set("Content-Type", http.DetectContentType(body))
+		}
+		capture.Header().Del("Transfer-Encoding")
+		capture.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	} else {
+		capture.Header().Del("Content-Length")
+		capture.Header().Del("Transfer-Encoding")
+	}
 	capture.WriteHeader(status)
-	if len(body) > 0 && statusAllowsBody(status) {
+	if r.Method != http.MethodHead && len(body) > 0 && statusAllowsBody(status) {
 		_, _ = capture.Write(body)
 	}
 

@@ -20,6 +20,7 @@ var truncatedBodyMarker = fmt.Sprintf("[body truncated after %d bytes]", maxLogg
 type responseCapture struct {
 	http.ResponseWriter
 	status        int
+	headers       http.Header
 	body          strings.Builder
 	bodyBytes     int
 	bodyTruncated bool
@@ -38,13 +39,21 @@ func (w *responseCapture) WriteHeader(status int) {
 	if w.status != 0 {
 		return
 	}
+	if status >= 100 && status < 200 {
+		w.ResponseWriter.WriteHeader(status)
+		return
+	}
 	w.status = status
+	w.headers = w.Header().Clone()
 	w.ResponseWriter.WriteHeader(status)
 }
 
 func (w *responseCapture) Write(body []byte) (int, error) {
 	if w.status == 0 {
-		w.status = http.StatusOK
+		if w.Header().Get("Content-Type") == "" {
+			w.Header().Set("Content-Type", http.DetectContentType(body))
+		}
+		w.WriteHeader(http.StatusOK)
 	}
 	n, err := w.ResponseWriter.Write(body)
 	if n > 0 {
@@ -86,6 +95,7 @@ func (w *responseCapture) bodyLength() int {
 type loggedBody struct {
 	text      string
 	truncated bool
+	readError string
 }
 
 func (b loggedBody) empty() bool {
@@ -112,18 +122,18 @@ func readRequestBody(r *http.Request) loggedBody {
 		return loggedBody{}
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxLoggedBodyBytes+1))
+	readError := ""
 	if err != nil {
-		r.Body = io.NopCloser(strings.NewReader(""))
-		return loggedBody{}
+		readError = err.Error()
 	}
 	r.Body = replayBody{
 		Reader: io.MultiReader(bytes.NewReader(body), r.Body),
 		Closer: r.Body,
 	}
 	if len(body) <= maxLoggedBodyBytes {
-		return loggedBody{text: string(body)}
+		return loggedBody{text: string(body), readError: readError}
 	}
-	return loggedBody{text: string(body[:maxLoggedBodyBytes]), truncated: true}
+	return loggedBody{text: string(body[:maxLoggedBodyBytes]), truncated: true, readError: readError}
 }
 
 func (s *Server) logRequest(r *http.Request, requestBody loggedBody, response *responseCapture, status int, methodName string, arrivedAt time.Time, elapsed time.Duration) {
@@ -178,13 +188,7 @@ func responseDetails(r *http.Request, response *responseCapture, status int) str
 	fmt.Fprintf(&details, "%s %d %s\n", r.Proto, status, statusText(status))
 
 	body := response.loggedBody()
-	headers := response.Header().Clone()
-	if headers.Get("Date") == "" {
-		headers.Set("Date", time.Now().UTC().Format(http.TimeFormat))
-	}
-	if response.bodyLength() > 0 && headers.Get("Content-Length") == "" {
-		headers.Set("Content-Length", strconv.Itoa(response.bodyLength()))
-	}
+	headers := response.sentHeaders()
 	writeSortedHeaders(&details, headers)
 
 	if !body.empty() {
@@ -206,4 +210,11 @@ func statusText(status int) string {
 		return text
 	}
 	return "Status"
+}
+
+func (w *responseCapture) sentHeaders() http.Header {
+	if w.headers != nil {
+		return w.headers.Clone()
+	}
+	return w.Header().Clone()
 }
