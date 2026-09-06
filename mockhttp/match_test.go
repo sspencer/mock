@@ -78,7 +78,7 @@ func formatFixture(methods []restclient.Method) (string, error) {
 			method.Method,
 			method.Path,
 			delay,
-			statusFromVariables(nil, method.Variables),
+			method.Status,
 			headerSize(responseHeaders(method, nil, filePath)),
 			len(body),
 		)

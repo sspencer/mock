@@ -43,6 +43,15 @@ func TestGeneratedValueSupportsDocumentedKeys(t *testing.T) {
 	}
 }
 
+func TestStatusAllowsBody(t *testing.T) {
+	if statusAllowsBody(http.StatusNoContent) || statusAllowsBody(http.StatusNotModified) {
+		t.Fatal("204 and 304 must not allow a body")
+	}
+	if !statusAllowsBody(http.StatusOK) || !statusAllowsBody(http.StatusCreated) || !statusAllowsBody(http.StatusBadRequest) {
+		t.Fatal("ordinary final statuses should allow a body")
+	}
+}
+
 func TestGeneratedValueReturnsEmptyForUnknownKey(t *testing.T) {
 	if got := generatedValue("missing"); got != "" {
 		t.Fatalf("generatedValue(missing) = %q, want empty string", got)

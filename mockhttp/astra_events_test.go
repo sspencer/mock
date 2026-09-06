@@ -1,12 +1,15 @@
 package mockhttp
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestConcurrentPublicationIsOrdered(t *testing.T) {
@@ -58,5 +61,46 @@ func TestRestartCursorAndClearBoundary(t *testing.T) {
 	event := <-ch
 	if event.Kind != "clear" || len(ch) != 0 {
 		t.Fatal("clear failed to replace queued history")
+	}
+}
+
+func TestSSESurvivesServerWriteTimeout(t *testing.T) {
+	s := New(nil, nil)
+	ts := httptest.NewUnstartedServer(http.HandlerFunc(s.ServeEvents))
+	ts.Config.WriteTimeout = 250 * time.Millisecond
+	ts.Start()
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	got := make(chan string, 1)
+	go func() {
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			if strings.Contains(scanner.Text(), "/after-timeout") {
+				got <- scanner.Text()
+				return
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			got <- "err:" + err.Error()
+			return
+		}
+		got <- "eof"
+	}()
+
+	time.Sleep(400 * time.Millisecond)
+	s.publishRequest(RequestEvent{Request: EventRequest{URL: "/after-timeout"}})
+	select {
+	case msg := <-got:
+		if !strings.Contains(msg, "/after-timeout") {
+			t.Fatalf("SSE died or missed event: %s", msg)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for SSE event after WriteTimeout window")
 	}
 }
