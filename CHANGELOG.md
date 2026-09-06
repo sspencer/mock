@@ -1,13 +1,22 @@
 # Changelog
 
-## Unreleased
+## v0.1.3 - 2026-09-06
+
+Expanded request inspection, more reliable traffic capture and reloads, and
+correctness and security fixes since v0.1.2.
 
 - Add draggable, keyboard-accessible panel dividers with remembered sizes.
 - Add Pretty/Raw views, body and cURL copy actions, clickable route configuration,
   matched fixture/sequence metadata, mismatch explanations, and mobile navigation.
 - Show active configuration revisions and reload errors in the dashboard.
 - Separate clearing traffic from resetting fixture sequences (`POST /mock/reset`).
-
+- Increase retained traffic to 1,000 requests and show the retention limit in the counter.
+- Give HTTP methods distinct colors in both themes, use light inspector backgrounds
+  and dark text in light mode, and match inspector heading sizes to Traffic and Routes.
+- Reclaim dashboard space by showing reload errors only when needed, keeping request
+  duration in inspector metadata, and removing copy-success notices.
+- Add `examples/send-requests.sh` to populate the console with sample traffic and
+  a PUT user-creation example; refresh the README screenshot with the dark-mode UI.
 - Correct encoded path matching, isolate header-based response sequences, and own route snapshots.
 - Reject malformed query/header constraints and invalid response directives at load time.
 - Preserve unresolved placeholders, escape JSON string interpolation, and contain response-file reads.
