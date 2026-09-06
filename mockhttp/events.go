@@ -24,6 +24,7 @@ type RequestEvent struct {
 	ID       uint64        `json:"id"`
 	Request  EventRequest  `json:"request"`
 	Response EventResponse `json:"response"`
+	Match    MatchInfo     `json:"match"`
 }
 
 type EventRequest struct {
@@ -48,14 +49,6 @@ type EventResponse struct {
 	Time        string      `json:"time"`
 	ElapsedMs   int64       `json:"elapsedMs"`
 	Details     string      `json:"details"`
-}
-
-// RouteInfo is a JSON-friendly description of a configured mock route.
-type RouteInfo struct {
-	Name   string `json:"name"`
-	Method string `json:"method"`
-	Path   string `json:"path"`
-	Query  string `json:"query,omitzero"`
 }
 
 func (s *Server) ServeEvents(w http.ResponseWriter, r *http.Request) {
@@ -142,7 +135,7 @@ func (s *Server) ServeEvents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ServeClear handles POST to clear the in-memory request log and rotation counters.
+// ServeClear handles POST to clear only the in-memory request log.
 // Bare form-style POSTs are rejected; the dashboard sends X-Requested-With or JSON.
 func (s *Server) ServeClear(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -155,7 +148,7 @@ func (s *Server) ServeClear(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Lock()
-	s.clearLocked(true)
+	s.clearLocked()
 	w.Header().Set("X-Mock-Cursor", strconv.FormatUint(s.clearedThrough, 10))
 	w.Header().Set("X-Mock-Session", s.session)
 	s.mu.Unlock()
@@ -189,16 +182,12 @@ func (s *Server) ServeRoutes(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	methods := s.Methods()
-	routes := make([]RouteInfo, 0, len(methods))
-	for _, method := range methods {
-		routes = append(routes, RouteInfo{
-			Name:   method.Name,
-			Method: method.Method,
-			Path:   method.Path,
-			Query:  method.Query.Encode(),
-		})
+	s.mu.Lock()
+	routes := make([]RouteInfo, 0, len(s.methods))
+	for i, method := range s.methods {
+		routes = append(routes, describeRoute(method, i, s.config.Revision))
 	}
+	s.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(routes)
 }
@@ -260,6 +249,7 @@ func writeEvent(w io.Writer, event RequestEvent) bool {
 
 func newRequestEvent(r *http.Request, requestBody loggedBody, response *responseCapture, status int, arrivedAt time.Time, elapsed time.Duration) RequestEvent {
 	return RequestEvent{
+		Match: response.match,
 		Request: EventRequest{
 			Method: r.Method,
 			Scheme: requestScheme(r), Host: r.Host, HTTPVersion: r.Proto,
@@ -302,13 +292,8 @@ func parseLastEventID(r *http.Request) uint64 {
 // RoutesFromMethods is a helper for tests and CLI summaries.
 func RoutesFromMethods(methods []restclient.Method) []RouteInfo {
 	routes := make([]RouteInfo, 0, len(methods))
-	for _, method := range methods {
-		routes = append(routes, RouteInfo{
-			Name:   method.Name,
-			Method: method.Method,
-			Path:   method.Path,
-			Query:  method.Query.Encode(),
-		})
+	for i, method := range methods {
+		routes = append(routes, describeRoute(method, i, 0))
 	}
 	return routes
 }

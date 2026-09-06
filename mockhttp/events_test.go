@@ -215,8 +215,8 @@ ok
 	if len(server.events) != 0 {
 		t.Fatalf("len(events) after UI clear = %d, want 0", len(server.events))
 	}
-	if len(server.counters) != 0 {
-		t.Fatalf("counters after UI clear = %#v, want empty", server.counters)
+	if server.counters["GET /users"] != 3 {
+		t.Fatalf("clear unexpectedly reset counters: %#v", server.counters)
 	}
 
 	server.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/users", nil))
@@ -228,7 +228,7 @@ ok
 	if jsonClear.Code != http.StatusNoContent {
 		t.Fatalf("JSON Content-Type status = %d, want %d", jsonClear.Code, http.StatusNoContent)
 	}
-	if len(server.events) != 0 || len(server.counters) != 0 {
+	if len(server.events) != 0 || server.counters["GET /users"] != 1 {
 		t.Fatalf("JSON clear left events=%d counters=%#v", len(server.events), server.counters)
 	}
 }

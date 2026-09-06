@@ -626,7 +626,7 @@ func BenchmarkServerRouteLookup(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, _, ok := server.findMethod(request); !ok {
+		if _, _, _, ok := server.findMethod(request); !ok {
 			b.Fatal("findMethod() did not match route")
 		}
 	}

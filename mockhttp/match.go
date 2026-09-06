@@ -12,9 +12,10 @@ import (
 type routeMatch struct {
 	method *restclient.Method
 	values map[string]string
+	index  int
 }
 
-func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]string, bool) {
+func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]string, MatchInfo, bool) {
 	// Keep matching and rotation selection in one configuration revision.
 	// The immutable selected method remains valid after SetMethods replaces
 	// the route slice, and old requests cannot advance a new revision's counters.
@@ -24,7 +25,7 @@ func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]str
 
 	query, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil {
-		return nil, nil, false
+		return nil, nil, MatchInfo{Revision: s.config.Revision, Candidates: closestRoutes(methods, r)}, false
 	}
 	requestHeaders := requestEventHeaders(r)
 	var matches []routeMatch
@@ -46,14 +47,15 @@ func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]str
 				values[name] = queryValues[0]
 			}
 		}
-		matches = append(matches, routeMatch{method: method, values: values})
+		matches = append(matches, routeMatch{method: method, values: values, index: i})
 	}
 	if len(matches) == 0 {
-		return nil, nil, false
+		return nil, nil, MatchInfo{Revision: s.config.Revision, Candidates: closestRoutes(methods, r)}, false
 	}
 
 	selected := s.nextMatch(matches)
-	return matches[selected].method, matches[selected].values, true
+	route := describeRoute(*matches[selected].method, matches[selected].index, s.config.Revision)
+	return matches[selected].method, matches[selected].values, MatchInfo{Route: &route, Position: selected + 1, Total: len(matches), Revision: s.config.Revision}, true
 }
 
 func (s *Server) nextMatch(matches []routeMatch) int {

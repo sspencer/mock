@@ -316,6 +316,8 @@ func newHandler(mockServer *mockhttp.Server, mount string, staticFS fs.FS) http.
 	mux.HandleFunc(mountRoot+"events", mockServer.ServeEvents)
 	mux.HandleFunc(mountRoot+"clear", mockServer.ServeClear)
 	mux.HandleFunc(mountRoot+"routes", mockServer.ServeRoutes)
+	mux.HandleFunc(mountRoot+"state", mockServer.ServeState)
+	mux.HandleFunc(mountRoot+"reset", mockServer.ServeReset)
 	mux.Handle(mountRoot, http.StripPrefix(mountRoot, uiFileServer(staticFS, currentVersion())))
 	mux.Handle("/", mockServer)
 	return mux
@@ -368,6 +370,7 @@ func withCORS(next http.Handler, origin string, adminMount ...string) http.Handl
 }
 
 func reloadMockFiles(mockServer *mockhttp.Server, files []string, _ string, logger *slog.Logger, out, errOut io.Writer) {
+	mockServer.BeginReload()
 	load := func() ([]restclient.Method, error) {
 		if len(files) == 0 {
 			return nil, nil
@@ -381,10 +384,12 @@ func reloadMockFiles(mockServer *mockhttp.Server, files []string, _ string, logg
 	}
 	if err != nil {
 		fmt.Fprintln(errOut, err.Error())
+		mockServer.ReloadFailed(err)
 		return
 	}
 	if err := validateMethods(methods, files); err != nil {
 		fmt.Fprintln(errOut, err.Error())
+		mockServer.ReloadFailed(err)
 		return
 	}
 	mockServer.SetMethods(methods)

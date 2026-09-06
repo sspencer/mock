@@ -20,6 +20,7 @@ var truncatedBodyMarker = fmt.Sprintf("[body truncated after %d bytes]", maxLogg
 type responseCapture struct {
 	http.ResponseWriter
 	status        int
+	match         MatchInfo
 	headers       http.Header
 	body          strings.Builder
 	bodyBytes     int

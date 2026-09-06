@@ -24,6 +24,7 @@ type Server struct {
 	session        string
 	clearedThrough uint64
 	mu             sync.Mutex
+	config         ConfigState
 }
 
 func New(methods []restclient.Method, logger *slog.Logger) *Server {
@@ -34,6 +35,7 @@ func New(methods []restclient.Method, logger *slog.Logger) *Server {
 		counters:    make(map[string]int),
 		subscribers: make(map[chan RequestEvent]struct{}),
 	}
+	s.config = ConfigState{Revision: 1, RouteCount: len(methods), LastSuccess: time.Now().UTC().Format(time.RFC3339Nano)}
 	warnMethodConfig(logger, methods)
 	return s
 }
@@ -46,6 +48,11 @@ func (s *Server) SetMethods(methods []restclient.Method) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.methods = compiled
+	s.config.Revision++
+	s.config.RouteCount = len(compiled)
+	s.config.LastSuccess = time.Now().UTC().Format(time.RFC3339Nano)
+	s.config.Loading = false
+	s.config.Error = ""
 	s.counters = make(map[string]int)
 }
 
@@ -61,7 +68,7 @@ func (s *Server) Methods() []restclient.Method {
 func (s *Server) ClearEvents() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.clearLocked(false)
+	s.clearLocked()
 }
 
 // ResetCounters resets duplicate-route rotation counters.
@@ -78,7 +85,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestBody := readRequestBody(r)
 	capture := newResponseCapture(w)
 
-	method, values, ok := s.findMethod(r)
+	method, values, match, ok := s.findMethod(r)
+	capture.match = match
 	status := http.StatusNotFound
 	if !ok {
 		_ = controller.SetWriteDeadline(time.Now().Add(30 * time.Second))
@@ -300,11 +308,8 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method) {
 	}
 }
 
-func (s *Server) clearLocked(reset bool) {
+func (s *Server) clearLocked() {
 	s.events = nil
-	if reset {
-		s.counters = make(map[string]int)
-	}
 	s.clearedThrough = s.nextEventID.Add(1)
 	event := RequestEvent{ID: s.clearedThrough, Session: s.session, Kind: "clear"}
 	for subscriber := range s.subscribers {
