@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Correct encoded path matching, isolate header-based response sequences, and own route snapshots.
+- Reject malformed query/header constraints and invalid response directives at load time.
+- Preserve unresolved placeholders, escape JSON string interpolation, and contain response-file reads.
+- Serialize reloads and update dependency watches after configuration changes.
+- Recover SSE overflow/restarts with ordered session cursors and synchronized clear boundaries.
+- Export structured, byte-aware HAR captures including TLS, binary encoding, and truncation metadata.
+- Buffer paused traffic, batch stable dashboard rows, and clear evicted request details.
+- Isolate admin CORS, bound response writes, and validate CLI mount/port values.
+- Update `golang.org/x/sys` to v0.44.0 for the Windows Unicode conversion advisory.
+- Check formatting without mutation and verify Go/dashboard tests and dependencies before release.
+
 ## v0.1.2 - 2026-09-03
 
 Security and correctness hardening, plus further request-console refinements

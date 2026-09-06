@@ -1,6 +1,30 @@
 # Improvement Recommendations
 
-Captured from a full project review (2026-07-10). Status tracks implementation on `master`.
+## September 2026 audit follow-up (`astra`)
+
+The July checklist below records historical implementation, not proof that every
+edge case was covered. The follow-up audit found and corrected these gaps:
+
+| Area | Follow-up implementation and verification |
+|---|---|
+| Matching | Decode path parameters once; isolate rotation by matched route identity; preserve path values over query values; own mutable route configuration. Encoded-path and tenant-sequence regression tests. |
+| Parsing | Reject malformed queries, invalid headers, unsafe dependencies, and invalid status/delay directives with source lines. Shared variable grammar and parser fuzz target. |
+| Rendering | Preserve unknown placeholders; warn on unresolved names and inspect text dependencies; escape JSON string values; check complete text bodies and content types; contain symlinks within the fixture directory. |
+| Watcher | Serialize callbacks, wait on shutdown, resolve dependencies against their source only, and reconcile watches after reload. Missing-directory and close-during-reload tests. |
+| SSE | Ordered publication, bounded subscriber queues with reconnect recovery, session-aware cursors, visible history-gap notifications, clear boundaries across tabs, bounded writes, and heartbeats. |
+| Capture/HAR | Structured headers and byte metadata, TLS scheme, binary encoding, explicit truncation, honest timing, and correct HEAD suppression. Go and JavaScript regression tests. |
+| Dashboard | Bounded pause buffer, batched keyed rows, selection cleanup, storage failure tolerance, unchanged-route polling suppression, clearer action labels, and more traffic space. DOM-adapter behavior tests; live visual verification remains necessary. |
+| HTTP/admin | Separate mock CORS from admin access, reject cross-origin clear, validate mount/port configuration, and bound normal response writes without consuming configured delays. |
+| Engineering | Non-mutating format checks, dependency scanning, dashboard tests, and release verification. |
+
+New product capabilities are deferred. Existing dialect constraints and capture
+limits are documented in README.md. No claim of full REST Client compatibility
+or lossless capture beyond the bounded history/body limits is made.
+
+## Historical July 2026 checklist
+
+Captured from a full project review (2026-07-10); the statuses below describe the
+original implementation and are superseded by the follow-up notes above.
 
 ## Overall take
 

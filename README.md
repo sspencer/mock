@@ -65,6 +65,8 @@ and dark themes, and a Help dialog that explains those controls.
 
 ![Web Interface](./docs/web.png)
 
+*Screenshot from v0.1.2; current controls use “Routes” and “Clear & reset”.*
+
 You can also pipe a request file through stdin:
 
 ```sh
@@ -213,6 +215,13 @@ are used for matching.
 | `{{$placeholder}}` in bodies and response headers | Imports of other `.http` files |
 | `$file` relative body files | Absolute `$file` paths |
 
+Inline bodies normalize line endings to LF and discard trailing blank lines.
+A line beginning `###` is always a section boundary, including within a body.
+Use a `$file` dependency for content that must preserve line endings, trailing
+whitespace, or literal section delimiters. Individual inline lines are limited
+to 1 MiB. Malformed queries, invalid headers, and invalid control directives
+produce source-and-line errors; a failed reload retains the working routes.
+
 ## Variables
 
 Variables live in comments directly below the `###` line:
@@ -226,15 +235,17 @@ Variables live in comments directly below the `###` line:
 
 Supported control variables:
 
-- `$status`: response status code. Defaults to `200`. Invalid values warn and fall back to `200`.
-- `$delay`: response delay parsed with Go duration syntax, such as `250ms` or `2s`. Invalid values warn and are ignored.
+- `$status`: response status code. Defaults to `200`. The supported final status range is `200`–`999`; invalid values are load errors.
+- `$delay`: response delay parsed with Go duration syntax, such as `250ms` or `2s`. Negative or invalid durations are load errors.
 - `$file`: response body file, resolved relative to the `.http` file.
 - `$header.Name=value`: require the incoming request to include that header. Use `*` as the value to accept any non-empty header.
 
 `$file` paths must be relative and cannot contain `..` path segments. If no
 explicit `Content-Type` header is set, file-backed responses infer it from the
-file extension when possible. Text files also expand `{{$...}}` placeholders;
-binary-looking files are served as raw bytes.
+file extension when possible. Placeholder expansion requires a text, JSON, XML,
+or JavaScript content type (explicit or inferred) and valid UTF-8 text without
+binary control bytes. Other files are served as raw bytes. Symlinks cannot escape
+the directory containing the `.http` file.
 
 ## Placeholders
 
@@ -245,6 +256,14 @@ Response bodies **and response headers** can contain `{{$name}}` placeholders.
 - Query parameters, such as `type` in `/names?type=cat`.
 - Variables declared in comments, such as `$delay`.
 - Built-in generated values.
+
+Path parameters take precedence over query parameters with the same name.
+Variable names may contain dots and hyphens after their first character.
+Unknown placeholders remain literal and produce load-time warnings; query
+parameters supplied only at request time can resolve those warnings at runtime.
+Inside JSON strings, inserted values are JSON-escaped. Outside strings, values
+are inserted literally, so numeric and boolean placeholders retain their types.
+Response headers containing invalid characters after expansion return an error.
 
 Useful generated values:
 
@@ -336,15 +355,27 @@ The UI is mounted under `-l` (default `/mock/`):
 | `/mock/clear` | `POST` clears stored events and rotation counters. Requires `X-Requested-With` or JSON `Content-Type` |
 | `/mock/routes` | `GET` JSON list of currently configured routes |
 
-**Path conflicts:** mock routes are registered on `/`. If a mock defines
-`GET /mock/...`, it can shadow or confuse UI paths. Prefer keeping API routes
-outside the UI mount, or change `-l`.
+**Path conflicts:** the admin mount is reserved and takes precedence over mock
+routes beneath it. Keep API routes outside that mount, or change `-l`.
 
 UI features: theme toggle, filter, pause stream, clear (server + client), HAR
 export, a Help dialog, and a routes panel that refreshes after hot-reload.
-Pause only freezes the live log in the browser; the mock server keeps serving
-traffic. Export HAR downloads the requests currently in the log as a HAR
-(HTTP Archive) JSON file.
+Pause freezes the table while buffering the latest 200 new requests. Resume
+shows that traffic; the status indicates how many older paused requests were
+omitted. The **Clear & reset** button clears server history across connected tabs
+and resets response rotation. Traffic arriving after the clear boundary remains.
+
+SSE cursors include a server session and sequence number. Slow subscribers
+reconnect to replay retained events; a history gap or restart emits a `reset`
+event before replay. Clear emits a `clear` event. History is limited to 200
+events; gaps are reported rather than silently hidden. Event bodies include
+separate byte counts, truncation metadata, and base64 encoding for binary data.
+
+Export HAR downloads captured requests, including their actual HTTP/HTTPS
+scheme, byte sizes and binary response encoding. Capture is limited to 64 KiB
+per body. HAR extension fields mark truncated bodies and binary requests; these
+are diagnostic captures, not complete replay fixtures. Only total server handler
+time is measured, so individual network timing phases remain unknown.
 
 ## CORS And TLS
 
@@ -353,14 +384,20 @@ mock -cors '*' examples/user.http
 mock -cert cert.pem -key key.pem -p 8443 examples/user.http
 ```
 
-`-cors` adds CORS headers to every response, including `Vary: Origin`. Browser
-preflight requests (`OPTIONS` with `Access-Control-Request-Method`) return `204`
-and reflect `Access-Control-Request-Headers`. Other `OPTIONS` requests run the
-mock route. `-cors '*'` lets any origin read the admin UI event stream (SSE).
+`-cors` adds CORS headers to mock responses (or static-directory responses),
+including `Vary: Origin`. Browser preflights (`OPTIONS` with
+`Access-Control-Request-Method`) return `204` and reflect requested headers.
+Other `OPTIONS` requests run the mock route. Admin endpoints are excluded from
+CORS, including when `-cors '*'` is used. Cross-origin clear requests are rejected.
 
 With `-cert`/`-key`, the startup banner prints `https://` for the admin UI.
 Binding to all interfaces (`-b 0.0.0.0`) prints a warning: the admin UI is
 unauthenticated and request logs may include `Authorization` headers and bodies.
+
+Normal HTTP writes have a 30-second budget beginning after any configured
+response delay. SSE writes have a renewable 10-second deadline and idle streams
+send heartbeats. Shutdown stops accepting connections and allows 400 ms for
+active requests before closing remaining connections.
 
 ## Development
 
@@ -376,8 +413,11 @@ This repository is intentionally small:
 Before sending a change around:
 
 ```sh
-make all
+make verify
 ```
+
+`make fmt` formats Go files explicitly; verification never rewrites them.
+`make all` also installs the binary. Dashboard tests require Node.js 22+.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and pull-request notes. Release
 history is in [CHANGELOG.md](CHANGELOG.md).
