@@ -586,12 +586,12 @@ function renderInspector() {
     }
 }
 
-async function copyText(text, description) {
+async function copyText(text) {
     const generation = copyGeneration;
     try {
         if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable; select the content and copy it manually.');
         await navigator.clipboard.writeText(text);
-        if (generation === copyGeneration) copyNotice.textContent = `${description} copied.`;
+        if (generation === copyGeneration) copyNotice.textContent = '';
     } catch (error) {
         if (generation === copyGeneration) copyNotice.textContent = error.message || 'Copy failed. Select and copy the content manually.';
     }
@@ -605,11 +605,11 @@ for (const kind of ['request', 'response']) {
     }
     document.getElementById(`copy${kind === 'request' ? 'Request' : 'Response'}Body`).addEventListener('click', () => {
         const body = eventsById.get(selectedId)?.[kind]?.body;
-        if (body) copyText(body.text, body.truncated ? 'Captured portion of body' : body.encoding ? 'Base64 body' : 'Body');
+        if (body) copyText(body.text);
     });
 }
 copyCurlButton.addEventListener('click', () => {
-    try { copyText(buildCurl(eventsById.get(selectedId)?.request), 'cURL command'); }
+    try { copyText(buildCurl(eventsById.get(selectedId)?.request)); }
     catch (error) { copyNotice.textContent = error.message; }
 });
 
