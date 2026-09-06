@@ -1,5 +1,16 @@
 # Improvement Recommendations
 
+## Inspector enhancements (`astra`)
+
+Implemented the requested UI follow-up: three remembered resizable dividers,
+Pretty/Raw views, copy body/base64 and cURL, clickable route configuration,
+matched source and sequence metadata, nearest-route mismatch explanations,
+active revision/reload errors, independent Clear log and Reset responses, and
+mobile list/detail navigation. Go tests cover matching metadata, reload state,
+and clear/reset isolation; JavaScript tests cover formatting, safe copying,
+interaction wiring, and pointer/keyboard splitter behavior. Live browser visual
+verification remains unavailable in this workspace.
+
 ## September 2026 audit follow-up (`astra`)
 
 The July checklist below records historical implementation, not proof that every
@@ -17,7 +28,8 @@ edge case was covered. The follow-up audit found and corrected these gaps:
 | HTTP/admin | Separate mock CORS from admin access, reject cross-origin clear, validate mount/port configuration, and bound normal response writes without consuming configured delays. |
 | Engineering | Non-mutating format checks, dependency scanning, dashboard tests, and release verification. |
 
-New product capabilities are deferred. Existing dialect constraints and capture
+The inspector enhancements above were subsequently authorized and implemented;
+other product capabilities remain deferred. Existing dialect constraints and capture
 limits are documented in README.md. No claim of full REST Client compatibility
 or lossless capture beyond the bounded history/body limits is made.
 

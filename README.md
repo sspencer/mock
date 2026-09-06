@@ -78,7 +78,7 @@ the console. Rerun it whenever you need more traffic.
 
 ![Web Interface](./docs/web.png)
 
-*Screenshot from v0.1.2; current controls use “Routes” and “Clear & reset”.*
+*Screenshot from v0.1.2; the current inspector adds resize dividers, route details, and separate clear/reset controls.*
 
 You can also pipe a request file through stdin:
 
@@ -355,7 +355,7 @@ Content-Type: application/json
 ```
 
 Repeated `POST /users` requests return `201`, then `400`, then `201` again.
-Clearing the request log from the UI also resets rotation counters.
+Use **Reset responses** to restart rotation counters. **Clear log** only removes traffic.
 
 ## Admin UI And API
 
@@ -365,22 +365,53 @@ The UI is mounted under `-l` (default `/mock/`):
 |------|---------|
 | `/mock/` | Request log UI |
 | `/mock/events` | Server-sent events stream (with event `id` / `Last-Event-ID`) |
-| `/mock/clear` | `POST` clears stored events and rotation counters. Requires `X-Requested-With` or JSON `Content-Type` |
-| `/mock/routes` | `GET` JSON list of currently configured routes |
+| `/mock/clear` | `POST` clears stored events without changing rotation counters |
+| `/mock/reset` | `POST` resets response sequences without clearing traffic |
+| `/mock/state` | `GET` active revision, route count, last successful reload, and reload error |
+| `/mock/routes` | `GET` route configuration, including source location, match headers, status, delay, and body preview |
 
 **Path conflicts:** the admin mount is reserved and takes precedence over mock
 routes beneath it. Keep API routes outside that mount, or change `-l`.
 
-UI features: theme toggle, filter, pause stream, clear (server + client), HAR
-export, a Help dialog, and a routes panel that refreshes after hot-reload.
+UI features: theme toggle, filter, pause stream, independent clear/reset controls,
+HAR export, a Help dialog, and a routes panel that refreshes after hot-reload.
+Both administrative POST endpoints require `X-Requested-With` or JSON
+`Content-Type` (or a same-origin browser request), and reject cross-origin requests.
+
+### Resizing and mobile navigation
+
+Drag the vertical divider to enlarge the traffic list or inspector. Horizontal
+dividers resize traffic versus routes and request versus response. Divider sizes
+are remembered locally. Keyboard users can focus a divider and use arrow keys,
+Shift+arrow for larger steps, or Home/End. Double-click restores the default.
+On narrow screens, selecting traffic or a route opens the inspector; use
+**Back to traffic & routes** to return to the list.
+
+### Inspecting requests and routes
+
+- **Pretty / Raw** formats valid, complete JSON or shows the original captured
+  content. Headers remain visible, and binary/truncated bodies are labeled.
+- **Copy body** copies original captured text; binary captures offer **Copy base64**.
+- **Copy cURL** produces a shell-quoted command including captured headers and
+  complete text bodies. Incomplete or binary request bodies show an explanation
+  instead of producing a misleading replay command. Copied credentials are included.
+- Matched requests show the fixture name, source file/line, configuration revision,
+  selected response position, and elapsed time. Unmatched requests show up to five
+  nearby routes with method, path, query, and header mismatch explanations.
+- Select a configured route to inspect its match requirements, response headers,
+  variables, status, delay, and body template or file reference. File contents
+  are not loaded into the route preview; large inline previews are truncated.
+- The configuration banner shows the active revision and last successful reload.
+  Failed reloads retain active routes and expose the source error in the banner.
 Pause freezes the table while buffering the latest 200 new requests. Resume
 shows that traffic; the status indicates how many older paused requests were
-omitted. The **Clear & reset** button clears server history across connected tabs
-and resets response rotation. Traffic arriving after the clear boundary remains.
+omitted. The **Clear log** button clears server history across connected tabs
+without changing response rotation. Traffic arriving after the clear boundary remains.
 
 SSE cursors include a server session and sequence number. Slow subscribers
 reconnect to replay retained events; a history gap or restart emits a `reset`
-event before replay. Clear emits a `clear` event. History is limited to 200
+event before replay. Clear emits a `clear` event. Request events include the selected route,
+sequence position, and configuration revision (or mismatch candidates). History is limited to 200
 events; gaps are reported rather than silently hidden. Event bodies include
 separate byte counts, truncation metadata, and base64 encoding for binary data.
 

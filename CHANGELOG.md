@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add draggable, keyboard-accessible panel dividers with remembered sizes.
+- Add Pretty/Raw views, body and cURL copy actions, clickable route configuration,
+  matched fixture/sequence metadata, mismatch explanations, and mobile navigation.
+- Show active configuration revisions and reload errors in the dashboard.
+- Separate clearing traffic from resetting fixture sequences (`POST /mock/reset`).
+
 - Correct encoded path matching, isolate header-based response sequences, and own route snapshots.
 - Reject malformed query/header constraints and invalid response directives at load time.
 - Preserve unresolved placeholders, escape JSON string interpolation, and contain response-file reads.
