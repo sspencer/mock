@@ -78,7 +78,7 @@ the console. Rerun it whenever you need more traffic.
 
 ![Web Interface](./docs/web.png)
 
-*Screenshot from v0.1.2; the current inspector adds resize dividers, route details, and separate clear/reset controls.*
+*Dark-mode request console populated with `examples/send-requests.sh`, showing a successful POST request and its response.*
 
 You can also pipe a request file through stdin:
 
