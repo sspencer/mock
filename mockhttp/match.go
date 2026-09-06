@@ -15,9 +15,9 @@ type routeMatch struct {
 }
 
 func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]string, bool) {
-	// Snapshot the methods slice under the lock so hot-reload via SetMethods
-	// cannot race with matching. Pointers into the snapshot remain valid for
-	// this request even after a later SetMethods replaces s.methods.
+	// Keep matching and rotation selection in one configuration revision.
+	// The immutable selected method remains valid after SetMethods replaces
+	// the route slice, and old requests cannot advance a new revision's counters.
 	s.mu.Lock()
 	methods := s.methods
 	defer s.mu.Unlock()
