@@ -11,8 +11,6 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
-
-	"github.com/sspencer/mock/restclient"
 )
 
 const maxRequestEvents = 1000
@@ -171,8 +169,7 @@ func clearRequestAllowed(r *http.Request) bool {
 		return true
 	}
 	ct, _, _ := strings.Cut(r.Header.Get("Content-Type"), ";")
-	return strings.EqualFold(strings.TrimSpace(ct), "application/json") || site == "same-origin" || origin != ""
-
+	return strings.EqualFold(strings.TrimSpace(ct), "application/json")
 }
 
 // ServeRoutes handles GET of the currently configured mock routes.
@@ -287,15 +284,6 @@ func parseLastEventID(r *http.Request) uint64 {
 		return 0
 	}
 	return id
-}
-
-// RoutesFromMethods is a helper for tests and CLI summaries.
-func RoutesFromMethods(methods []restclient.Method) []RouteInfo {
-	routes := make([]RouteInfo, 0, len(methods))
-	for i, method := range methods {
-		routes = append(routes, describeRoute(method, i, 0))
-	}
-	return routes
 }
 
 // EventBody retains byte counts and binary data separately from display markers.

@@ -3,7 +3,6 @@ package mockhttp
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"math/rand/v2"
 	"mime"
 	"net/http"
@@ -28,22 +27,6 @@ var fakerPool = sync.Pool{
 	},
 }
 
-func statusFromVariables(logger *slog.Logger, variables map[string]string) int {
-	raw, ok := variables["status"]
-	if !ok {
-		return http.StatusOK
-	}
-	status, err := parseStatusCode(raw)
-	if err != nil {
-		if logger == nil {
-			logger = slog.Default()
-		}
-		logger.Warn("ignoring invalid $status", "status", raw, "error", err)
-		return http.StatusOK
-	}
-	return status
-}
-
 func parseStatusCode(raw string) (int, error) {
 	status, err := strconv.Atoi(raw)
 	if err != nil {
@@ -56,7 +39,7 @@ func parseStatusCode(raw string) (int, error) {
 }
 
 func statusAllowsBody(status int) bool {
-	return status != http.StatusNoContent && status != http.StatusNotModified && (status < 200 || status >= 200)
+	return status != http.StatusNoContent && status != http.StatusNotModified
 }
 
 func responseHeaders(method restclient.Method, values map[string]string, filePath string) http.Header {

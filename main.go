@@ -141,7 +141,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 			ready := make(chan struct{})
 			reload := func() {
 				<-ready
-				reloadMockFiles(mockServer, files, "", logger, stdout, stderr)
+				reloadMockFiles(mockServer, files, logger, stdout, stderr)
 				if err := watcher.Reconcile(resolveWatchPaths(files, mockServer.Methods())); err != nil {
 					logger.Error("failed to update dependency watches", "error", err)
 				}
@@ -249,7 +249,7 @@ type inputSource struct {
 	WatchFiles []string
 }
 
-func loadInput(args []string, stdin io.Reader, _ ...string) (inputSource, error) {
+func loadInput(args []string, stdin io.Reader) (inputSource, error) {
 	if len(args) == 1 {
 		info, err := os.Stat(args[0])
 		if err != nil {
@@ -369,7 +369,7 @@ func withCORS(next http.Handler, origin string, adminMount ...string) http.Handl
 	})
 }
 
-func reloadMockFiles(mockServer *mockhttp.Server, files []string, _ string, logger *slog.Logger, out, errOut io.Writer) {
+func reloadMockFiles(mockServer *mockhttp.Server, files []string, logger *slog.Logger, out, errOut io.Writer) {
 	mockServer.BeginReload()
 	load := func() ([]restclient.Method, error) {
 		if len(files) == 0 {

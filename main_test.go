@@ -68,7 +68,7 @@ created
 
 func TestLoadInputUsesSingleDirectoryAsStaticRoot(t *testing.T) {
 	dir := t.TempDir()
-	input, err := loadInput([]string{dir}, strings.NewReader(""), "")
+	input, err := loadInput([]string{dir}, strings.NewReader(""))
 	if err != nil {
 		t.Fatalf("loadInput() error = %v", err)
 	}
@@ -87,7 +87,7 @@ func TestLoadInputRejectsDirectoryMixedWithRequestFiles(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	_, err := loadInput([]string{dir, path}, strings.NewReader(""), "")
+	_, err := loadInput([]string{dir, path}, strings.NewReader(""))
 	if err == nil {
 		t.Fatal("loadInput() error = nil, want error")
 	}
@@ -530,7 +530,7 @@ ok
 	server := mockhttp.New(nil, logger)
 
 	var output bytes.Buffer
-	reloadMockFiles(server, []string{path}, "", logger, &output, io.Discard)
+	reloadMockFiles(server, []string{path}, logger, &output, io.Discard)
 
 	response := httptest.NewRecorder()
 	server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/users", nil))
@@ -569,7 +569,7 @@ ok
 
 	var output bytes.Buffer
 	var errOut bytes.Buffer
-	reloadMockFiles(server, []string{path}, "", logger, &output, &errOut)
+	reloadMockFiles(server, []string{path}, logger, &output, &errOut)
 	if output.Len() != 0 {
 		t.Fatalf("output = %q, want empty on failed reload", output.String())
 	}
@@ -704,7 +704,7 @@ func TestEndToEndReloadServesNewRoutes(t *testing.T) {
 
 	changed := make(chan struct{}, 1)
 	closer, err := watchFiles([]string{path}, func() {
-		reloadMockFiles(server, []string{path}, "", logger, io.Discard, io.Discard)
+		reloadMockFiles(server, []string{path}, logger, io.Discard, io.Discard)
 		select {
 		case changed <- struct{}{}:
 		default:

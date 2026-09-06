@@ -39,6 +39,12 @@ func TestClearRejectsCrossOriginEvenWithCustomHeader(t *testing.T) {
 	if !clearRequestAllowed(r) {
 		t.Fatal("same-origin clear rejected")
 	}
+	form := httptest.NewRequest("POST", "http://localhost/clear", nil)
+	form.Header.Set("Origin", "http://localhost")
+	form.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if clearRequestAllowed(form) {
+		t.Fatal("same-origin form POST accepted without X-Requested-With or JSON")
+	}
 }
 func TestClearWhileSubscriberReads(t *testing.T) {
 	s := New(nil, nil)

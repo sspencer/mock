@@ -145,6 +145,9 @@ func TestPublishRequestBoundsStoredEventsAndDropsFullSubscribers(t *testing.T) {
 	if server.events[0].ID == 0 {
 		t.Fatal("stored event missing id")
 	}
+	if _, ok := server.subscribers[subscriber]; ok {
+		t.Fatal("overflow left subscriber registered")
+	}
 }
 
 func TestSubscribeReturnsSnapshotAndUnsubscribeRemovesSubscriber(t *testing.T) {
