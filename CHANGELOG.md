@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.4 - 2026-09-06
+
+Audit cleanup after v0.1.3: tighter admin CSRF checks and small correctness/housekeeping fixes.
+
+- Tighten CSRF checks on admin clear/reset (`POST /mock/clear`, `POST /mock/reset`)
+- Fix a tautological `statusAllowsBody` check
+- Remove dead helpers / leftover scaffolding and the unused `astra` CI branch reference
+
 ## v0.1.3 - 2026-09-06
 
 Expanded request inspection, more reliable traffic capture and reloads, and
