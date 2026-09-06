@@ -63,6 +63,19 @@ The responsive UI shows each request and response with raw HTTP-style details,
 a collapsible live-routes panel, filter/pause/clear controls, HAR export, light
 and dark themes, and a Help dialog that explains those controls.
 
+To populate the console during UI development, start the server with
+`examples/user.http`, then run this Bash/curl script in another terminal:
+
+```sh
+./examples/send-requests.sh          # MOCK_PORT, or 8080 if unset
+./examples/send-requests.sh -p 9000  # overrides MOCK_PORT
+```
+
+It sends 15 requests across the example routes, including JSON request bodies,
+the rotating `201`/`400` responses, a `204` deletion, and the delayed response.
+It prints status/timing summaries and leaves response bodies for inspection in
+the console. Rerun it whenever you need more traffic.
+
 ![Web Interface](./docs/web.png)
 
 *Screenshot from v0.1.2; current controls use “Routes” and “Clear & reset”.*
