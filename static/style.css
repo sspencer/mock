@@ -1231,7 +1231,6 @@ tbody tr.selected:focus-visible {
 .route-button { display: flex; align-items: center; gap: 7px; width: 100%; min-width: 0; padding: 8px 12px; border: 0; background: transparent; color: var(--ink); cursor: pointer; text-align: left; font: inherit; }
 .route-button:hover, .route-button[aria-pressed="true"] { background: var(--jade-soft); }
 .route-button:focus-visible { outline: 2px solid var(--jade); outline-offset: -2px; }
-.request-duration { display: block; font-size: 0.65rem; color: var(--muted); line-height: 1.4; }
 .mobile-back { display: none; }
 
 @media (max-width: 900px) {

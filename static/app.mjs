@@ -500,10 +500,6 @@ function renderTable() {
         urlSpan.title = http.request.url;
         row.title = `${http.request.method} ${http.request.url} · ${http.response.time}`;
         c2.appendChild(urlSpan);
-        const duration = document.createElement('span');
-        duration.className = 'request-duration';
-        duration.textContent = http.response.time || '';
-        c2.appendChild(duration);
     }
 
     const focusTarget = syncRowTabindex();
