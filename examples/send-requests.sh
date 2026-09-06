@@ -98,10 +98,16 @@ request POST /users --header 'Content-Type: application/json' --data '{
   "roles": ["viewer"],
   "profile": {"city": "Portland", "notifications": false}
 }'
+request PUT /users --header 'Content-Type: application/json' --data '{
+  "name": "Alex Morgan",
+  "email": "alex@example.test",
+  "roles": ["editor", "reviewer"],
+  "profile": {"city": "Seattle", "notifications": true}
+}'
 request GET '/names?type=cat'
 request GET '/names?type=dog'
 request DELETE /users/7
 request GET /chords
 request GET /chords2
-request GET /delay
+#request GET /delay
 printf '\nDone. Open %s/mock/ to inspect the traffic (or your custom -l UI path).\n' "$base_url"

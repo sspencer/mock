@@ -33,6 +33,18 @@ Content-Type: application/json
     "id":0
 }
 
+### Idempotent user creation
+# $status=200
+PUT /users
+Content-Type: application/json
+
+{
+    "success": true,
+    "id": 1484,
+    "name": "{{$name}}",
+    "event": "{{$uuid}}"
+}
+
 ### Get vars cats
 GET /names?type=cat
 Content-Type: application/json

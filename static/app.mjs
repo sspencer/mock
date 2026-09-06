@@ -528,7 +528,7 @@ backToList.addEventListener('click', () => {
 
 function resetInspector() {
     copyGeneration++;
-    inspectorTitle.textContent = 'Exchange inspector';
+    inspectorTitle.textContent = 'Inspector';
     matchSummary.textContent = 'Select a request or a configured route.';
     copyCurlButton.disabled = true;
     mismatchPanel.hidden = true;
