@@ -92,3 +92,14 @@ func TestReloadStatePreservesActiveRevisionOnFailure(t *testing.T) {
 		t.Fatal("successful reload did not clear error")
 	}
 }
+
+func TestRouteInspectionPreservesEncodedLiteralPaths(t *testing.T) {
+	methods, err := restclient.Parse("fixture.http", strings.NewReader("### literal\nGET /x/a%2Fb/%3Aid\n\nok"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := describeRoute(methods[0], 0, 1)
+	if info.Path != "/x/a%2Fb/%3Aid" {
+		t.Fatalf("inspector changed path semantics: %s", info.Path)
+	}
+}

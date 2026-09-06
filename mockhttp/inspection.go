@@ -65,7 +65,7 @@ func describeRoute(method restclient.Method, index int, revision uint64) RouteIn
 		body = body[:maxLoggedBodyBytes]
 	}
 	return RouteInfo{ID: fmt.Sprintf("%d:%d", revision, index), Revision: revision, Name: method.Name, Method: method.Method,
-		Path: method.Path, Query: method.Query.Encode(), Source: method.Source, Line: method.Line, Status: method.Status,
+		Path: (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath(), Query: method.Query.Encode(), Source: method.Source, Line: method.Line, Status: method.Status,
 		Delay: method.Delay.String(), File: method.Variables["file"], Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
 		Variables: cloneVariables(method.Variables), Body: body, BodyTruncated: truncated}
 }
@@ -122,8 +122,8 @@ func (s *Server) ServeReset(w http.ResponseWriter, r *http.Request) {
 }
 
 func mismatch(method restclient.Method, r *http.Request, actual url.Values, queryErr error, headers http.Header) RouteMismatch {
-	result := RouteMismatch{Name: method.Name, Method: method.Method, Path: method.Path, Source: method.Source, Line: method.Line}
 	pattern := (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath()
+	result := RouteMismatch{Name: method.Name, Method: method.Method, Path: pattern, Source: method.Source, Line: method.Line}
 	if _, ok := matchPath(pattern, r.URL.EscapedPath()); !ok {
 		result.Reasons = append(result.Reasons, fmt.Sprintf("Path %q does not match %q", r.URL.EscapedPath(), pattern))
 		result.score += 10
