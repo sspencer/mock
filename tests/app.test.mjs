@@ -66,12 +66,12 @@ test('restart and clear controls remove stale traffic while preserving newer eve
 test('evicting selected traffic clears its inspector',()=>{
  const row=element('requestTableBody').children[0];row.focus();const key=new Event('keydown',{bubbles:true});Object.defineProperty(key,'target',{value:row});Object.defineProperty(key,'key',{value:'Enter'});element('requestTableBody').dispatchEvent(key);
  assert.equal(element('requestDetails').textContent,'request 1');
- for(let id=2;id<=202;id++)send(id,'two');flush();assert.equal(element('requestDetails').textContent,'');assert.equal(element('requestTableBody').children.length,200);
+ for(let id=2;id<=1002;id++)send(id,'two');flush();assert.equal(element('requestDetails').textContent,'');assert.equal(element('requestTableBody').children.length,1000);
 });
 
 
 test('inspector toggles Pretty/Raw, shows match metadata, and copies original body', async () => {
- const sample=event(203,'two');
+ const sample=event(1003,'two');
  sample.request={...sample.request,scheme:'https',host:'example.test',httpVersion:'HTTP/1.1',headers:{},body:{text:'{"name":"Alex"}',size:15,capturedSize:15,truncated:false}};
  sample.response={...sample.response,httpVersion:'HTTP/1.1',headers:{},body:{text:'{"ok":true}',size:11,capturedSize:11,truncated:false}};
  sample.match={revision:2,position:2,total:3,route:{name:'User detail',source:'users.http',line:12}};
@@ -83,7 +83,7 @@ test('inspector toggles Pretty/Raw, shows match metadata, and copies original bo
  click('requestRaw');assert.ok(element('requestDetails').textContent.endsWith('{"name":"Alex"}'));
  let copied='';Object.defineProperty(globalThis,'navigator',{configurable:true,value:{clipboard:{writeText:async text=>{copied=text;}}}});
  click('copyRequestBody');await Promise.resolve();assert.equal(copied,'{"name":"Alex"}');
- click('copyCurlButton');await Promise.resolve();assert.ok(copied.includes('https://example.test/x/203'));
+ click('copyCurlButton');await Promise.resolve();assert.ok(copied.includes('https://example.test/x/1003'));
  click('backToList');assert.equal(element('workspace').classList.contains('show-inspector'),false);
 });
 

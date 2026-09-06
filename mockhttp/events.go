@@ -15,7 +15,7 @@ import (
 	"github.com/sspencer/mock/restclient"
 )
 
-const maxRequestEvents = 200
+const maxRequestEvents = 1000
 
 type RequestEvent struct {
 	Session  string        `json:"session"`

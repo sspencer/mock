@@ -25,7 +25,7 @@ func TestConcurrentPublicationIsOrdered(t *testing.T) {
 func TestOverflowDisconnectsAndReconnectResetsGap(t *testing.T) {
 	s := New(nil, nil)
 	_, ch := s.subscribe()
-	for range 250 {
+	for range maxRequestEvents + 50 {
 		s.publishRequest(RequestEvent{})
 	}
 	for range ch {
@@ -36,7 +36,7 @@ func TestOverflowDisconnectsAndReconnectResetsGap(t *testing.T) {
 	r.Header.Set("Last-Event-ID", fmt.Sprintf("%s/1", s.session))
 	w := httptest.NewRecorder()
 	s.ServeEvents(w, r)
-	if !strings.Contains(w.Body.String(), "event: reset") || !strings.Contains(w.Body.String(), fmt.Sprintf("%s/250", s.session)) {
+	if !strings.Contains(w.Body.String(), "event: reset") || !strings.Contains(w.Body.String(), fmt.Sprintf("%s/%d", s.session, maxRequestEvents+50)) {
 		t.Fatal("missing reset or replay")
 	}
 }

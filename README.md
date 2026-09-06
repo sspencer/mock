@@ -403,7 +403,7 @@ On narrow screens, selecting traffic or a route opens the inspector; use
   are not loaded into the route preview; large inline previews are truncated.
 - Failed reloads retain active routes and show an error banner. The banner is
   hidden during normal operation to leave more room for traffic and details.
-Pause freezes the table while buffering the latest 200 new requests. Resume
+Pause freezes the table while buffering the latest 1,000 new requests. Resume
 shows that traffic; the status indicates how many older paused requests were
 omitted. The **Clear log** button clears server history across connected tabs
 without changing response rotation. Traffic arriving after the clear boundary remains.
@@ -411,7 +411,7 @@ without changing response rotation. Traffic arriving after the clear boundary re
 SSE cursors include a server session and sequence number. Slow subscribers
 reconnect to replay retained events; a history gap or restart emits a `reset`
 event before replay. Clear emits a `clear` event. Request events include the selected route,
-sequence position, and configuration revision (or mismatch candidates). History is limited to 200
+sequence position, and configuration revision (or mismatch candidates). History is limited to 1,000
 events; gaps are reported rather than silently hidden. Event bodies include
 separate byte counts, truncation metadata, and base64 encoding for binary data.
 

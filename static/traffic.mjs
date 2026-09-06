@@ -1,6 +1,6 @@
 // Bounded pending traffic keeps Pause a display control, not a capture switch.
 export class PendingTraffic {
-    constructor(limit = 200) { this.limit = limit; this.events = new Map(); this.dropped = 0; }
+    constructor(limit = 1000) { this.limit = limit; this.events = new Map(); this.dropped = 0; }
     add(event) {
         this.events.set(event.id, event);
         while (this.events.size > this.limit) {

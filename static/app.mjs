@@ -3,7 +3,7 @@ import { attachSplitter } from './layout.mjs';
 import { buildHAR } from './har.mjs';
 import { PendingTraffic, streamLabel } from './traffic.mjs';
 
-const MAX_EVENTS = 200;
+const MAX_EVENTS = 1000;
 const MOCK_CONFIG = JSON.parse(document.getElementById("mock-config").textContent);
 const themeToggle = document.getElementById('themeToggle');
 const themeToggleLabel = document.getElementById('themeToggleLabel');
