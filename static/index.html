@@ -37,8 +37,7 @@
         </div>
     </header>
 
-    <section class="config-banner" aria-label="Configuration status">
-        <p id="configSummary" role="status">Loading configuration…</p>
+    <section id="configBanner" class="config-banner" aria-label="Configuration errors" hidden>
         <details id="reloadErrorPanel" hidden><summary>Reload failed — active routes retained</summary><pre id="reloadError"></pre></details>
     </section>
     <section id="workspace" class="workspace" aria-label="Request log workspace">
@@ -186,7 +185,7 @@
             <div><dt>Resize panels</dt><dd>Drag a divider to resize adjacent panels. Focus a divider and use arrow keys (Shift for larger steps), Home or End. Double-click restores its default size. Sizes are remembered.</dd></div>
             <div><dt>Inspect &amp; copy</dt><dd>Pretty formats valid JSON; Raw preserves captured content. Copy body copies the captured text (or base64 for binary data). Copy cURL creates a shell-quoted command for complete text requests. Captured credentials are included.</dd></div>
             <div><dt>Route diagnostics</dt><dd>Select a route to inspect its requirements and response template. Request details identify the selected fixture and sequence position. Unmatched requests list nearby routes and failed constraints.</dd></div>
-            <div><dt>Reload status</dt><dd>The banner shows the active configuration revision and last successful load. Failed reloads retain active routes and show the error. On narrow screens, use Back to traffic &amp; routes to return from the inspector.</dd></div>
+            <div><dt>Reload status</dt><dd>Failed reloads retain active routes and show an error banner only when needed. On narrow screens, use Back to traffic &amp; routes to return from the inspector.</dd></div>
         </dl>
     </div>
     <div class="help-dialog-footer">

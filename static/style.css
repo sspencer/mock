@@ -1183,7 +1183,7 @@ tbody tr.selected:focus-visible {
 
 /* Inspector workspace: percentages are persisted by the accessible splitters. */
 [hidden] { display: none !important; }
-.app-shell { grid-template-rows: auto auto minmax(0, 1fr); }
+.app-shell:has(.config-banner:not([hidden])) { grid-template-rows: auto auto minmax(0, 1fr); }
 .config-banner { min-width: 0; padding: 0 6px; color: var(--muted); font-size: 0.78rem; }
 .config-banner p { margin: 0; }
 .config-banner details { margin-top: 6px; color: var(--copper); }

@@ -41,7 +41,7 @@ const mismatchPanel = document.getElementById('mismatchPanel');
 const mismatchDetails = document.getElementById('mismatchDetails');
 const backToList = document.getElementById('backToList');
 const resetResponsesButton = document.getElementById('resetResponsesButton');
-const configSummary = document.getElementById('configSummary');
+const configBanner = document.getElementById('configBanner');
 const reloadErrorPanel = document.getElementById('reloadErrorPanel');
 const reloadError = document.getElementById('reloadError');
 const pretty = { request: true, response: true };
@@ -717,11 +717,11 @@ async function loadState() {
         const response = await fetch('state', { signal: AbortSignal.timeout(5000) });
         if (!response.ok) throw new Error(`status ${response.status}`);
         const state = await response.json();
-        configSummary.textContent = `Revision ${state.revision} · ${state.routeCount} routes · last loaded ${new Date(state.lastSuccess).toLocaleString()}${state.loading ? ' · Reloading…' : ''}`;
+        configBanner.hidden = !state.error;
         reloadErrorPanel.hidden = !state.error;
         reloadError.textContent = state.error || '';
         if (state.error) reloadErrorPanel.open = true;
     } catch (error) {
-        configSummary.textContent = `Configuration status unavailable: ${error.message}`;
+        console.error('Failed to load configuration state:', error);
     } finally { loadingState = false; }
 }

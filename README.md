@@ -401,8 +401,8 @@ On narrow screens, selecting traffic or a route opens the inspector; use
 - Select a configured route to inspect its match requirements, response headers,
   variables, status, delay, and body template or file reference. File contents
   are not loaded into the route preview; large inline previews are truncated.
-- The configuration banner shows the active revision and last successful reload.
-  Failed reloads retain active routes and expose the source error in the banner.
+- Failed reloads retain active routes and show an error banner. The banner is
+  hidden during normal operation to leave more room for traffic and details.
 Pause freezes the table while buffering the latest 200 new requests. Resume
 shows that traffic; the status indicates how many older paused requests were
 omitted. The **Clear log** button clears server history across connected tabs
