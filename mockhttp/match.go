@@ -22,20 +22,26 @@ func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]str
 	methods := s.methods
 	defer s.mu.Unlock()
 
+	query, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		return nil, nil, false
+	}
+	requestHeaders := requestEventHeaders(r)
 	var matches []routeMatch
 	for i := range methods {
 		method := &methods[i]
 		if method.Method != r.Method {
 			continue
 		}
-		values, ok := matchPath(method.Path, r.URL.EscapedPath())
-		if !ok || !queryMatches(method.Query, r.URL.Query()) {
+		pattern := (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath()
+		values, ok := matchPath(pattern, r.URL.EscapedPath())
+		if !ok || !queryMatches(method.Query, query) {
 			continue
 		}
-		if !headerMatches(method.MatchHeaders, r.Header) {
+		if !headerMatches(method.MatchHeaders, requestHeaders) {
 			continue
 		}
-		for name, queryValues := range r.URL.Query() {
+		for name, queryValues := range query {
 			if _, exists := values[name]; !exists && len(queryValues) > 0 {
 				values[name] = queryValues[0]
 			}
@@ -93,7 +99,8 @@ func matchPath(pattern string, requestPath string) (map[string]string, bool) {
 			continue
 		}
 		literal, err := url.PathUnescape(requestParts[i])
-		if err != nil || patternParts[i] != literal {
+		expected, patternErr := url.PathUnescape(patternParts[i])
+		if err != nil || patternErr != nil || expected != literal {
 			return nil, false
 		}
 	}

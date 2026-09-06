@@ -23,6 +23,7 @@ type Method struct {
 	Name         string
 	Method       string
 	Path         string
+	EscapedPath  string
 	Query        url.Values
 	Comments     []string
 	Variables    map[string]string
@@ -244,6 +245,7 @@ func parseSection(method Method, lines []string, bodyStartLine, sectionNameLine 
 			method.Name, quoteSnippet(requestLine[1]))
 	}
 	method.Path = target.Path
+	method.EscapedPath = target.EscapedPath()
 	if method.Path == "" {
 		method.Path = "/"
 	}

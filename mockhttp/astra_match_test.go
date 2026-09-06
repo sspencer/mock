@@ -3,6 +3,7 @@ package mockhttp
 import (
 	"github.com/sspencer/mock/restclient"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -41,5 +42,31 @@ func TestEncodedPathAndIndependentRotation(t *testing.T) {
 func FuzzMatchEscapedPath(f *testing.F) {
 	f.Add("a%252Fb")
 	f.Add("100%25")
-	f.Fuzz(func(t *testing.T, value string) { matchPath("/x/:id", "/x/"+value) })
+	f.Fuzz(func(t *testing.T, value string) {
+		if value == "" {
+			return
+		}
+		values, ok := matchPath("/x/:id", "/x/"+url.PathEscape(value))
+		if !ok || values["id"] != value {
+			t.Fatalf("path round-trip failed for %q: %v", value, values)
+		}
+	})
+}
+
+func TestEncodedLiteralRouteAndSpecialHeaders(t *testing.T) {
+	methods, err := restclient.Parse("test.http", strings.NewReader("### literal\n# $header.Host=example.com\nGET /x/a%2Fb/%3Aid\n\nok"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(methods, nil)
+	for _, tc := range []struct {
+		url  string
+		want int
+	}{{"http://example.com/x/a%2Fb/%3Aid", 200}, {"http://example.com/x/a/b/:id", 404}, {"http://other.com/x/a%2Fb/%3Aid", 404}} {
+		w := httptest.NewRecorder()
+		server.ServeHTTP(w, httptest.NewRequest("GET", tc.url, nil))
+		if w.Code != tc.want {
+			t.Errorf("%s: %d", tc.url, w.Code)
+		}
+	}
 }
