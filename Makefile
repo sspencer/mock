@@ -11,9 +11,21 @@ GOBIN := $(shell $(GO) env GOPATH)/bin
 endif
 BINARY := $(GOBIN)/$(APP_NAME)
 
-.PHONY: all build fmt vet update clean mod test docker run lint dockerize
+.PHONY: all build fmt fmt-check vet update clean mod test test-ui verify vulncheck docker run lint dockerize
 
-all: fmt vet test build
+all: verify build
+
+verify: fmt-check vet test test-ui
+
+fmt-check:
+	@files="$$(git ls-files '*.go' | xargs gofmt -l)"; if [ -n "$$files" ]; then printf '%s\n' "$$files"; exit 1; fi
+
+test-ui:
+	node --test tests/*.test.mjs
+
+# Pin the scanner independently of runtime dependencies.
+vulncheck:
+	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 
 # Always rewrite $(BINARY). Make must not skip install when sources look current
 # (embedded static files, go.mod, or an already-installed binary).

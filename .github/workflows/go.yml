@@ -5,9 +5,12 @@ name: Go
 
 on:
   push:
-    branches: ["master"]
+    branches: ["master", "astra"]
   pull_request:
     branches: ["master"]
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -21,8 +24,19 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Set up Node for dashboard tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Verify
-        run: make all
+        run: make verify
+
+      - name: Build
+        run: go build -trimpath -o /tmp/mock .
+
+      - name: Check dependencies
+        run: make vulncheck
 
       - name: Race tests
         run: go test ./... -race -count=1
