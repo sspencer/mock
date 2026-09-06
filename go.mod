@@ -7,4 +7,4 @@ require (
 	github.com/jaswdr/faker v1.19.1
 )
 
-require golang.org/x/sys v0.13.0 // indirect
+require golang.org/x/sys v0.44.0 // indirect
