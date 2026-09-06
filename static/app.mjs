@@ -1,3 +1,5 @@
+import { formatMessage, bodyNotice, buildCurl, formatRoute } from './inspector.mjs';
+import { attachSplitter } from './layout.mjs';
 import { buildHAR } from './har.mjs';
 import { PendingTraffic, streamLabel } from './traffic.mjs';
 
@@ -27,6 +29,25 @@ const requestPanel = document.querySelector('.request-panel');
 const requestCount = document.getElementById('requestCount');
 const routeCount = document.getElementById('routeCount');
 const streamStatus = document.getElementById('streamStatus');
+const workspace = document.getElementById('workspace');
+const inspectorTitle = document.getElementById('inspectorTitle');
+const matchSummary = document.getElementById('matchSummary');
+const exchangeView = document.getElementById('exchangeView');
+const routeView = document.getElementById('routeView');
+const routeDetails = document.getElementById('routeDetails');
+const copyNotice = document.getElementById('copyNotice');
+const copyCurlButton = document.getElementById('copyCurlButton');
+const mismatchPanel = document.getElementById('mismatchPanel');
+const mismatchDetails = document.getElementById('mismatchDetails');
+const backToList = document.getElementById('backToList');
+const resetResponsesButton = document.getElementById('resetResponsesButton');
+const configSummary = document.getElementById('configSummary');
+const reloadErrorPanel = document.getElementById('reloadErrorPanel');
+const reloadError = document.getElementById('reloadError');
+const pretty = { request: true, response: true };
+let selectedRoute = null;
+let returnFocus = null;
+let copyGeneration = 0;
 
 /** @type {Map<number, any>} */
 const eventsById = new Map();
@@ -45,6 +66,13 @@ const preferences = {
     get(key) { try { return localStorage.getItem(key); } catch { return null; } },
     set(key, value) { try { localStorage.setItem(key, value); } catch { /* Storage is optional. */ } },
 };
+attachSplitter(document.getElementById('workspaceSplitter'), workspace,
+    { axis: 'x', property: '--left-width', key: 'leftWidth', initial: 45, min: 25, max: 75 }, preferences);
+attachSplitter(document.getElementById('routesSplitter'), requestPanel,
+    { axis: 'y', property: '--traffic-height', key: 'trafficHeight', initial: 70, min: 30, max: 85 }, preferences);
+attachSplitter(document.getElementById('exchangeSplitter'), exchangeView,
+    { axis: 'y', property: '--request-height', key: 'requestHeight', initial: 50, min: 20, max: 80 }, preferences);
+
 function updateStreamStatus() {
     streamStatus.textContent = streamLabel(connected, paused, pending.events.size, pending.dropped) + streamNotice;
 }
@@ -141,7 +169,7 @@ source.onmessage = function (event) {
         if (data.id > clearedThrough) {
             if (paused) pending.add(data);
             else upsertEvent(data);
-         updateStreamStatus();
+            updateStreamStatus();
         }
     } catch (e) {
         console.error('Error parsing json', e);
@@ -180,8 +208,11 @@ function selectRow(row, http) {
         r.setAttribute('aria-selected', isSelected ? 'true' : 'false');
         r.tabIndex = isSelected ? 0 : -1;
     }
-    updateDetail(requestDetails, http.request.details || '');
-    updateDetail(responseDetails, http.response.details || '');
+    selectedRoute = null;
+    for (const button of routesList.querySelectorAll('button')) button.setAttribute('aria-pressed', 'false');
+    returnFocus = row;
+    showInspector();
+    renderInspector();
 }
 
 function selectRowByOffset(currentRow, index) {
@@ -198,7 +229,7 @@ function selectRowByOffset(currentRow, index) {
         return;
     }
     selectRow(next, http);
-    next.focus();
+    if (!window.matchMedia('(max-width: 900px)').matches) next.focus();
     next.scrollIntoView({ block: 'nearest' });
 }
 
@@ -211,7 +242,7 @@ requestTableBody.addEventListener('click', (e) => {
     const http = eventsById.get(id);
     if (http) {
         selectRow(row, http);
-        row.focus();
+        if (!window.matchMedia('(max-width: 900px)').matches) row.focus();
     }
 });
 
@@ -262,7 +293,7 @@ function showClearError() {
 clearRequestsButton.addEventListener('click', async () => {
     let cursor = 0;
     try {
-        const res = await fetch('clear', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        const res = await fetch('clear', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, signal: AbortSignal.timeout(5000) });
         if (!res.ok) {
             console.error('failed to clear server events', res.status);
             showClearError();
@@ -289,7 +320,7 @@ pauseButton.addEventListener('click', () => {
     pauseButton.setAttribute('aria-pressed', String(paused));
     pauseButton.setAttribute('aria-label', paused ? 'Resume request log' : 'Pause request log');
     updateStreamStatus();
-       document.body.classList.toggle('stream-paused', paused);
+    document.body.classList.toggle('stream-paused', paused);
 });
 
 exportButton.addEventListener('click', () => {
@@ -344,6 +375,7 @@ document.addEventListener('keydown', (event) => {
     }
 });
 
+let loadingState = false;
 let loadingRoutes = false;
 let lastRoutesJSON = null;
 
@@ -354,6 +386,8 @@ routesToggleButton.addEventListener('click', () => {
 loadRoutes();
 // Refresh routes periodically so hot-reload is visible without a full page refresh.
 setInterval(loadRoutes, 3000);
+loadState();
+setInterval(loadState, 2000);
 
 function upsertEvent(http) {
     if (http.id == null) {
@@ -466,6 +500,10 @@ function renderTable() {
         urlSpan.title = http.request.url;
         row.title = `${http.request.method} ${http.request.url} · ${http.response.time}`;
         c2.appendChild(urlSpan);
+        const duration = document.createElement('span');
+        duration.className = 'request-duration';
+        duration.textContent = http.response.time || '';
+        c2.appendChild(duration);
     }
 
     const focusTarget = syncRowTabindex();
@@ -476,7 +514,122 @@ function renderTable() {
 
 function updateDetail(element, newContent) {
     element.textContent = newContent;
+    if (!newContent && selectedId == null && !selectedRoute) resetInspector();
 }
+
+function showInspector() {
+    workspace.classList.add('show-inspector');
+    copyNotice.textContent = '';
+    copyGeneration++;
+    if (window.matchMedia('(max-width: 900px)').matches) inspectorTitle.focus();
+}
+
+backToList.addEventListener('click', () => {
+    workspace.classList.remove('show-inspector');
+    if (returnFocus?.isConnected) returnFocus.focus();
+    else filterInput.focus();
+});
+
+function resetInspector() {
+    copyGeneration++;
+    inspectorTitle.textContent = 'Exchange inspector';
+    matchSummary.textContent = 'Select a request or a configured route.';
+    copyCurlButton.disabled = true;
+    mismatchPanel.hidden = true;
+    copyNotice.textContent = '';
+    for (const kind of ['request', 'response']) {
+        document.getElementById(`${kind}BodyNotice`).textContent = '';
+        document.getElementById(`copy${kind === 'request' ? 'Request' : 'Response'}Body`).disabled = true;
+    }
+}
+
+function renderInspector() {
+    const event = eventsById.get(selectedId);
+    exchangeView.hidden = !!selectedRoute;
+    routeView.hidden = !selectedRoute;
+    if (selectedRoute) {
+        inspectorTitle.textContent = selectedRoute.name || 'Route configuration';
+        matchSummary.textContent = `Configured route · revision ${selectedRoute.revision} · ${selectedRoute.source}:${selectedRoute.line}`;
+        routeDetails.textContent = formatRoute(selectedRoute);
+        mismatchPanel.hidden = true;
+        copyCurlButton.disabled = true;
+        return;
+    }
+    if (!event) { resetInspector(); return; }
+    inspectorTitle.textContent = `${event.request.method} ${event.request.url}`;
+    const match = event.match;
+    const route = match?.route;
+    matchSummary.textContent = route
+        ? `${route.name} · ${route.source}:${route.line} · response ${match.position} of ${match.total} · revision ${match.revision} · ${event.response.time}`
+        : `No matching route · revision ${match?.revision ?? '?'} · ${event.response.time}`;
+    mismatchPanel.hidden = !!route;
+    mismatchDetails.replaceChildren();
+    if (!route) {
+        const candidates = match?.candidates || [];
+        if (!candidates.length) mismatchDetails.textContent = 'No routes are configured for this request.';
+        for (const candidate of candidates) {
+            const heading = document.createElement('p');
+            heading.textContent = `${candidate.method} ${candidate.path} — ${candidate.name} (${candidate.source}:${candidate.line})`;
+            const reasons = document.createElement('ul');
+            for (const reason of candidate.reasons) {
+                const item = document.createElement('li'); item.textContent = reason; reasons.append(item);
+            }
+            mismatchDetails.append(heading, reasons);
+        }
+    }
+    copyCurlButton.disabled = false;
+    for (const kind of ['request', 'response']) {
+        const message = event[kind];
+        document.getElementById(`${kind}Details`).textContent = formatMessage(message, pretty[kind], kind === 'request');
+        document.getElementById(`${kind}BodyNotice`).textContent = bodyNotice(message.body);
+        document.getElementById(`${kind}Pretty`).setAttribute('aria-pressed', String(pretty[kind]));
+        document.getElementById(`${kind}Raw`).setAttribute('aria-pressed', String(!pretty[kind]));
+        const copyButton = document.getElementById(`copy${kind === 'request' ? 'Request' : 'Response'}Body`);
+        copyButton.disabled = !message.body?.capturedSize;
+        copyButton.textContent = message.body?.encoding === 'base64' ? 'Copy base64' : 'Copy body';
+    }
+}
+
+async function copyText(text, description) {
+    const generation = copyGeneration;
+    try {
+        if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable; select the content and copy it manually.');
+        await navigator.clipboard.writeText(text);
+        if (generation === copyGeneration) copyNotice.textContent = `${description} copied.`;
+    } catch (error) {
+        if (generation === copyGeneration) copyNotice.textContent = error.message || 'Copy failed. Select and copy the content manually.';
+    }
+}
+
+for (const kind of ['request', 'response']) {
+    for (const mode of ['Pretty', 'Raw']) {
+        document.getElementById(`${kind}${mode}`).addEventListener('click', () => {
+            pretty[kind] = mode === 'Pretty'; renderInspector();
+        });
+    }
+    document.getElementById(`copy${kind === 'request' ? 'Request' : 'Response'}Body`).addEventListener('click', () => {
+        const body = eventsById.get(selectedId)?.[kind]?.body;
+        if (body) copyText(body.text, body.truncated ? 'Captured portion of body' : body.encoding ? 'Base64 body' : 'Body');
+    });
+}
+copyCurlButton.addEventListener('click', () => {
+    try { copyText(buildCurl(eventsById.get(selectedId)?.request), 'cURL command'); }
+    catch (error) { copyNotice.textContent = error.message; }
+});
+
+resetResponsesButton.addEventListener('click', async () => {
+    resetResponsesButton.disabled = true;
+    hideClearError();
+    try {
+        const response = await fetch('reset', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, signal: AbortSignal.timeout(5000) });
+        if (!response.ok) throw new Error(`Server returned ${response.status}`);
+        clearError.hidden = false;
+        clearError.textContent = 'Response sequences reset. Traffic was kept.';
+    } catch (error) {
+        clearError.hidden = false;
+        clearError.textContent = `Could not reset responses: ${error.message}`;
+    } finally { resetResponsesButton.disabled = false; }
+});
 
 function renderEmptyState(message) {
     requestTableBody.replaceChildren();
@@ -499,6 +652,11 @@ async function loadRoutes() {
         const routesJSON = JSON.stringify(routes);
         if (routesJSON === lastRoutesJSON) return;
         lastRoutesJSON = routesJSON;
+        if (selectedRoute) {
+            const current = routes.find(route => route.id === selectedRoute.id);
+            if (current) { selectedRoute = current; renderInspector(); }
+            else matchSummary.textContent = 'This route belongs to a previous revision. Select a current route to inspect it.';
+        }
         routeCount.textContent = String(routes.length).padStart(2, '0');
         routeCount.setAttribute('aria-label', `${routes.length} configured routes`);
         routesList.replaceChildren();
@@ -525,7 +683,23 @@ async function loadRoutes() {
             if (route.name) {
                 name.title = route.name;
             }
-            li.append(method, path, name);
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'route-button';
+            button.setAttribute('aria-label', `${route.method} ${routePath}: ${route.name}`);
+            button.setAttribute('aria-pressed', String(selectedRoute?.id === route.id));
+            button.append(method, path, name);
+            button.addEventListener('click', () => {
+                selectedId = null;
+                selectedRoute = route;
+                returnFocus = button;
+                for (const item of routesList.querySelectorAll('button')) item.setAttribute('aria-pressed', String(item === button));
+                for (const row of getDataRows()) row.classList.remove('selected');
+                syncRowTabindex();
+                showInspector();
+                renderInspector();
+            });
+            li.append(button);
             routesList.appendChild(li);
         }
     } catch (e) {
@@ -538,4 +712,20 @@ async function loadRoutes() {
         li.textContent = 'Failed to load routes';
         routesList.appendChild(li);
     } finally { loadingRoutes = false; }
+}
+
+async function loadState() {
+    if (loadingState) return;
+    loadingState = true;
+    try {
+        const response = await fetch('state', { signal: AbortSignal.timeout(5000) });
+        if (!response.ok) throw new Error(`status ${response.status}`);
+        const state = await response.json();
+        configSummary.textContent = `Revision ${state.revision} · ${state.routeCount} routes · last loaded ${new Date(state.lastSuccess).toLocaleString()}${state.loading ? ' · Reloading…' : ''}`;
+        reloadErrorPanel.hidden = !state.error;
+        reloadError.textContent = state.error || '';
+        if (state.error) reloadErrorPanel.open = true;
+    } catch (error) {
+        configSummary.textContent = `Configuration status unavailable: ${error.message}`;
+    } finally { loadingState = false; }
 }

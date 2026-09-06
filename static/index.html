@@ -7,7 +7,7 @@
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
     <meta name="theme-color" content="#10271e" />
     <title>Mock Server</title>
-    <link rel="stylesheet" href="style.css?v=20260903-console-revamp" />
+    <link rel="stylesheet" href="style.css?v=20260906-inspector" />
 </head>
 <body>
 <main class="app-shell">
@@ -37,8 +37,12 @@
         </div>
     </header>
 
-    <section class="workspace" aria-label="Request log workspace">
-        <section class="request-panel" aria-label="All requests">
+    <section class="config-banner" aria-label="Configuration status">
+        <p id="configSummary" role="status">Loading configuration…</p>
+        <details id="reloadErrorPanel" hidden><summary>Reload failed — active routes retained</summary><pre id="reloadError"></pre></details>
+    </section>
+    <section id="workspace" class="workspace" aria-label="Request log workspace">
+        <section id="requestPanel" class="request-panel" aria-label="All requests">
             <div class="panel-header">
                 <div class="panel-heading">
                     <div class="panel-title-line">
@@ -52,12 +56,12 @@
                         <input id="filterInput" class="filter-input" type="search" placeholder="Filter traffic" aria-label="Filter requests by method, path, or status" />
                         <span class="key-hint" aria-hidden="true">/</span>
                     </label>
-                    <button id="clearRequestsButton" class="clear-button danger-button" type="button" title="Clear traffic and reset response sequences">Clear &amp; reset</button>
+                    <button id="clearRequestsButton" class="clear-button danger-button" type="button" title="Clear traffic without changing response sequences">Clear log</button>
                 </div>
                 <p id="clearError" class="clear-error" role="alert" hidden></p>
             </div>
 
-            <div class="table-container">
+            <div class="table-container" id="trafficContainer">
                 <table aria-label="Request log">
                     <thead>
                       <tr>
@@ -73,7 +77,8 @@
                     </tbody>
                 </table>
             </div>
-            <section class="routes-panel" aria-label="Configured routes">
+            <div id="routesSplitter" class="splitter horizontal" role="separator" aria-label="Resize traffic and routes panels" aria-orientation="horizontal" aria-controls="trafficContainer routesPanel" tabindex="0"></div>
+            <section id="routesPanel" class="routes-panel" aria-label="Configured routes">
                 <div class="panel-header compact">
                     <div class="panel-heading">
                         <div class="panel-title-line">
@@ -82,6 +87,7 @@
                         </div>
                     </div>
                     <div class="routes-panel-actions">
+                        <button id="resetResponsesButton" class="clear-button" type="button" title="Restart all response sequences without clearing traffic">Reset responses</button>
                         <button id="routesToggleButton" class="clear-button route-toggle-button" type="button" aria-expanded="true" aria-controls="routesList" aria-label="Hide configured routes">
                             <span class="button-icon collapse-icon" aria-hidden="true"></span><span id="routesToggleLabel" class="route-toggle-label">Hide</span>
                         </button>
@@ -94,22 +100,44 @@
             </section>
         </section>
 
-        <section class="side-panel" aria-label="Exchange inspector">
-            <section class="detail-panel" aria-label="Request and response details">
+        <div id="workspaceSplitter" class="splitter vertical" role="separator" aria-label="Resize traffic and inspector panels" aria-orientation="vertical" aria-controls="requestPanel inspectorPanel" tabindex="0"></div>
+        <section id="inspectorPanel" class="side-panel" aria-label="Inspector">
+            <header class="inspector-header">
+                <button id="backToList" class="clear-button mobile-back" type="button">← Back to traffic &amp; routes</button>
+                <div class="inspector-heading"><h2 id="inspectorTitle" tabindex="-1">Exchange inspector</h2><button id="copyCurlButton" class="clear-button" type="button" disabled>Copy cURL</button></div>
+                <p id="matchSummary" class="match-summary">Select a request or a configured route.</p>
+                <p id="copyNotice" class="copy-notice" role="status"></p>
+                <details id="mismatchPanel" hidden><summary>Why didn’t this request match?</summary><div id="mismatchDetails"></div></details>
+            </header>
+            <section id="exchangeView" class="detail-panel" aria-label="Request and response details">
                 <div class="detail-section">
                     <div class="detail-label">
                         <h2>Request</h2>
-                        <span class="direction-tag">IN</span>
+                        <div class="detail-actions" role="group" aria-label="Request display">
+                            <button id="requestPretty" class="clear-button" type="button" aria-pressed="true">Pretty</button>
+                            <button id="requestRaw" class="clear-button" type="button" aria-pressed="false">Raw</button>
+                            <button id="copyRequestBody" class="clear-button" type="button" disabled>Copy body</button>
+                        </div>
                     </div>
-                    <div id="requestDetails" class="detail-content"></div>
+                    <p id="requestBodyNotice" class="body-notice"></p>
+                    <pre id="requestDetails" class="detail-content" tabindex="0" aria-label="Request content"></pre>
                 </div>
+                <div id="exchangeSplitter" class="splitter horizontal" role="separator" aria-label="Resize request and response panels" aria-orientation="horizontal" aria-controls="requestDetails responseDetails" tabindex="0"></div>
                 <div class="detail-section">
                     <div class="detail-label">
                         <h2>Response</h2>
-                        <span class="direction-tag response-tag">OUT</span>
+                        <div class="detail-actions" role="group" aria-label="Response display">
+                            <button id="responsePretty" class="clear-button" type="button" aria-pressed="true">Pretty</button>
+                            <button id="responseRaw" class="clear-button" type="button" aria-pressed="false">Raw</button>
+                            <button id="copyResponseBody" class="clear-button" type="button" disabled>Copy body</button>
+                        </div>
                     </div>
-                    <div id="responseDetails" class="detail-content"></div>
+                    <p id="responseBodyNotice" class="body-notice"></p>
+                    <pre id="responseDetails" class="detail-content" tabindex="0" aria-label="Response content"></pre>
                 </div>
+            </section>
+            <section id="routeView" class="route-inspector" aria-label="Route configuration" hidden>
+                <pre id="routeDetails" class="detail-content" tabindex="0" aria-label="Route configuration content"></pre>
             </section>
         </section>
     </section>
@@ -144,8 +172,8 @@
                 <dd>Arrow keys move through the traffic log and load Request/Response details. Home and End jump to the first or last visible row. / focuses the filter.</dd>
             </div>
             <div>
-                <dt>Clear &amp; reset</dt>
-                <dd>Removes all logged requests from the page and the server. This also resets rotation counters used by repeating mock responses.</dd>
+                <dt>Clear log / Reset responses</dt>
+                <dd>Clear log removes traffic across connected tabs without changing response sequences. Reset responses restarts sequences without deleting traffic.</dd>
             </div>
             <div>
                 <dt>Refresh</dt>
@@ -155,6 +183,10 @@
                 <dt>Hide / Show routes</dt>
                 <dd>Collapses the routes list to give the request log more vertical space. The choice is remembered in this browser.</dd>
             </div>
+            <div><dt>Resize panels</dt><dd>Drag a divider to resize adjacent panels. Focus a divider and use arrow keys (Shift for larger steps), Home or End. Double-click restores its default size. Sizes are remembered.</dd></div>
+            <div><dt>Inspect &amp; copy</dt><dd>Pretty formats valid JSON; Raw preserves captured content. Copy body copies the captured text (or base64 for binary data). Copy cURL creates a shell-quoted command for complete text requests. Captured credentials are included.</dd></div>
+            <div><dt>Route diagnostics</dt><dd>Select a route to inspect its requirements and response template. Request details identify the selected fixture and sequence position. Unmatched requests list nearby routes and failed constraints.</dd></div>
+            <div><dt>Reload status</dt><dd>The banner shows the active configuration revision and last successful load. Failed reloads retain active routes and show the error. On narrow screens, use Back to traffic &amp; routes to return from the inspector.</dd></div>
         </dl>
     </div>
     <div class="help-dialog-footer">

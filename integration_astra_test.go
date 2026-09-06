@@ -72,7 +72,7 @@ func TestTLSCaptureAndEmbeddedDashboardIntegration(t *testing.T) {
 	if event.Response.Headers.Get("Date") != res.Header.Get("Date") || event.Response.Headers.Get("Content-Length") != res.Header.Get("Content-Length") || len(event.Response.Headers.Values("Set-Cookie")) != 2 {
 		t.Fatalf("capture differs from wire headers: %v vs %v", event.Response.Headers, res.Header)
 	}
-	for _, path := range []string{"/mock/", "/mock/app.mjs", "/mock/har.mjs", "/mock/traffic.mjs"} {
+	for _, path := range []string{"/mock/", "/mock/app.mjs", "/mock/har.mjs", "/mock/traffic.mjs", "/mock/inspector.mjs", "/mock/layout.mjs"} {
 		page, err := client.Get(server.URL + path)
 		if err != nil {
 			t.Fatal(err)

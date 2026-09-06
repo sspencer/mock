@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/sspencer/mock/restclient"
@@ -149,7 +148,11 @@ func mismatch(method restclient.Method, r *http.Request, actual url.Values, quer
 	for _, key := range sortedKeys(method.MatchHeaders) {
 		if !headerMatches(http.Header{key: method.MatchHeaders[key]}, headers) {
 			// Do not repeat credential values in diagnostic summaries.
-			result.Reasons = append(result.Reasons, fmt.Sprintf("Header %s: required value %s", key, map[bool]string{true: "does not match", false: "is missing"}[len(headers.Values(key)) > 0]))
+			reason := "is missing"
+			if len(headers.Values(key)) > 0 {
+				reason = "does not match"
+			}
+			result.Reasons = append(result.Reasons, fmt.Sprintf("Header %s: required value %s", key, reason))
 			result.score++
 		}
 	}
@@ -183,7 +186,7 @@ func closestRoutes(methods []restclient.Method, r *http.Request) []RouteMismatch
 	}
 	for i := range candidates {
 		if len(candidates[i].Reasons) == 0 {
-			candidates[i].Reasons = []string{strings.TrimSpace("No matching response available")}
+			candidates[i].Reasons = []string{"No matching response available"}
 		}
 	}
 	return candidates
