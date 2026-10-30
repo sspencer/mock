@@ -6,21 +6,25 @@ separately below so they do not remain in the backlog.
 
 ## Suggested order
 
-1. **Close small test gaps.** The load-time warning for bad placeholder
-   arguments (`warnUnknownPlaceholders`) is only covered by `mock validate` and
-   manual checks; add a direct test.
+1. **Close small test gaps.** `warnUnknownPlaceholders` (unresolved
+   placeholders and invalid generator arguments) has no direct test in
+   `mockhttp`; the bad-argument warning is only exercised through the
+   `mock validate` tests. Add direct tests there.
 2. **Richer matching.** The most common reason to outgrow the tool today.
 3. **Seeded generated data.**
 4. **Named scenarios.**
+5. **Aggregate validation diagnostics.** `mock validate` stops at the first load
+   error.
 
 ## Deferred ideas
 
 - **Broader REST Client import:** unnamed sections, comments before the first
-  section, HTTP versions on request lines, environment variables and request
-  variables, and explicit request-to-response conversion warnings. Named `###`
-  sections, `@header.*` matchers, `@name = value` variables, and `{{host}}` or
-  full URLs in the request target are supported; warnings already flag likely
-  request headers used as response headers.
+  section, HTTP versions on request lines (all currently load errors),
+  environment files and request variables, and explicit request-to-response
+  conversion warnings. Named `###` sections, `@header.*` matchers,
+  `@name = value` variables, and `{{host}}` or full URLs in the request target
+  are supported; warnings already flag likely request headers used as response
+  headers.
 - **Richer matching:** JSON/body fields, regular expressions, absent-header
   predicates, explicit priorities, and fallback routes. Current matching covers
   methods, encoded paths and path parameters, declared query values, and exact
@@ -28,22 +32,27 @@ separately below so they do not remain in the backlog.
 - **Response modes and scenarios:** explicit selection modes and named stateful
   scenarios beyond the existing rotation through matching responses and manual
   sequence reset.
-- **Reproducible generated data:** seeded values (including `{{$randomInt}}`)
-  and configurable reuse of a generated placeholder within a response.
+- **Reproducible generated data:** seeded faker values and
+  `{{$randomInt}}`, and configurable reuse of one generated placeholder within a
+  response. Generated values are currently random on every render.
 - **Request assertions:** structured assertions for integration tests, such as
   expected request counts, ordering, and matching constraints.
 - **Template operators and namespaces:** context-aware operators and explicit
   path/query/fixture namespaces. JSON string escaping, header expansion, and
   preservation of unresolved placeholders already exist; path parameters take
-  precedence over query parameters with the same name. Generators with
-  arguments (`{{$randomInt}}`, `{{$timestamp}}`, `{{$datetime}}`,
-  `{{$localDatetime}}`) are implemented, but there are no general operators.
+  precedence over query parameters with the same name. The generator functions
+  with arguments (see below) are the only callable placeholders; there are no
+  general operators.
 - **Credential redaction:** optional redaction for diagnostic history, copied
   requests, and exports. Current captures and Copy cURL include credentials.
 - **Explicit body modes:** selectable raw/template response-file modes and exact
   inline-body preservation. File templating currently depends on content type
   and text detection; inline bodies normalize line endings and trim trailing
   blank lines. File-backed bodies already preserve bytes when served raw.
+- **Aggregate validation diagnostics:** `mock validate` reports warnings for
+  every route but stops at the first load error, so fixing a file can reveal the
+  next error. Collecting several parse errors per run would need the parser to
+  recover after an error.
 - **Graphical fixture editing and proxy/recording:** lower-priority ideas.
 
 ## Implemented from the original ideas
@@ -51,12 +60,20 @@ separately below so they do not remain in the backlog.
 - **Separate admin port:** the request console listens on its own port (`-a`,
   `MOCK_UI_PORT`, default `8081`) so any path can be mocked, and `-x` skips it.
   Mock and admin ports that collide are a startup error.
+- **REST Client-style request files:** `@name = value` file and method
+  variables, `{{name}}` and `{{%name}}` references, a `[status]` section-name
+  prefix, `< path` external bodies, `@delay` and `@header.Name` directives, and
+  variables or full URLs in the request target.
 - **Sample curl for routes:** selecting a route shows a copyable `curl` command
-  for the mock server, with sample values for path parameters.
+  for the mock server, with sample values for path parameters and any required
+  `@header.*` headers.
 - **REST Client generators:** `{{$guid}}`, `{{$randomInt min max}}`,
   `{{$timestamp [offset option]}}`, `{{$datetime rfc1123|iso8601 [offset option]}}`,
   and `{{$localDatetime ...}}`. Invalid arguments stay literal with a load-time
-  warning.
+  warning. Only these functions take arguments; other REST Client dynamic
+  variables (`$processEnv`, `$dotenv`, `$aadToken`) are not supported.
+- **Command-line help:** `-h`, `-help` and `--help` print usage and exit `0`,
+  including for `mock validate`.
 - **Validation CLI:** `mock validate` loads request files without serving them,
   reports load errors and startup warnings, supports `-strict` and `-json`, and
   exits non-zero for CI. It stops at the first load error rather than
