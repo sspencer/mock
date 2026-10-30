@@ -122,6 +122,9 @@ func portFromEnv(name string, def int) (int, bool, error) {
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.Logger) error {
+	if len(args) > 0 && args[0] == "validate" {
+		return runValidate(args[1:], stdout, stderr)
+	}
 	cfg, err := parseConfig(args)
 	if err != nil {
 		return err

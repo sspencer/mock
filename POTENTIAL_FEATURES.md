@@ -1,3 +1,26 @@
+Ranked by value. 
+
+**Do first**
+1. **Cut a release.** "Unreleased" now holds several breaking changes: `-l` is gone, the console moved to its own port, and the variable syntax changed. Tag it `v0.2.0` so users get a clear boundary.
+2. **`mock validate`.** It would load the files, print all diagnostics, and exit nonzero on errors, with an optional strict mode that treats warnings as errors and JSON output. Load-time validation and warnings already exist, so this is mostly plumbing, and it would be useful in CI.
+3. **Close small test gaps.** There's no test for the load-time warning on bad placeholder arguments (`warnUnknownPlaceholders`). I only checked it by hand. The Docker examples may also still need a second `-p` mapping for the admin port, so check that.
+
+**Next**
+4. **Richer matching.** Matching on JSON body fields, absent-header checks, and explicit priority or fallback routes. Today you can only match on method, path, query, and exact headers. This is probably the most common reason someone outgrows the tool.
+5. **Seeded generated data.** A seed makes faker output and `$randomInt` reproducible, which tests need. Reusing one generated value several times within a response would help too.
+6. **Named scenarios.** Selecting a response mode explicitly, or switching stateful scenarios, instead of only rotating through responses.
+
+**Later**
+- Redact credentials in captures, copied cURL and HAR exports (they currently include them).
+- Request assertions, such as expected counts and ordering, for integration tests.
+- Broader REST Client import: unnamed sections, comments before the first section, HTTP versions on request lines.
+- Proxy/recording mode and graphical fixture editing. These are bigger and lower priority.
+
+I'd start with 1 and 2, then 4. Want me to take any of these on?
+
+
+
+
 # Potential features
 
 Planning notes checked against the current codebase on 2026-09-06. These are
@@ -6,9 +29,6 @@ separately below so they do not remain in the backlog.
 
 ## Deferred ideas
 
-- **Validation CLI:** `mock validate` with aggregate diagnostics, strict mode,
-  and JSON output for CI. Loading already validates request constraints, headers,
-  and control directives with source/line errors and emits template/header warnings.
 - **Broader REST Client import:** unnamed sections, comments before the first
   section, HTTP versions on request lines, environment variables and request variables, and
   explicit request-to-response conversion warnings. Named `###` sections and
@@ -39,6 +59,10 @@ separately below so they do not remain in the backlog.
 
 ## Implemented from the original ideas
 
+- **Validation CLI:** `mock validate` loads request files without serving them,
+  reports load errors and startup warnings, supports `-strict` and `-json`, and
+  exits non-zero for CI. It stops at the first load error rather than
+  aggregating several.
 - **Inspector content tools:** Pretty/Raw views for complete JSON, Copy body for
   text, Copy base64 for binary captures, and shell-quoted Copy cURL for complete
   text requests. Binary or incomplete requests receive an explanation instead

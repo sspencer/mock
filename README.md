@@ -154,6 +154,7 @@ docker run --rm \
 mock [flags] <file.http> [file.http...]
 mock [flags] <directory>
 cat file.http | mock
+mock validate [-strict] [-json] <file.http> [file.http...]
 mock -version
 ```
 
@@ -191,6 +192,28 @@ SIGINT/SIGTERM shut the server down cleanly and stop the file watcher.
 
 If you pass a single directory, `mock` serves that directory as a static file
 server from `/` instead of loading mock routes or the request-log UI.
+
+### Validating request files
+
+`mock validate` loads the files without starting a server and prints every
+problem it finds, one per line as `file:line: level: message`. It checks the
+same things `mock` checks at startup: syntax errors, invalid `@delay` and
+placeholder arguments, unresolved placeholders, unused variables, and request
+headers used as response headers.
+
+| Flag | Description |
+|------|-------------|
+| `-strict` | Treat warnings as errors |
+| `-json` | Print a JSON report (`ok`, `routes`, `diagnostics`) instead of text |
+
+It exits `0` when the files are valid, `1` when there are errors (or warnings
+with `-strict`), and `2` for usage mistakes, so it fits in CI:
+
+```sh
+mock validate -strict examples/*.http
+```
+
+A file literally named `validate` must be passed as `./validate`.
 
 ## Request File Format
 

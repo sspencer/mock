@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## v0.2.0 - 2026-10-29
+
+The request console moves to its own port, `.http` files get `@name = value` variables, and `mock validate` and REST Client–style generator placeholders arrive. This release has breaking changes; see below.
 
 - **Breaking:** serve the request console on its own port instead of under `/mock/` on the mock port, so any path (including `/mock`) can be mocked. The console is at the root of the admin port, with the same events, clear, reset, state, and routes endpoints.
 - Add `-a PORT` for the admin port. It defaults to `8081`, or to a random free port when `-p` or `MOCK_PORT` is set. `-a 0` always picks a random port. The `MOCK_UI_PORT` environment variable sets the admin port when `-a` is omitted. `mock` exits with an error if the mock and admin ports are the same. The startup banner prints the actual address.
@@ -16,6 +18,7 @@
 - Remove the `$status` variable; using it is now a load error that points to the section-name status.
 - Expand `{{name}}` variables in the request target and ignore the scheme and host of a full URL, so `GET {{host}}/users` in a shared REST Client file matches `/users`. See `examples/restclient.http`.
 - Add REST Client–style generator placeholders with arguments: `{{$randomInt min max}}`, `{{$timestamp [offset option]}}`, `{{$datetime rfc1123|iso8601 [offset option]}}`, and `{{$localDatetime rfc1123|iso8601 [offset option]}}`. `{{$guid}}` already worked. Invalid arguments stay literal and log a load-time warning.
+- Add `mock validate [-strict] [-json] <file.http>...` to check request files without starting a server. It reports load errors and the same warnings `mock` logs at startup, exits non-zero on errors (or warnings with `-strict`), and can print a JSON report for CI.
 - Convert the example `.http` files to the new syntax.
 
 ## v0.1.4 - 2026-09-06
