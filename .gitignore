@@ -12,3 +12,4 @@ lint.txt
 /dump.rdb
 /qodana.yaml
 tag-release.txt
+/.codegraph
