@@ -9,8 +9,7 @@ import (
 func TestParse(t *testing.T) {
 	input := `### Create User
 # creates a user
-# $status=201
-POST /users
+POST/201 /users
 Content-Type: application/json
 X-Trace: yes
 
@@ -19,8 +18,7 @@ X-Trace: yes
 }
 
 ### Delete User
-# $status=204
-DELETE /users/:id
+DELETE/204 /users/:id
 `
 
 	methods, err := Parse("test.http", strings.NewReader(input))
@@ -35,8 +33,8 @@ DELETE /users/:id
 	if create.Name != "Create User" || create.Method != http.MethodPost || create.Path != "/users" {
 		t.Fatalf("parsed request = %#v", create)
 	}
-	if got := create.Variables["status"]; got != "201" {
-		t.Fatalf("status variable = %q, want 201", got)
+	if create.Status != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201", create.Status)
 	}
 	if got := create.Headers.Get("Content-Type"); got != "application/json" {
 		t.Fatalf("content type = %q, want application/json", got)
@@ -46,7 +44,7 @@ DELETE /users/:id
 	}
 
 	deleteMethod := methods[1]
-	if deleteMethod.Method != http.MethodDelete || deleteMethod.Path != "/users/:id" {
+	if deleteMethod.Method != http.MethodDelete || deleteMethod.Path != "/users/:id" || deleteMethod.Status != http.StatusNoContent {
 		t.Fatalf("delete route = %#v", deleteMethod)
 	}
 }
@@ -56,16 +54,10 @@ func TestParseStatusAfterMethod(t *testing.T) {
 DELETE/204 /users/:id
 
 ### Create
-# $status=200
 post/201 /users
 
-### Overridden
-# $status=500
-GET/202 /override
-
-### Variable only
-# $status=201
-GET /variable
+### Accepted
+GET/202 /accepted
 
 ### Default
 GET /default
@@ -78,30 +70,28 @@ GET /default
 		method string
 		path   string
 		status int
-		inline bool
 	}{
-		{http.MethodDelete, "/users/:id", 204, true},
-		{http.MethodPost, "/users", 201, true},
-		{http.MethodGet, "/override", 202, true},
-		{http.MethodGet, "/variable", 201, false},
-		{http.MethodGet, "/default", 200, false},
+		{http.MethodDelete, "/users/:id", 204},
+		{http.MethodPost, "/users", 201},
+		{http.MethodGet, "/accepted", 202},
+		{http.MethodGet, "/default", 200},
 	}
 	if len(methods) != len(want) {
 		t.Fatalf("len(methods) = %d, want %d", len(methods), len(want))
 	}
 	for i, w := range want {
 		m := methods[i]
-		if m.Method != w.method || m.Path != w.path || m.Status != w.status || m.StatusFromRequestLine != w.inline {
-			t.Errorf("methods[%d] = %s %s status %d inline %v, want %s %s status %d inline %v",
-				i, m.Method, m.Path, m.Status, m.StatusFromRequestLine, w.method, w.path, w.status, w.inline)
+		if m.Method != w.method || m.Path != w.path || m.Status != w.status {
+			t.Errorf("methods[%d] = %s %s status %d, want %s %s status %d",
+				i, m.Method, m.Path, m.Status, w.method, w.path, w.status)
 		}
 	}
 }
 
 func TestParseOnlyTreatsWholeCommentsAsVariables(t *testing.T) {
 	input := `### User
-# this mentions $status=500 but is not a variable
-# $status=201
+# this mentions $delay=1s but is not a variable
+# $delay=250ms
 POST /users
 
 created
@@ -114,11 +104,11 @@ created
 	if len(methods) != 1 {
 		t.Fatalf("len(methods) = %d, want 1", len(methods))
 	}
-	if got := methods[0].Variables["status"]; got != "201" {
-		t.Fatalf("status variable = %q, want 201", got)
+	if got := methods[0].Variables["delay"]; got != "250ms" {
+		t.Fatalf("delay variable = %q, want 250ms", got)
 	}
 	if len(methods[0].Variables) != 1 {
-		t.Fatalf("variables = %#v, want only explicit status variable", methods[0].Variables)
+		t.Fatalf("variables = %#v, want only explicit delay variable", methods[0].Variables)
 	}
 }
 
@@ -199,7 +189,6 @@ ok
 
 func TestUnusedCustomVariables(t *testing.T) {
 	methods, err := Parse("test.http", strings.NewReader(`### Used
-# $status=200
 # $greeting=hello
 # $unused=1000ms
 GET /hi

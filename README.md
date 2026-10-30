@@ -216,6 +216,8 @@ are used for matching.
 Append `/` and a status code directly to the method (no spaces) to set the
 response status: `DELETE/204 /users/:id` returns `204`. The slash and code are
 optional and default to `200`, so `GET /users` is the same as `GET/200 /users`.
+The supported final status range is `200`–`999`; invalid codes are load errors.
+The old `# $status=…` variable is no longer supported and is also a load error.
 
 ### Supported dialect
 
@@ -243,7 +245,6 @@ produce source-and-line errors; a failed reload retains the working routes.
 Variables live in comments directly below the `###` line:
 
 ```http
-# $status=201
 # $delay=500ms
 # $file=users.json
 # $header.Authorization=Bearer secret
@@ -251,7 +252,6 @@ Variables live in comments directly below the `###` line:
 
 Supported control variables:
 
-- `$status`: response status code. Defaults to `200`. The supported final status range is `200`–`999`; invalid values are load errors. A status on the request line (`POST/201 /users`) overrides `$status`, so prefer the request-line form.
 - `$delay`: response delay parsed with Go duration syntax, such as `250ms` or `2s`. Negative or invalid durations are load errors.
 - `$file`: response body file, resolved relative to the `.http` file.
 - `$header.Name=value`: require the incoming request to include that header. Use `*` as the value to accept any non-empty header.

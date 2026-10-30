@@ -34,9 +34,6 @@ type Method struct {
 	Line         int
 	Status       int
 	Delay        time.Duration
-	// StatusFromRequestLine is true when Status came from a METHOD/CODE request
-	// line, which overrides any $status variable.
-	StatusFromRequestLine bool
 }
 
 var commentVariablePattern = regexp.MustCompile(`^\$([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(.*)$`)
@@ -183,11 +180,8 @@ func parseSection(method Method, lines []string, bodyStartLine, sectionNameLine 
 				}
 				switch key {
 				case "status":
-					status, err := strconv.Atoi(value)
-					if err != nil || status < 200 || status > 999 {
-						return method, parseErrorf(source, lineAt(i), "$status must be a final HTTP status between 200 and 999")
-					}
-					method.Status = status
+					return method, parseErrorf(source, lineAt(i),
+						`section %q: $status is no longer supported; put the status after the method instead (example: "DELETE/204 /users/:id")`, method.Name)
 				case "delay":
 					delay, err := time.ParseDuration(value)
 					if err != nil || delay < 0 {
@@ -243,7 +237,6 @@ func parseSection(method Method, lines []string, bodyStartLine, sectionNameLine 
 				method.Name, statusToken)
 		}
 		method.Status = status
-		method.StatusFromRequestLine = true
 	}
 
 	target, err := url.ParseRequestURI(requestLine[1])
@@ -341,9 +334,8 @@ func trimTrailingBlankLines(lines []string) []string {
 
 // controlVariables are consumed by the mock server itself (not only as {{$…}} placeholders).
 var controlVariables = map[string]struct{}{
-	"status": {},
-	"delay":  {},
-	"file":   {},
+	"delay": {},
+	"file":  {},
 }
 
 // placeholderPattern matches {{$name}} placeholders in bodies and headers.
@@ -372,7 +364,7 @@ func FileDependencies(methods []Method) []string {
 }
 
 // UnusedCustomVariables returns names of comment variables that are not control
-// variables ($status, $delay, $file) and never appear as {{$name}} in the
+// variables ($delay, $file) and never appear as {{$name}} in the
 // section body or response headers. Callers should warn; these are not errors.
 func UnusedCustomVariables(method Method) []string {
 	if len(method.Variables) == 0 {

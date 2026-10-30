@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -25,17 +24,6 @@ var fakerPool = sync.Pool{
 	New: func() any {
 		return faker.New()
 	},
-}
-
-func parseStatusCode(raw string) (int, error) {
-	status, err := strconv.Atoi(raw)
-	if err != nil {
-		return 0, err
-	}
-	if status < 200 || status > 999 {
-		return 0, fmt.Errorf("status %d out of range", status)
-	}
-	return status, nil
 }
 
 func statusAllowsBody(status int) bool {

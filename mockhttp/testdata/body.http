@@ -1,6 +1,5 @@
 ### Create loaf
-# $status=201
-post /bread
+post/201 /bread
 Content-Type: application/json
 
 {

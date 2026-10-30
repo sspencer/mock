@@ -167,11 +167,6 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 		logger = slog.Default()
 	}
 	for _, method := range methods {
-		if raw, ok := method.Variables["status"]; ok {
-			if _, err := parseStatusCode(raw); err != nil {
-				logger.Warn("invalid $status will be treated as 200", "status", raw, "method", method.Name, "source", method.Source, "error", err)
-			}
-		}
 		if raw, ok := method.Variables["delay"]; ok {
 			if _, err := time.ParseDuration(raw); err != nil {
 				logger.Warn("invalid $delay will be ignored", "delay", raw, "method", method.Name, "source", method.Source, "error", err)
@@ -254,13 +249,7 @@ func cloneMethods(methods []restclient.Method) []restclient.Method {
 	out := append([]restclient.Method(nil), methods...)
 	for i := range out {
 		out[i].Status = http.StatusOK
-		if methods[i].StatusFromRequestLine && methods[i].Status >= 200 && methods[i].Status <= 999 {
-			out[i].Status = methods[i].Status
-		} else if raw, ok := methods[i].Variables["status"]; ok {
-			if status, err := parseStatusCode(raw); err == nil {
-				out[i].Status = status
-			}
-		} else if methods[i].Status >= 200 && methods[i].Status <= 999 {
+		if methods[i].Status >= 200 && methods[i].Status <= 999 {
 			out[i].Status = methods[i].Status
 		}
 		if raw, ok := methods[i].Variables["delay"]; ok {

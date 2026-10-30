@@ -15,9 +15,8 @@ Content-Type: application/json
 ]
 
 ### Create loaf
-# $status=201
 # $delay=2s
-POST /bread/
+POST/201 /bread/
 Content-Type: application/json
 
 {

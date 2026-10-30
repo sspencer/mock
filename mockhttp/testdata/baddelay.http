@@ -1,4 +1,3 @@
 ### Bad status
-# $status=204
 # $delay=zero
-DELETE /bread/1
+DELETE/204 /bread/1

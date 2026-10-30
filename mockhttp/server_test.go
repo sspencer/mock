@@ -114,8 +114,7 @@ func lineValue(body, key string) string {
 
 func TestServerUsesStatusVariableAndSuppressesNoContentBody(t *testing.T) {
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### Delete User
-# $status=204
-DELETE /users/:id
+DELETE/204 /users/:id
 
 ignored
 `))
@@ -139,7 +138,6 @@ ignored
 
 func TestServerStatusAfterMethodOverridesStatusVariable(t *testing.T) {
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### Delete User
-# $status=500
 DELETE/204 /users/:id
 
 ignored
@@ -171,15 +169,13 @@ created
 
 func TestServerAlternatesDuplicateMethodAndURL(t *testing.T) {
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### Create User
-# $status=201
-POST /users
+POST/201 /users
 Content-Type: application/json
 
 {"success":true}
 
 ### Create User Failure
-# $status=400
-POST /users
+POST/400 /users
 Content-Type: application/json
 
 {"success":false}
@@ -215,8 +211,7 @@ Content-Type: application/json
 
 func TestServerRequestEventIncludesRequestAndResponseBodies(t *testing.T) {
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### Create User
-# $status=201
-POST /users
+POST/201 /users
 Content-Type: application/json
 
 {
@@ -496,7 +491,6 @@ func TestServerRejectsFilePathTraversal(t *testing.T) {
 func TestWarnMethodConfigUnusedCustomVariables(t *testing.T) {
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### Slow?
 # $wrong=1000ms
-# $status=200
 GET /users
 
 ok
@@ -600,14 +594,12 @@ old
 	}
 
 	updated, err := restclient.Parse("test.http", strings.NewReader(`### First
-# $status=201
-POST /users
+POST/201 /users
 
 one
 
 ### Second
-# $status=400
-POST /users
+POST/400 /users
 
 two
 `))
