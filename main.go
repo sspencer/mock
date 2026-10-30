@@ -58,7 +58,18 @@ type config struct {
 	Port, AdminPort               int
 	Version, NoAdmin              bool
 	Args                          []string
+	// Help holds the usage text when -h or --help was requested.
+	Help string
 }
+
+const usageSummary = `usage:
+  mock [flags] <file.http> [file.http...]
+  mock [flags] <directory>
+  cat file.http | mock
+  mock validate [-strict] [-json] <file.http> [file.http...]
+
+flags:
+`
 
 func parseConfig(args []string) (config, error) {
 	flagSet := flag.NewFlagSet("mock", flag.ContinueOnError)
@@ -73,14 +84,21 @@ func parseConfig(args []string) (config, error) {
 		return config{}, err
 	}
 	flagSet.IntVar(&cfg.Port, "p", portDefault, "HTTP port")
-	flagSet.IntVar(&cfg.AdminPort, "a", adminDefault, "admin UI port (0 picks a random port; default 8081, or random when -p or MOCK_PORT is set; MOCK_UI_PORT sets the default)")
+	flagSet.IntVar(&cfg.AdminPort, "a", adminDefault, "admin UI port; 0 picks a random port (random if -p or MOCK_PORT is set; MOCK_UI_PORT sets the default)")
 	flagSet.BoolVar(&cfg.NoAdmin, "x", false, "do not start the admin UI")
-	flagSet.StringVar(&cfg.Bind, "b", "127.0.0.1", "bind address (default 127.0.0.1; use 0.0.0.0 for all interfaces)")
+	flagSet.StringVar(&cfg.Bind, "b", "127.0.0.1", "bind address; use 0.0.0.0 for all interfaces")
 	flagSet.StringVar(&cfg.CORS, "cors", "", "Access-Control-Allow-Origin value (e.g. * or https://app.local); only real preflights short-circuit; the admin UI is not affected")
 	flagSet.StringVar(&cfg.CertFile, "cert", "", "TLS certificate file (enables HTTPS)")
 	flagSet.StringVar(&cfg.KeyFile, "key", "", "TLS private key file")
 	flagSet.BoolVar(&cfg.Version, "version", false, "print version and exit")
 	if err := flagSet.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			var help strings.Builder
+			help.WriteString(usageSummary)
+			flagSet.SetOutput(&help)
+			flagSet.PrintDefaults()
+			return config{Help: help.String()}, nil
+		}
 		return config{}, usageError("failed to parse flags: %v", err)
 	}
 	cfg.Args = flagSet.Args()
@@ -123,11 +141,15 @@ func portFromEnv(name string, def int) (int, bool, error) {
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.Logger) error {
 	if len(args) > 0 && args[0] == "validate" {
-		return runValidate(args[1:], stdout, stderr)
+		return runValidate(args[1:], stdout)
 	}
 	cfg, err := parseConfig(args)
 	if err != nil {
 		return err
+	}
+	if cfg.Help != "" {
+		fmt.Fprint(stdout, cfg.Help)
+		return nil
 	}
 	if cfg.Version {
 		fmt.Fprintln(stdout, currentVersion())

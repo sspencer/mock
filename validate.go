@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -66,13 +67,19 @@ func (c diagnosticCollector) WithGroup(string) slog.Handler      { return c }
 
 // runValidate loads the request files, reports every diagnostic, and fails on
 // errors (or on warnings with -strict) without starting a server.
-func runValidate(args []string, stdout, stderr io.Writer) error {
+func runValidate(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("mock validate", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(io.Discard)
 	strict := fs.Bool("strict", false, "treat warnings as errors")
 	asJSON := fs.Bool("json", false, "print the report as JSON")
 	if err := fs.Parse(args); err != nil {
-		return usageError("%s", validateUsage)
+		if errors.Is(err, flag.ErrHelp) {
+			fs.SetOutput(stdout)
+			fmt.Fprintln(stdout, validateUsage)
+			fs.PrintDefaults()
+			return nil
+		}
+		return usageError("%v\n%s", err, validateUsage)
 	}
 	if fs.NArg() == 0 {
 		return usageError("missing request files\n%s", validateUsage)

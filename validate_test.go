@@ -21,8 +21,8 @@ func writeValidateFile(t *testing.T, content string) string {
 
 func runValidateArgs(t *testing.T, args ...string) (stdout string, err error) {
 	t.Helper()
-	var out, errOut bytes.Buffer
-	err = runValidate(args, &out, &errOut)
+	var out bytes.Buffer
+	err = runValidate(args, &out)
 	return out.String(), err
 }
 
@@ -109,6 +109,26 @@ func TestValidateUsageErrors(t *testing.T) {
 	for _, args := range [][]string{nil, {"-bogus", "x.http"}} {
 		if _, err := runValidateArgs(t, args...); exitCode(err) != 2 {
 			t.Errorf("runValidate(%q) error = %v, want usage error", args, err)
+		}
+	}
+}
+
+func TestHelpFlagsPrintUsageAndSucceed(t *testing.T) {
+	for _, args := range [][]string{{"-h"}, {"--help"}, {"-help"}} {
+		var out bytes.Buffer
+		if err := run(args, strings.NewReader(""), &out, &bytes.Buffer{}, nil); err != nil {
+			t.Fatalf("run(%q) error = %v, want nil", args, err)
+		}
+		for _, want := range []string{"usage:", "mock validate", "-p int", "-a int", "-x"} {
+			if !strings.Contains(out.String(), want) {
+				t.Errorf("run(%q) output missing %q:\n%s", args, want, out.String())
+			}
+		}
+	}
+	for _, flagName := range []string{"-h", "--help"} {
+		out, err := runValidateArgs(t, flagName)
+		if err != nil || !strings.Contains(out, "usage: mock validate") || !strings.Contains(out, "-strict") {
+			t.Errorf("validate %s: err = %v, output = %q", flagName, err, out)
 		}
 	}
 }
