@@ -1,0 +1,38 @@
+@host = http://localhost:8080
+
+### Get all users
+GET {{host}}/users
+Content-Type: application/json
+
+[
+    {
+      "id": 42,
+      "name": "Rusty",
+      "email": "rusty@example.com"
+    },
+    {
+      "id": 43,
+      "name": "Penny",
+      "email": "penny@example.com"
+    }
+]
+
+### Get one user
+GET {{host}}/users/42
+Content-Type: application/json
+
+{
+  "id": 42,
+  "name": "Rusty",
+  "email": "rusty@example.com"
+}
+
+### Create a user
+POST {{host}}/users
+Content-Type: application/json
+
+{
+  "id": 43,
+  "name": "Penny",
+  "email": "penny@example.com"
+}
