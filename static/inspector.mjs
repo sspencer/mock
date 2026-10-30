@@ -44,12 +44,36 @@ export function buildCurl(request) {
     return parts.join(' ');
 }
 
-export function formatRoute(route) {
+// Parameter names that look numeric get an integer; anything else gets a word.
+const NUMERIC_PARAM = /^(?:id|ids|num|number|count|page|limit|offset|index|year|age|size)$|(?:_id|Id|ID)$/;
+
+export function sampleParam(name) {
+    return NUMERIC_PARAM.test(name) ? '1' : 'example';
+}
+
+// Builds a curl command for the mock listener that can be pasted into a shell.
+// `origin` is the scheme, host, and port the mock routes are served from.
+export function buildRouteCurl(route, origin) {
+    const path = String(route.path).replace(/(^|\/):([^/]+)/g, (_, slash, name) => slash + sampleParam(name));
+    const url = `${origin}${path}${route.query ? '?' + route.query : ''}`;
+    const parts = ['curl'];
+    if (origin.startsWith('https:')) parts.push('--insecure');
+    if (route.method === 'HEAD') parts.push('--head');
+    else if (route.method !== 'GET') parts.push('--request', route.method);
+    for (const [name, values] of Object.entries(route.matchHeaders || {})) {
+        for (const value of values) parts.push('--header', shellQuote(`${name}: ${value === '*' ? 'example' : value}`));
+    }
+    parts.push(shellQuote(url));
+    return parts.join(' ');
+}
+
+export function formatRoute(route, sampleCurl = '') {
     const responseHeaders = Object.entries(route.headers || {}).flatMap(([name, values]) => values.map(value => `${name}: ${value}`)).join('\n');
     const matchHeaders = Object.entries(route.matchHeaders || {}).flatMap(([name, values]) => values.map(value => `${name}: ${value}`)).join('\n');
     const variables = Object.entries(route.variables || {}).map(([key, value]) => `@${key} = ${value}`).join('\n');
     return [
         `${route.method} ${route.path}${route.query ? '?' + route.query : ''}`,
+        sampleCurl ? `Sample request\n${sampleCurl}` : '',
         `Source: ${route.source || '(unknown)'}:${route.line || '?'} · revision ${route.revision}`,
         `Response: ${route.status} · delay ${route.delay || '0s'}`,
         `Request header requirements\n${matchHeaders || '(none)'}`,

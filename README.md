@@ -452,6 +452,11 @@ The UI is served at the root of the admin port (`-a`, default `8081`):
 | `/state` | `GET` active revision, route count, last successful reload, and reload error |
 | `/routes` | `GET` route configuration, including source location, match headers, status, delay, and body preview |
 
+Selecting a route shows a sample `curl` command for the mock port, ready to paste
+into a shell (**Copy cURL** copies it). The host is the one you used to open the
+UI, path parameters get sample values (`:id` becomes `1`), and required request
+headers from `@header.*` are included.
+
 UI features: theme toggle, filter, pause stream, independent clear/reset controls,
 HAR export, a Help dialog, and a routes panel that refreshes after hot-reload.
 Both administrative POST endpoints require `X-Requested-With` or JSON

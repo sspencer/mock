@@ -36,7 +36,7 @@ func TestReloadErrorsReachDashboardState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := newAdminHandler(server, assets)
+	handler := newAdminHandler(server, assets, uiConfig{})
 	if err := os.WriteFile(path, []byte("### invalid\nNOT-A-METHOD /x"), 0600); err != nil {
 		t.Fatal(err)
 	}

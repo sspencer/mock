@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCurl, formatMessage, formatRoute, bodyNotice } from '../static/inspector.mjs';
+import { buildCurl, buildRouteCurl, formatMessage, formatRoute, bodyNotice, sampleParam } from '../static/inspector.mjs';
 import { attachSplitter, clampPercent } from '../static/layout.mjs';
 
 const message = {
@@ -32,6 +32,27 @@ test('Copy cURL quotes shell metacharacters and omits transport-managed headers'
 test('Route view includes source, requirements, file and template', () => {
     const text = formatRoute({ method: 'GET', path: '/x', name: 'Example', source: 'test.http', line: 3, revision: 2, status: 201, delay: '1s', file: 'body.json', matchHeaders: { Authorization: ['*'] }, body: '{"x":1}' });
     for (const value of ['test.http:3', 'Authorization: *', '201', '1s', 'body.json', '{"x":1}']) assert.ok(text.includes(value));
+});
+
+test('Route cURL targets the mock origin with sample path parameters', () => {
+    const origin = 'http://localhost:8080';
+    assert.equal(buildRouteCurl({ method: 'GET', path: '/users/:id' }, origin), "curl 'http://localhost:8080/users/1'");
+    assert.equal(buildRouteCurl({ method: 'GET', path: '/users/:userId/posts/:slug', query: 'page=2&q=a+b' }, origin),
+        "curl 'http://localhost:8080/users/1/posts/example?page=2&q=a+b'");
+    assert.equal(buildRouteCurl({ method: 'DELETE', path: '/users/:id' }, origin), "curl --request DELETE 'http://localhost:8080/users/1'");
+    assert.equal(buildRouteCurl({ method: 'HEAD', path: '/' }, origin), "curl --head 'http://localhost:8080/'");
+    assert.equal(buildRouteCurl({ method: 'POST', path: '/users', matchHeaders: { Authorization: ['*'], 'Content-Type': ["application/json"] } }, origin),
+        "curl --request POST --header 'Authorization: example' --header 'Content-Type: application/json' 'http://localhost:8080/users'");
+    assert.ok(buildRouteCurl({ method: 'GET', path: '/x' }, 'https://localhost:8443').startsWith('curl --insecure '));
+    assert.equal(sampleParam('id'), '1');
+    assert.equal(sampleParam('user_id'), '1');
+    assert.equal(sampleParam('name'), 'example');
+});
+
+test('Route view shows the sample request when provided', () => {
+    const route = { method: 'GET', path: '/x', source: 't.http', line: 1, revision: 1, status: 200 };
+    assert.ok(formatRoute(route, "curl 'http://localhost:8080/x'").includes("Sample request\ncurl 'http://localhost:8080/x'"));
+    assert.ok(!formatRoute(route).includes('Sample request'));
 });
 
 test('Splitter persists clamped pointer and keyboard changes and restores defaults', () => {

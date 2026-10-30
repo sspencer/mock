@@ -443,7 +443,7 @@ ok
 		t.Fatalf("Parse() error = %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := newAdminHandler(mockhttp.New(methods, logger), os.DirFS(staticDir))
+	handler := newAdminHandler(mockhttp.New(methods, logger), os.DirFS(staticDir), uiConfig{})
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
@@ -477,7 +477,7 @@ ok
 		t.Fatalf("staticFileSystem() error = %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := newAdminHandler(mockhttp.New(methods, logger), staticFS)
+	handler := newAdminHandler(mockhttp.New(methods, logger), staticFS, uiConfig{})
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
@@ -611,7 +611,7 @@ ok
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mock := mockhttp.New(methods, logger)
-	handler := newAdminHandler(mock, os.DirFS(staticDir))
+	handler := newAdminHandler(mock, os.DirFS(staticDir), uiConfig{})
 
 	response := httptest.NewRecorder()
 	mock.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/users", nil))

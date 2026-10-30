@@ -27,7 +27,7 @@ func TestTLSCaptureAndEmbeddedDashboardIntegration(t *testing.T) {
 	}
 	server := httptest.NewTLSServer(withCORS(mock, "*"))
 	defer server.Close()
-	admin := httptest.NewTLSServer(newAdminHandler(mock, assets))
+	admin := httptest.NewTLSServer(newAdminHandler(mock, assets, uiConfig{}))
 	defer admin.Close()
 	client := server.Client()
 	adminClient := admin.Client()

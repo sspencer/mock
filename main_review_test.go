@@ -319,7 +319,7 @@ ok
 		t.Fatalf("Parse() error = %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := newAdminHandler(mockhttp.New(methods, logger), os.DirFS(staticDir))
+	handler := newAdminHandler(mockhttp.New(methods, logger), os.DirFS(staticDir), uiConfig{})
 
 	bare := httptest.NewRecorder()
 	handler.ServeHTTP(bare, httptest.NewRequest(http.MethodPost, "/clear", nil))
@@ -350,7 +350,7 @@ ok
 		t.Fatalf("staticFileSystem() error = %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := newAdminHandler(mockhttp.New(methods, logger), staticFS)
+	handler := newAdminHandler(mockhttp.New(methods, logger), staticFS, uiConfig{Version: "1.2.3", MockScheme: "http", MockPort: 8080})
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
@@ -361,7 +361,9 @@ ok
 	if !strings.Contains(body, `id="mock-config"`) {
 		t.Fatalf("body missing mock-config bootstrap")
 	}
-	if !strings.Contains(body, `"version"`) {
-		t.Fatalf("body missing version in mock-config")
+	for _, want := range []string{`"version":"1.2.3"`, `"mockScheme":"http"`, `"mockPort":8080`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body missing %s in mock-config", want)
+		}
 	}
 }

@@ -143,6 +143,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 		return runError("%v", err)
 	}
 	var handler, adminHandler http.Handler
+	var staticFS fs.FS
 	var mockServer *mockhttp.Server
 	var watchCloser io.Closer
 	closeWatcher := func() {
@@ -156,15 +157,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 		if err := validateMethods(input.Methods, cfg.Args); err != nil {
 			return runError("%v", err)
 		}
-		staticFS, err := staticFileSystem()
+		staticFS, err = staticFileSystem()
 		if err != nil {
 			return runError("failed to load static files: %v", err)
 		}
 		mockServer = mockhttp.New(input.Methods, logger)
 		handler = mockServer
-		if !cfg.NoAdmin {
-			adminHandler = newAdminHandler(mockServer, staticFS)
-		}
 		if files := input.WatchFiles; len(files) > 0 {
 			var watcher *fileWatcher
 			ready := make(chan struct{})
@@ -196,7 +194,13 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 	}
 	servers := []*http.Server{newHTTPServer(handler)}
 	listeners := []net.Listener{mockListener}
-	if adminHandler != nil {
+	if mockServer != nil && !cfg.NoAdmin {
+		// Built after the mock listener binds so the UI knows the real mock port.
+		adminHandler = newAdminHandler(mockServer, staticFS, uiConfig{
+			Version:    currentVersion(),
+			MockScheme: listenScheme(cfg.CertFile, cfg.KeyFile),
+			MockPort:   mockListener.Addr().(*net.TCPAddr).Port,
+		})
 		adminListener, err := net.Listen("tcp", listenAddress(cfg.Bind, cfg.AdminPort))
 		if err != nil {
 			_ = mockListener.Close()
@@ -372,18 +376,27 @@ func newStaticFileHandler(dir string) http.Handler {
 
 // newAdminHandler serves the request console and its API at the root of the
 // admin listener.
-func newAdminHandler(mockServer *mockhttp.Server, staticFS fs.FS) http.Handler {
+func newAdminHandler(mockServer *mockhttp.Server, staticFS fs.FS, ui uiConfig) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/events", mockServer.ServeEvents)
 	mux.HandleFunc("/clear", mockServer.ServeClear)
 	mux.HandleFunc("/routes", mockServer.ServeRoutes)
 	mux.HandleFunc("/state", mockServer.ServeState)
 	mux.HandleFunc("/reset", mockServer.ServeReset)
-	mux.Handle("/", uiFileServer(staticFS, currentVersion()))
+	mux.Handle("/", uiFileServer(staticFS, ui))
 	return mux
 }
 
-func uiFileServer(staticFS fs.FS, version string) http.Handler {
+// uiConfig is the bootstrap data injected into the UI page. MockScheme and
+// MockPort let the UI build sample requests for the mock listener, which is on
+// a different port than the UI.
+type uiConfig struct {
+	Version    string `json:"version"`
+	MockScheme string `json:"mockScheme"`
+	MockPort   int    `json:"mockPort"`
+}
+
+func uiFileServer(staticFS fs.FS, ui uiConfig) http.Handler {
 	files := http.FileServer(http.FS(staticFS))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" && r.URL.Path != "/index.html" {
@@ -395,7 +408,7 @@ func uiFileServer(staticFS fs.FS, version string) http.Handler {
 			http.Error(w, "index.html missing", http.StatusInternalServerError)
 			return
 		}
-		payload, err := json.Marshal(map[string]string{"version": version})
+		payload, err := json.Marshal(ui)
 		if err != nil {
 			http.Error(w, "failed to encode UI config", http.StatusInternalServerError)
 			return

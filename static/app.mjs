@@ -1,10 +1,12 @@
-import { formatMessage, bodyNotice, buildCurl, formatRoute } from './inspector.mjs';
+import { formatMessage, bodyNotice, buildCurl, buildRouteCurl, formatRoute } from './inspector.mjs';
 import { attachSplitter } from './layout.mjs';
 import { buildHAR } from './har.mjs';
 import { PendingTraffic, streamLabel } from './traffic.mjs';
 
 const MAX_EVENTS = 1000;
 const MOCK_CONFIG = JSON.parse(document.getElementById("mock-config").textContent);
+// The UI is served on its own port; sample requests target the mock port on the host the UI was reached by.
+const mockOrigin = () => `${MOCK_CONFIG.mockScheme || 'http'}://${location.hostname}:${MOCK_CONFIG.mockPort}`;
 const themeToggle = document.getElementById('themeToggle');
 const themeToggleLabel = document.getElementById('themeToggleLabel');
 const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
@@ -539,6 +541,10 @@ function resetInspector() {
     }
 }
 
+function routeCurl(route) {
+    return MOCK_CONFIG.mockPort ? buildRouteCurl(route, mockOrigin()) : '';
+}
+
 function renderInspector() {
     const event = eventsById.get(selectedId);
     exchangeView.hidden = !!selectedRoute;
@@ -546,9 +552,9 @@ function renderInspector() {
     if (selectedRoute) {
         inspectorTitle.textContent = selectedRoute.name || 'Route configuration';
         matchSummary.textContent = `Configured route · revision ${selectedRoute.revision} · ${selectedRoute.source}:${selectedRoute.line}`;
-        routeDetails.textContent = formatRoute(selectedRoute);
+        routeDetails.textContent = formatRoute(selectedRoute, routeCurl(selectedRoute));
         mismatchPanel.hidden = true;
-        copyCurlButton.disabled = true;
+        copyCurlButton.disabled = !MOCK_CONFIG.mockPort;
         return;
     }
     if (!event) { resetInspector(); return; }
@@ -609,7 +615,7 @@ for (const kind of ['request', 'response']) {
     });
 }
 copyCurlButton.addEventListener('click', () => {
-    try { copyText(buildCurl(eventsById.get(selectedId)?.request)); }
+    try { copyText(selectedRoute ? routeCurl(selectedRoute) : buildCurl(eventsById.get(selectedId)?.request)); }
     catch (error) { copyNotice.textContent = error.message; }
 });
 
