@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -254,19 +253,21 @@ func TestRunPrintsStartupBannersBeforeMethods(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Listen() error = %v", err)
+	// The invalid certificate makes ServeTLS fail right after the banners print.
+	cert := filepath.Join(dir, "cert.pem")
+	key := filepath.Join(dir, "key.pem")
+	for _, file := range []string{cert, key} {
+		if err := os.WriteFile(file, []byte("not valid"), 0o600); err != nil {
+			t.Fatalf("WriteFile() error = %v", err)
+		}
 	}
-	port := ln.Addr().(*net.TCPAddr).Port
-	t.Cleanup(func() { _ = ln.Close() })
 
 	var out bytes.Buffer
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	err = run([]string{"-p", strconv.Itoa(port), "-b", "127.0.0.1", path}, strings.NewReader(""), &out, io.Discard, logger)
+	err := run([]string{"-p", "0", "-a", "0", "-b", "127.0.0.1", "-cert", cert, "-key", key, path}, strings.NewReader(""), &out, io.Discard, logger)
 	if err == nil {
-		t.Fatal("run() error = nil, want listen failure")
+		t.Fatal("run() error = nil, want TLS failure")
 	}
 
 	got := out.String()
@@ -354,22 +355,6 @@ func TestPrintMethods(t *testing.T) {
 	}
 }
 
-func TestNormalizeMountPath(t *testing.T) {
-	tests := map[string]string{
-		"":          "/mock",
-		"mock":      "/mock",
-		"/mock/":    "/mock",
-		"admin":     "/admin",
-		"/admin/ui": "/admin/ui",
-	}
-
-	for input, want := range tests {
-		if got := normalizeMountPath(input); got != want {
-			t.Fatalf("normalizeMountPath(%q) = %q, want %q", input, got, want)
-		}
-	}
-}
-
 func TestStaticFileHandlerServesDirectoryFiles(t *testing.T) {
 	dir := t.TempDir()
 	nestedDir := filepath.Join(dir, "docs")
@@ -444,7 +429,7 @@ func TestStaticFileHandlerRejectsMissingAndTraversalPaths(t *testing.T) {
 	}
 }
 
-func TestHandlerServesStaticFilesUnderConfiguredMount(t *testing.T) {
+func TestAdminHandlerServesStaticFilesAtRoot(t *testing.T) {
 	staticDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(staticDir, "index.html"), []byte("dashboard"), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
@@ -458,10 +443,10 @@ ok
 		t.Fatalf("Parse() error = %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := newHandler(mockhttp.New(methods, logger), "admin", os.DirFS(staticDir))
+	handler := newAdminHandler(mockhttp.New(methods, logger), os.DirFS(staticDir))
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/admin/", nil))
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("static status = %d, want %d", response.Code, http.StatusOK)
@@ -473,11 +458,8 @@ ok
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/users", nil))
 
-	if response.Code != http.StatusOK {
-		t.Fatalf("mock status = %d, want %d", response.Code, http.StatusOK)
-	}
-	if body := response.Body.String(); body != "ok" {
-		t.Fatalf("mock body = %q, want ok", body)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("mock route on admin handler status = %d, want %d", response.Code, http.StatusNotFound)
 	}
 }
 
@@ -495,10 +477,10 @@ ok
 		t.Fatalf("staticFileSystem() error = %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := newHandler(mockhttp.New(methods, logger), "mock", staticFS)
+	handler := newAdminHandler(mockhttp.New(methods, logger), staticFS)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/mock/", nil))
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("static status = %d, want %d", response.Code, http.StatusOK)
@@ -617,7 +599,7 @@ func TestWatchFilesInvokesCallbackOnWrite(t *testing.T) {
 	}
 }
 
-func TestHandlerStreamsRequestEventsUnderConfiguredMount(t *testing.T) {
+func TestAdminHandlerStreamsRequestEvents(t *testing.T) {
 	staticDir := t.TempDir()
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### User
 GET /users
@@ -628,14 +610,15 @@ ok
 		t.Fatalf("Parse() error = %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := newHandler(mockhttp.New(methods, logger), "admin", os.DirFS(staticDir))
+	mock := mockhttp.New(methods, logger)
+	handler := newAdminHandler(mock, os.DirFS(staticDir))
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/users", nil))
+	mock.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/users", nil))
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	request := httptest.NewRequestWithContext(ctx, http.MethodGet, "/admin/events", nil)
+	request := httptest.NewRequestWithContext(ctx, http.MethodGet, "/events", nil)
 	events := httptest.NewRecorder()
 	handler.ServeHTTP(events, request)
 
@@ -649,16 +632,15 @@ ok
 		}
 	}
 
-	// Admin routes are mounted under the UI path.
 	clear := httptest.NewRecorder()
-	clearReq := httptest.NewRequest(http.MethodPost, "/admin/clear", nil)
+	clearReq := httptest.NewRequest(http.MethodPost, "/clear", nil)
 	clearReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 	handler.ServeHTTP(clear, clearReq)
 	if clear.Code != http.StatusNoContent {
 		t.Fatalf("clear status = %d, want %d", clear.Code, http.StatusNoContent)
 	}
 	routes := httptest.NewRecorder()
-	handler.ServeHTTP(routes, httptest.NewRequest(http.MethodGet, "/admin/routes", nil))
+	handler.ServeHTTP(routes, httptest.NewRequest(http.MethodGet, "/routes", nil))
 	if routes.Code != http.StatusOK || !strings.Contains(routes.Body.String(), "/users") {
 		t.Fatalf("routes status = %d body = %q", routes.Code, routes.Body.String())
 	}

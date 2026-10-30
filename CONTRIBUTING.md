@@ -22,7 +22,7 @@ without changing source files or installing anything. `make all` also installs
 go run . examples/user.http
 ```
 
-The request log is at <http://localhost:8080/mock/>. Example files live in
+The request log is at <http://localhost:8081/>. Example files live in
 `examples/`.
 
 ## Pull requests

@@ -25,9 +25,12 @@ func TestTLSCaptureAndEmbeddedDashboardIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewTLSServer(withCORS(newHandler(mock, "mock", assets), "*", "mock"))
+	server := httptest.NewTLSServer(withCORS(mock, "*"))
 	defer server.Close()
+	admin := httptest.NewTLSServer(newAdminHandler(mock, assets))
+	defer admin.Close()
 	client := server.Client()
+	adminClient := admin.Client()
 	req, err := http.NewRequest("POST", server.URL+"/x/a%252Fb", bytes.NewReader([]byte{0, 255}))
 	if err != nil {
 		t.Fatal(err)
@@ -47,7 +50,7 @@ func TestTLSCaptureAndEmbeddedDashboardIntegration(t *testing.T) {
 	if res.Header.Get("Access-Control-Allow-Origin") != "*" {
 		t.Fatal("mock CORS missing")
 	}
-	stream, err := client.Get(server.URL + "/mock/events")
+	stream, err := adminClient.Get(admin.URL + "/events")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,8 +75,8 @@ func TestTLSCaptureAndEmbeddedDashboardIntegration(t *testing.T) {
 	if event.Response.Headers.Get("Date") != res.Header.Get("Date") || event.Response.Headers.Get("Content-Length") != res.Header.Get("Content-Length") || len(event.Response.Headers.Values("Set-Cookie")) != 2 {
 		t.Fatalf("capture differs from wire headers: %v vs %v", event.Response.Headers, res.Header)
 	}
-	for _, path := range []string{"/mock/", "/mock/app.mjs", "/mock/har.mjs", "/mock/traffic.mjs", "/mock/inspector.mjs", "/mock/layout.mjs"} {
-		page, err := client.Get(server.URL + path)
+	for _, path := range []string{"/", "/app.mjs", "/har.mjs", "/traffic.mjs", "/inspector.mjs", "/layout.mjs"} {
+		page, err := adminClient.Get(admin.URL + path)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -86,10 +89,10 @@ func TestTLSCaptureAndEmbeddedDashboardIntegration(t *testing.T) {
 			t.Fatalf("module %s has wrong MIME %s", path, page.Header.Get("Content-Type"))
 		}
 	}
-	clear, _ := http.NewRequest("POST", server.URL+"/mock/clear", nil)
+	clear, _ := http.NewRequest("POST", admin.URL+"/clear", nil)
 	clear.Header.Set("X-Requested-With", "xhr")
 	clear.Header.Set("Origin", "https://other.test")
-	denied, err := client.Do(clear)
+	denied, err := adminClient.Do(clear)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,8 +100,8 @@ func TestTLSCaptureAndEmbeddedDashboardIntegration(t *testing.T) {
 	if denied.StatusCode != 403 {
 		t.Fatal("cross-origin clear was allowed")
 	}
-	clear.Header.Set("Origin", server.URL)
-	accepted, err := client.Do(clear)
+	clear.Header.Set("Origin", admin.URL)
+	accepted, err := adminClient.Do(clear)
 	if err != nil {
 		t.Fatal(err)
 	}

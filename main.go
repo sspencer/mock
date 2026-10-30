@@ -51,25 +51,32 @@ func runError(format string, args ...any) error {
 	return &exitError{code: 1, msg: fmt.Sprintf(format, args...)}
 }
 
+const defaultAdminPort = 8081
+
 type config struct {
-	Mount, Bind, CORS, CertFile, KeyFile string
-	Port                                 int
-	Version                              bool
-	Args                                 []string
+	Bind, CORS, CertFile, KeyFile string
+	Port, AdminPort               int
+	Version, NoAdmin              bool
+	Args                          []string
 }
 
 func parseConfig(args []string) (config, error) {
 	flagSet := flag.NewFlagSet("mock", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
 	var cfg config
-	portDefault, err := portFromEnv()
+	portDefault, envPortSet, err := portFromEnv("MOCK_PORT", 8080)
 	if err != nil {
 		return config{}, err
 	}
-	flagSet.StringVar(&cfg.Mount, "l", "mock", "URL path for the admin web UI")
+	adminDefault, envAdminSet, err := portFromEnv("MOCK_UI_PORT", defaultAdminPort)
+	if err != nil {
+		return config{}, err
+	}
 	flagSet.IntVar(&cfg.Port, "p", portDefault, "HTTP port")
+	flagSet.IntVar(&cfg.AdminPort, "a", adminDefault, "admin UI port (0 picks a random port; default 8081, or random when -p or MOCK_PORT is set; MOCK_UI_PORT sets the default)")
+	flagSet.BoolVar(&cfg.NoAdmin, "x", false, "do not start the admin UI")
 	flagSet.StringVar(&cfg.Bind, "b", "127.0.0.1", "bind address (default 127.0.0.1; use 0.0.0.0 for all interfaces)")
-	flagSet.StringVar(&cfg.CORS, "cors", "", "Access-Control-Allow-Origin value (e.g. * or https://app.local); only real preflights short-circuit; admin endpoints remain same-origin")
+	flagSet.StringVar(&cfg.CORS, "cors", "", "Access-Control-Allow-Origin value (e.g. * or https://app.local); only real preflights short-circuit; the admin UI is not affected")
 	flagSet.StringVar(&cfg.CertFile, "cert", "", "TLS certificate file (enables HTTPS)")
 	flagSet.StringVar(&cfg.KeyFile, "key", "", "TLS private key file")
 	flagSet.BoolVar(&cfg.Version, "version", false, "print version and exit")
@@ -80,23 +87,38 @@ func parseConfig(args []string) (config, error) {
 	if cfg.Port < 0 || cfg.Port > 65535 {
 		return config{}, usageError("port must be between 0 and 65535")
 	}
-	mount := normalizeMountPath(cfg.Mount)
-	if strings.ContainsAny(mount, "{} \t\r\n?#%") || strings.Contains(mount, "//") || strings.Contains(mount, "/../") || strings.HasSuffix(mount, "/..") || strings.Contains(mount, "/./") || strings.HasSuffix(mount, "/.") {
-		return config{}, usageError("invalid admin UI mount path %q", cfg.Mount)
+	if cfg.AdminPort < 0 || cfg.AdminPort > 65535 {
+		return config{}, usageError("admin port must be between 0 and 65535")
+	}
+	var adminSet, portSet bool
+	flagSet.Visit(func(f *flag.Flag) {
+		adminSet = adminSet || f.Name == "a"
+		portSet = portSet || f.Name == "p"
+	})
+	if cfg.NoAdmin && adminSet {
+		return config{}, usageError("-a and -x cannot be used together")
+	}
+	if !adminSet && !envAdminSet && (portSet || envPortSet) {
+		cfg.AdminPort = 0
+	}
+	if !cfg.NoAdmin && cfg.AdminPort != 0 && cfg.AdminPort == cfg.Port {
+		return config{}, usageError("admin port %d is the same as the mock port; change -a or MOCK_UI_PORT (or -p or MOCK_PORT)", cfg.AdminPort)
 	}
 	return cfg, nil
 }
 
-func portFromEnv() (int, error) {
-	raw := strings.TrimSpace(os.Getenv("MOCK_PORT"))
+// portFromEnv returns the port named by the environment variable, or def when
+// it is unset, and whether the variable supplied it.
+func portFromEnv(name string, def int) (int, bool, error) {
+	raw := strings.TrimSpace(os.Getenv(name))
 	if raw == "" {
-		return 8080, nil
+		return def, false, nil
 	}
 	port, err := strconv.Atoi(raw)
 	if err != nil {
-		return 0, usageError("invalid MOCK_PORT %q: must be an integer", raw)
+		return 0, false, usageError("invalid %s %q: must be an integer", name, raw)
 	}
-	return port, nil
+	return port, true, nil
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.Logger) error {
@@ -113,19 +135,23 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 	}
 	if len(cfg.Args) == 0 {
 		if f, ok := stdin.(*os.File); ok && stdinIsTerminal(f) {
-			return usageError("missing request input\nusage: mock [-l mock] [-p 8080] [-b addr] [-cors *] [-cert c -key k] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
+			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-cors *] [-cert c -key k] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
 		}
 	}
 	input, err := loadInput(cfg.Args, stdin)
 	if err != nil {
 		return runError("%v", err)
 	}
-	var handler http.Handler
+	var handler, adminHandler http.Handler
 	var mockServer *mockhttp.Server
 	var watchCloser io.Closer
+	closeWatcher := func() {
+		if watchCloser != nil {
+			_ = watchCloser.Close()
+		}
+	}
 	if input.StaticDir != "" {
 		handler = newStaticFileHandler(input.StaticDir)
-		logger.Info("starting static HTTP server", "addr", listenAddress(cfg.Bind, cfg.Port), "dir", input.StaticDir)
 	} else {
 		if err := validateMethods(input.Methods, cfg.Args); err != nil {
 			return runError("%v", err)
@@ -135,7 +161,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 			return runError("failed to load static files: %v", err)
 		}
 		mockServer = mockhttp.New(input.Methods, logger)
-		handler = newHandler(mockServer, cfg.Mount, staticFS)
+		handler = mockServer
+		if !cfg.NoAdmin {
+			adminHandler = newAdminHandler(mockServer, staticFS)
+		}
 		if files := input.WatchFiles; len(files) > 0 {
 			var watcher *fileWatcher
 			ready := make(chan struct{})
@@ -155,10 +184,37 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 				return runError("failed to watch request files: %v", err)
 			}
 		}
-		addr := listenAddress(cfg.Bind, cfg.Port)
-		fmt.Fprintf(stdout, "starting mock HTTP server on %s\n", addr)
-		fmt.Fprintf(stdout, "admin UI at %s://%s%s/\n", listenScheme(cfg.CertFile, cfg.KeyFile), addr, normalizeMountPath(cfg.Mount))
-		if bindsAllInterfaces(cfg.Bind) {
+	}
+	if cfg.CORS != "" {
+		handler = withCORS(handler, cfg.CORS)
+	}
+
+	mockListener, err := net.Listen("tcp", listenAddress(cfg.Bind, cfg.Port))
+	if err != nil {
+		closeWatcher()
+		return runError("server failed: %v", err)
+	}
+	servers := []*http.Server{newHTTPServer(handler)}
+	listeners := []net.Listener{mockListener}
+	if adminHandler != nil {
+		adminListener, err := net.Listen("tcp", listenAddress(cfg.Bind, cfg.AdminPort))
+		if err != nil {
+			_ = mockListener.Close()
+			closeWatcher()
+			return runError("admin server failed: %v", err)
+		}
+		servers = append(servers, newHTTPServer(adminHandler))
+		listeners = append(listeners, adminListener)
+	}
+
+	if mockServer == nil {
+		logger.Info("starting static HTTP server", "addr", boundAddress(cfg.Bind, mockListener), "dir", input.StaticDir)
+	} else {
+		fmt.Fprintf(stdout, "starting mock HTTP server on %s\n", boundAddress(cfg.Bind, mockListener))
+		if adminHandler != nil {
+			fmt.Fprintf(stdout, "admin UI at %s://%s/\n", listenScheme(cfg.CertFile, cfg.KeyFile), boundAddress(cfg.Bind, listeners[1]))
+		}
+		if adminHandler != nil && bindsAllInterfaces(cfg.Bind) {
 			fmt.Fprintln(stderr, "warning: bound to all interfaces; admin UI is unauthenticated and request logs may include Authorization headers and bodies")
 		}
 		if watchCloser != nil {
@@ -166,51 +222,53 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 		}
 		printMethods(stdout, input.Methods)
 	}
-	if cfg.CORS != "" {
-		if input.StaticDir != "" {
-			handler = withCORS(handler, cfg.CORS)
-		} else {
-			handler = withCORS(handler, cfg.CORS, cfg.Mount)
-		}
+
+	errCh := make(chan error, len(servers))
+	for i, server := range servers {
+		go func() {
+			if cfg.CertFile != "" {
+				logger.Info("TLS enabled", "cert", cfg.CertFile)
+				errCh <- server.ServeTLS(listeners[i], cfg.CertFile, cfg.KeyFile)
+			} else {
+				errCh <- server.Serve(listeners[i])
+			}
+		}()
 	}
-	server := &http.Server{Addr: listenAddress(cfg.Bind, cfg.Port), Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, WriteTimeout: 30 * time.Second}
-	errCh := make(chan error, 1)
-	go func() {
-		var serveErr error
-		if cfg.CertFile != "" {
-			logger.Info("TLS enabled", "cert", cfg.CertFile)
-			serveErr = server.ListenAndServeTLS(cfg.CertFile, cfg.KeyFile)
-		} else {
-			serveErr = server.ListenAndServe()
-		}
-		errCh <- serveErr
-	}()
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigCh)
 	select {
 	case sig := <-sigCh:
 		logger.Info("shutting down", "signal", sig.String())
-		if err := shutdownHTTPServer(server, 400*time.Millisecond); err != nil {
-			if watchCloser != nil {
-				_ = watchCloser.Close()
-			}
+		if err := shutdownHTTPServers(servers, 400*time.Millisecond); err != nil {
+			closeWatcher()
 			return runError("server shutdown failed: %v", err)
 		}
-		if watchCloser != nil {
-			_ = watchCloser.Close()
+		closeWatcher()
+		for range servers {
+			<-errCh
 		}
-		<-errCh
 		return nil
 	case err := <-errCh:
-		if watchCloser != nil {
-			_ = watchCloser.Close()
-		}
+		closeWatcher()
+		_ = shutdownHTTPServers(servers, 400*time.Millisecond)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return runError("server failed: %v", err)
 		}
 		return nil
 	}
+}
+
+func newHTTPServer(handler http.Handler) *http.Server {
+	return &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, WriteTimeout: 30 * time.Second}
+}
+
+func shutdownHTTPServers(servers []*http.Server, grace time.Duration) error {
+	var errs []error
+	for _, server := range servers {
+		errs = append(errs, shutdownHTTPServer(server, grace))
+	}
+	return errors.Join(errs...)
 }
 
 func shutdownHTTPServer(server *http.Server, grace time.Duration) error {
@@ -229,6 +287,12 @@ func shutdownHTTPServer(server *http.Server, grace time.Duration) error {
 
 func listenAddress(bind string, port int) string {
 	return net.JoinHostPort(bind, fmt.Sprintf("%d", port))
+}
+
+// boundAddress reports the bind host with the port the listener actually got,
+// which differs from the requested port when it was 0.
+func boundAddress(bind string, ln net.Listener) string {
+	return listenAddress(bind, ln.Addr().(*net.TCPAddr).Port)
 }
 
 func listenScheme(certFile, keyFile string) string {
@@ -306,20 +370,16 @@ func newStaticFileHandler(dir string) http.Handler {
 	return http.FileServer(http.Dir(dir))
 }
 
-func newHandler(mockServer *mockhttp.Server, mount string, staticFS fs.FS) http.Handler {
-	mountPath := normalizeMountPath(mount)
-	mountRoot := mountPath + "/"
+// newAdminHandler serves the request console and its API at the root of the
+// admin listener.
+func newAdminHandler(mockServer *mockhttp.Server, staticFS fs.FS) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc(mountPath, func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, mountRoot, http.StatusMovedPermanently)
-	})
-	mux.HandleFunc(mountRoot+"events", mockServer.ServeEvents)
-	mux.HandleFunc(mountRoot+"clear", mockServer.ServeClear)
-	mux.HandleFunc(mountRoot+"routes", mockServer.ServeRoutes)
-	mux.HandleFunc(mountRoot+"state", mockServer.ServeState)
-	mux.HandleFunc(mountRoot+"reset", mockServer.ServeReset)
-	mux.Handle(mountRoot, http.StripPrefix(mountRoot, uiFileServer(staticFS, currentVersion())))
-	mux.Handle("/", mockServer)
+	mux.HandleFunc("/events", mockServer.ServeEvents)
+	mux.HandleFunc("/clear", mockServer.ServeClear)
+	mux.HandleFunc("/routes", mockServer.ServeRoutes)
+	mux.HandleFunc("/state", mockServer.ServeState)
+	mux.HandleFunc("/reset", mockServer.ServeReset)
+	mux.Handle("/", uiFileServer(staticFS, currentVersion()))
 	return mux
 }
 
@@ -346,15 +406,8 @@ func uiFileServer(staticFS fs.FS, version string) http.Handler {
 	})
 }
 
-func withCORS(next http.Handler, origin string, adminMount ...string) http.Handler {
+func withCORS(next http.Handler, origin string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if len(adminMount) > 0 {
-			mount := normalizeMountPath(adminMount[0])
-			if r.URL.Path == mount || strings.HasPrefix(r.URL.Path, mount+"/") {
-				next.ServeHTTP(w, r)
-				return
-			}
-		}
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Add("Vary", "Origin")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD")
@@ -395,15 +448,6 @@ func reloadMockFiles(mockServer *mockhttp.Server, files []string, logger *slog.L
 	mockServer.SetMethods(methods)
 	logger.Info("reloaded request files", "files", files, "methods", len(methods))
 	printMethods(out, methods)
-}
-
-func normalizeMountPath(mount string) string {
-	mount = strings.TrimSpace(mount)
-	mount = "/" + strings.Trim(mount, "/")
-	if mount == "/" {
-		return "/mock"
-	}
-	return mount
 }
 
 func printMethods(w io.Writer, methods []restclient.Method) {

@@ -110,4 +110,4 @@ request DELETE /users/7
 request GET /chords
 request GET /chords2
 #request GET /delay
-printf '\nDone. Open %s/mock/ to inspect the traffic (or your custom -l UI path).\n' "$base_url"
+printf '\nDone. Open the admin UI address printed at mock startup (default http://127.0.0.1:8081/) to inspect the traffic.\n'

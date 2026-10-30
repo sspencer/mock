@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Breaking:** serve the request console on its own port instead of under `/mock/` on the mock port, so any path (including `/mock`) can be mocked. The console is at the root of the admin port, with the same events, clear, reset, state, and routes endpoints.
+- Add `-a PORT` for the admin port. It defaults to `8081`, or to a random free port when `-p` or `MOCK_PORT` is set. `-a 0` always picks a random port. The `MOCK_UI_PORT` environment variable sets the admin port when `-a` is omitted. `mock` exits with an error if the mock and admin ports are the same. The startup banner prints the actual address.
+- Add `-x` to run without the admin UI. It cannot be combined with `-a`.
+- Remove the `-l` flag.
 - Add an optional `[status]` prefix on section names (for example `### [204] Delete a user`) to set the response status. It defaults to `200`.
 - Define variables as `@name = value`. Variables above the first `###` (or in a `###` section with no request line) are file-scoped; variables between a `###` line and its request line are method-scoped and override file ones. Values may be escaped (`\n`) and may reference other variables.
 - Reference variables as `{{name}}`, or `{{%name}}` to percent-encode. `{{$name}}` now means only path/query parameters and generated values.

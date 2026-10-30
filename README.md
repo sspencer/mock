@@ -34,12 +34,12 @@ go run . examples/user.http
 ```
 
 The server prints a short banner with the listen address, the admin UI URL, and
-whether it is watching files, then the route list, and listens on `127.0.0.1:8080`
-by default:
+whether it is watching files, then the route list. It serves the mock API on
+`127.0.0.1:8080` and the admin UI on `127.0.0.1:8081` by default:
 
 ```text
 starting mock HTTP server on 127.0.0.1:8080
-admin UI at http://127.0.0.1:8080/mock/
+admin UI at http://127.0.0.1:8081/
 watching request files for changes
 Available mock methods:
   GET     /                              Return home page external html file
@@ -58,7 +58,7 @@ curl -X POST http://localhost:8080/users
 curl http://localhost:8080/names?type=cat
 ```
 
-Open the request console at [http://localhost:8080/mock/](http://localhost:8080/mock/).
+Open the request console at [http://localhost:8081/](http://localhost:8081/).
 The responsive UI shows each request and response with raw HTTP-style details,
 a collapsible live-routes panel, filter/pause/clear controls, HAR export, light
 and dark themes, and a Help dialog that explains those controls.
@@ -104,11 +104,11 @@ Make thinks the sources are unchanged. The binary reports `git describe` via
 After building:
 
 ```sh
-mock -p 9090 -b 127.0.0.1 -l inspect examples/user.http
+mock -p 9090 -a 9091 -b 127.0.0.1 examples/user.http
 ```
 
 That serves the mock API on `127.0.0.1:9090` and the request log at
-`http://127.0.0.1:9090/inspect/`.
+`http://127.0.0.1:9091/`.
 
 ```sh
 mock -version
@@ -128,7 +128,7 @@ localhost):
 
 ```sh
 docker run --rm \
-  -p 8080:8080 \
+  -p 8080:8080 -p 8081:8081 \
   -v "$PWD/examples/user.http:/mock/user.http:ro" \
   mock -b 0.0.0.0 /mock/user.http
 ```
@@ -143,7 +143,7 @@ directory so relative file references are available inside the container:
 
 ```sh
 docker run --rm \
-  -p 8080:8080 \
+  -p 8080:8080 -p 8081:8081 \
   -v "$PWD/examples:/mock/examples:ro" \
   mock -b 0.0.0.0 /mock/examples/user.http
 ```
@@ -162,14 +162,23 @@ Flags:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `-p` | `8080`, or `MOCK_PORT` | HTTP port |
+| `-x` | (off) | Do not start the admin UI. Cannot be combined with `-a` |
 | `-b` | `127.0.0.1` | Bind address. Use `0.0.0.0` to listen on all interfaces |
-| `-l` | `mock` | URL path for the request-log UI (`/mock/`) |
+| `-a` | `MOCK_UI_PORT`, else `8081`, or random if `-p` / `MOCK_PORT` is set | Admin UI port. `0` picks a random free port |
 | `-cors` | (off) | `Access-Control-Allow-Origin` value (`*` or an origin). Only browser preflight `OPTIONS` are short-circuited |
 | `-cert` / `-key` | (off) | Enable HTTPS with the given certificate and key |
 | `-version` | | Print version and exit |
 
 If `-p` is omitted, `mock` uses the `MOCK_PORT` environment variable when it
 is set. An explicit `-p` flag always wins.
+
+The admin UI listens on its own port so it never shadows mock routes. Without
+`-a`, it uses the `MOCK_UI_PORT` environment variable when set; otherwise `8081`
+when the mock port is the default, and a random free port when you set `-p` (or
+`MOCK_PORT`). An explicit `-a` always wins. The startup banner prints the actual
+admin address. If the two ports resolve to the same number, `mock` exits with an
+error. Pass `-x` to skip the admin UI and its port entirely. With a directory
+argument (static file server) there is no admin UI.
 
 You can pass one or more `.http` files. When no files are passed, `mock` reads
 from stdin. Empty input fails fast with an error that points at the expected
@@ -432,19 +441,16 @@ Use **Reset responses** to restart rotation counters. **Clear log** only removes
 
 ## Admin UI And API
 
-The UI is mounted under `-l` (default `/mock/`):
+The UI is served at the root of the admin port (`-a`, default `8081`):
 
 | Path | Purpose |
 |------|---------|
-| `/mock/` | Request log UI |
-| `/mock/events` | Server-sent events stream (with event `id` / `Last-Event-ID`) |
-| `/mock/clear` | `POST` clears stored events without changing rotation counters |
-| `/mock/reset` | `POST` resets response sequences without clearing traffic |
-| `/mock/state` | `GET` active revision, route count, last successful reload, and reload error |
-| `/mock/routes` | `GET` route configuration, including source location, match headers, status, delay, and body preview |
-
-**Path conflicts:** the admin mount is reserved and takes precedence over mock
-routes beneath it. Keep API routes outside that mount, or change `-l`.
+| `/` | Request log UI |
+| `/events` | Server-sent events stream (with event `id` / `Last-Event-ID`) |
+| `/clear` | `POST` clears stored events without changing rotation counters |
+| `/reset` | `POST` resets response sequences without clearing traffic |
+| `/state` | `GET` active revision, route count, last successful reload, and reload error |
+| `/routes` | `GET` route configuration, including source location, match headers, status, delay, and body preview |
 
 UI features: theme toggle, filter, pause stream, independent clear/reset controls,
 HAR export, a Help dialog, and a routes panel that refreshes after hot-reload.
@@ -504,8 +510,8 @@ mock -cert cert.pem -key key.pem -p 8443 examples/user.http
 `-cors` adds CORS headers to mock responses (or static-directory responses),
 including `Vary: Origin`. Browser preflights (`OPTIONS` with
 `Access-Control-Request-Method`) return `204` and reflect requested headers.
-Other `OPTIONS` requests run the mock route. Admin endpoints are excluded from
-CORS, including when `-cors '*'` is used. Cross-origin clear requests are rejected.
+Other `OPTIONS` requests run the mock route. The admin port is never affected by
+`-cors`, including when `-cors '*'` is used. Cross-origin clear requests are rejected.
 
 With `-cert`/`-key`, the startup banner prints `https://` for the admin UI.
 Binding to all interfaces (`-b 0.0.0.0`) prints a warning: the admin UI is

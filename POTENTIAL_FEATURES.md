@@ -48,17 +48,17 @@ separately below so they do not remain in the backlog.
   source file/line, configuration revision, selected response position, and up
   to five nearby candidates explaining unmatched requests. Route previews show
   inline templates or file references; they do not load response-file contents.
-- **Reload diagnostics:** `/mock/state` exposes the active revision, route count,
+- **Reload diagnostics:** `/state` exposes the active revision, route count,
   last successful reload, and reload error. Failed reloads keep working routes
   and show a dashboard error banner; the routine configuration banner is hidden.
-- **Independent clear and reset:** `POST /mock/clear` clears diagnostic history;
-  `POST /mock/reset` restarts response sequences. Both have separate UI controls.
+- **Independent clear and reset:** `POST /clear` clears diagnostic history;
+  `POST /reset` restarts response sequences. Both have separate UI controls.
 - **Resizable inspector:** traffic/inspector, traffic/routes, and request/response
   dividers, with remembered sizes, keyboard controls, and double-click reset.
 - **Mobile navigation:** traffic and route selections open the detail view with
   a back button to return to the lists.
 
-Admin paths above use the default `/mock/` mount; `-l` changes that prefix.
+Admin paths above are served on the admin port (`-a`, default `8081`).
 
 ## Related improvements already available
 

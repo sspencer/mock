@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -14,24 +13,8 @@ import (
 	"github.com/sspencer/mock/restclient"
 )
 
-func TestCORSDoesNotExposeAdmin(t *testing.T) {
-	handler := withCORS(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }), "*", "console")
-	for _, path := range []string{"/console", "/console/events", "/console/clear", "/console/routes", "/users"} {
-		r := httptest.NewRequest("GET", path, nil)
-		r.Header.Set("Origin", "https://other.test")
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, r)
-		want := ""
-		if path == "/users" {
-			want = "*"
-		}
-		if w.Header().Get("Access-Control-Allow-Origin") != want {
-			t.Errorf("%s exposed unexpected CORS", path)
-		}
-	}
-}
-func TestConfigRejectsInvalidMountAndPort(t *testing.T) {
-	for _, args := range [][]string{{"-l", "bad/{path}"}, {"-l", "a/../b"}, {"-p", "65536"}, {"-p", "-1"}} {
+func TestConfigRejectsInvalidPorts(t *testing.T) {
+	for _, args := range [][]string{{"-p", "65536"}, {"-p", "-1"}, {"-a", "65536"}, {"-a", "-1"}, {"-p", "9000", "-a", "9000"}, {"-a", "8080"}} {
 		if _, err := parseConfig(args); err == nil {
 			t.Errorf("accepted %v", args)
 		}
@@ -53,13 +36,13 @@ func TestReloadErrorsReachDashboardState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := newHandler(server, "console", assets)
+	handler := newAdminHandler(server, assets)
 	if err := os.WriteFile(path, []byte("### invalid\nNOT-A-METHOD /x"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	reloadMockFiles(server, []string{path}, slog.Default(), io.Discard, io.Discard)
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest("GET", "/console/state", nil))
+	handler.ServeHTTP(response, httptest.NewRequest("GET", "/state", nil))
 	var state mockhttp.ConfigState
 	if err := json.Unmarshal(response.Body.Bytes(), &state); err != nil {
 		t.Fatal(err)
@@ -72,7 +55,7 @@ func TestReloadErrorsReachDashboardState(t *testing.T) {
 	}
 	reloadMockFiles(server, []string{path}, slog.Default(), io.Discard, io.Discard)
 	response = httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest("GET", "/console/state", nil))
+	handler.ServeHTTP(response, httptest.NewRequest("GET", "/state", nil))
 	state = mockhttp.ConfigState{}
 	if err := json.Unmarshal(response.Body.Bytes(), &state); err != nil {
 		t.Fatal(err)
@@ -80,7 +63,7 @@ func TestReloadErrorsReachDashboardState(t *testing.T) {
 	if state.Error != "" || state.Revision != 2 || state.LastSuccess == "" {
 		t.Fatalf("bad successful reload state: %+v", state)
 	}
-	reset := httptest.NewRequest("POST", "/console/reset", nil)
+	reset := httptest.NewRequest("POST", "/reset", nil)
 	reset.Header.Set("X-Requested-With", "xhr")
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, reset)
