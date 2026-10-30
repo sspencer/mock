@@ -3,6 +3,11 @@
 ## Unreleased
 
 - Add an optional `[status]` prefix on section names (for example `### [204] Delete a user`) to set the response status. It defaults to `200`.
+- Define variables as `@name = value`. Variables above the first `###` (or in a `###` section with no request line) are file-scoped; variables between a `###` line and its request line are method-scoped and override file ones. Values may be escaped (`\n`) and may reference other variables.
+- Reference variables as `{{name}}`, or `{{%name}}` to percent-encode. `{{$name}}` now means only path/query parameters and generated values.
+- Replace the `# $delay=` and `# $header.Name=` directives with `@delay` and `@header.Name`. All `# $name=value` comment variables are now a load error that points to the `@` form.
+- Replace the `$file` variable with an external body: start the body with `< ` followed by the file path, such as `< ./users.json`. Paths must be relative, without `..` segments, and are looked up next to the `.http` file and then in the workspace root; symlinks cannot escape either directory. `$file` and `@file` are now load errors that point to the new syntax.
+- Warn about unused variables once per definition instead of per section.
 - Remove the `$status` variable; using it is now a load error that points to the section-name status.
 - Convert the example `.http` files to the new syntax.
 

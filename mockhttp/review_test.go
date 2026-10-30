@@ -81,7 +81,7 @@ Cookie: session=1
 	}
 
 	matched, err := restclient.Parse("test.http", strings.NewReader(`### Secured
-# $header.Authorization=Bearer secret
+@header.Authorization = Bearer secret
 GET /secure
 Authorization: Bearer secret
 Content-Type: text/plain

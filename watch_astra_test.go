@@ -9,8 +9,9 @@ import (
 )
 
 func TestDependencyOwnership(t *testing.T) {
-	paths := resolveWatchPaths([]string{"a/one.http", "b/two.http"}, []restclient.Method{{Source: "a/one.http", Variables: map[string]string{"file": "nested/body.json"}}})
-	if len(paths) != 3 || paths[2] != absPath("a/nested/body.json") {
+	paths := resolveWatchPaths([]string{"a/one.http", "b/two.http"}, []restclient.Method{{Source: "a/one.http", File: "nested/body.json"}})
+	// The http file's directory is checked first, then the workspace root.
+	if len(paths) != 4 || paths[2] != absPath("a/nested/body.json") || paths[3] != absPath("nested/body.json") {
 		t.Fatalf("unexpected dependencies: %v", paths)
 	}
 }

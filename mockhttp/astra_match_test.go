@@ -11,7 +11,7 @@ import (
 func TestEncodedPathAndIndependentRotation(t *testing.T) {
 	input := "### encoded\nGET /x/:id\n\n{{$id}}\n"
 	for _, name := range []string{"a1", "a2", "b1", "b2"} {
-		input += "### " + name + "\n# $header.X-Tenant=" + name[:1] + "\nGET /rotate\n\n" + name + "\n"
+		input += "### " + name + "\n@header.X-Tenant = " + name[:1] + "\nGET /rotate\n\n" + name + "\n"
 	}
 	methods, err := restclient.Parse("test.http", strings.NewReader(input))
 	if err != nil {
@@ -54,7 +54,7 @@ func FuzzMatchEscapedPath(f *testing.F) {
 }
 
 func TestEncodedLiteralRouteAndSpecialHeaders(t *testing.T) {
-	methods, err := restclient.Parse("test.http", strings.NewReader("### literal\n# $header.Host=example.com\nGET /x/a%2Fb/%3Aid\n\nok"))
+	methods, err := restclient.Parse("test.http", strings.NewReader("### literal\n@header.Host = example.com\nGET /x/a%2Fb/%3Aid\n\nok"))
 	if err != nil {
 		t.Fatal(err)
 	}

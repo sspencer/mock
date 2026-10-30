@@ -49,13 +49,13 @@ Content-Type: application/json
 
 func TestServerGeneratesFakerPlaceholderValues(t *testing.T) {
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### Return User
-# $name=Configured Name
+@name = Configured Name
 GET /users/:id?type=cat
 Content-Type: text/plain
 
 id={{$id}}
 type={{$type}}
-name={{$name}}
+name={{name}}
 uuid={{$uuid}}
 guid={{$guid}}
 paragraph={{$paragraph}}
@@ -347,7 +347,7 @@ Content-Type: text/plain
 
 func TestServerDelaysResponse(t *testing.T) {
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### Slow Response
-# $delay=20ms
+@delay = 20ms
 GET /slow
 Content-Type: text/plain
 
@@ -378,7 +378,7 @@ done
 
 func TestServerStopsDelayWhenRequestContextIsCanceled(t *testing.T) {
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### Slow Response
-# $delay=1s
+@delay = 1s
 GET /slow
 Content-Type: text/plain
 
@@ -416,8 +416,9 @@ func TestServerServesFileRelativeToRestClientFile(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	methods, err := restclient.Parse(source, strings.NewReader(`### Home Page
-# $file=index.html
 GET /
+
+< index.html
 `))
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
@@ -446,8 +447,9 @@ func TestServerReportsMissingResponseFile(t *testing.T) {
 	dir := t.TempDir()
 	source := filepath.Join(dir, "user.http")
 	methods, err := restclient.Parse(source, strings.NewReader(`### Missing File
-# $file=missing.json
 GET /missing
+
+< missing.json
 `))
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
@@ -473,24 +475,49 @@ GET /missing
 	}
 }
 
-func TestServerRejectsFilePathTraversal(t *testing.T) {
+func TestServerServesWorkspaceRelativeFiles(t *testing.T) {
 	dir := t.TempDir()
-	restClientDir := filepath.Join(dir, "requests")
-	if err := os.Mkdir(restClientDir, 0o700); err != nil {
+	requests := filepath.Join(dir, "requests")
+	if err := os.Mkdir(requests, 0o700); err != nil {
 		t.Fatalf("Mkdir() error = %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "secret.html"), []byte("secret"), 0o600); err != nil {
+	t.Chdir(dir)
+	if err := os.WriteFile("root file.txt", []byte("workspace"), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	_, err := restclient.Parse(filepath.Join(restClientDir, "user.http"), strings.NewReader("### Unsafe File\n# $file=../secret.html\nGET /unsafe\n"))
-	if err == nil {
-		t.Fatal("expected unsafe file dependency to fail at load time")
+	if err := os.WriteFile(filepath.Join(requests, "near.txt"), []byte("near"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if err := os.WriteFile("near.txt", []byte("far"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	methods, err := restclient.Parse(filepath.Join(requests, "user.http"), strings.NewReader(
+		"### Near\nGET /near\n\n< near.txt\n\n### Root\nGET /root\n\n< root file.txt\n"))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	for target, want := range map[string]string{"/near": "near", "/root": "workspace"} {
+		response := httptest.NewRecorder()
+		server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, target, nil))
+		if response.Code != http.StatusOK || response.Body.String() != want {
+			t.Errorf("%s = %d %q, want 200 %q", target, response.Code, response.Body.String(), want)
+		}
 	}
 }
 
-func TestWarnMethodConfigUnusedCustomVariables(t *testing.T) {
+func TestServerRejectsFilePathTraversal(t *testing.T) {
+	for _, path := range []string{"../secret.html", "a/../../secret.html", "/etc/passwd", "."} {
+		_, err := restclient.Parse("requests/user.http", strings.NewReader("### Unsafe File\nGET /unsafe\n\n< "+path+"\n"))
+		if err == nil {
+			t.Errorf("expected %q to fail at load time", path)
+		}
+	}
+}
+
+func TestWarnMethodConfigUnusedVariables(t *testing.T) {
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### Slow?
-# $wrong=1000ms
+@wrong = 1000ms
 GET /users
 
 ok
@@ -502,14 +529,14 @@ ok
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	_ = New(methods, logger)
 	logText := buf.String()
-	if !strings.Contains(logText, "unused custom variable") || !strings.Contains(logText, "$wrong") {
-		t.Fatalf("log = %q, want unused custom variable warning for $wrong", logText)
+	if !strings.Contains(logText, "unused variable") || !strings.Contains(logText, "@wrong") {
+		t.Fatalf("log = %q, want unused variable warning for @wrong", logText)
 	}
 }
 
 func TestServerHeaderMatchingAndPlaceholderHeaders(t *testing.T) {
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### Secured
-# $header.Authorization=Bearer secret
+@header.Authorization = Bearer secret
 GET /secure
 X-User: {{$id}}
 Content-Type: text/plain
@@ -653,5 +680,32 @@ func BenchmarkServerRouteLookup(b *testing.B) {
 		if _, _, _, ok := server.findMethod(request); !ok {
 			b.Fatal("findMethod() did not match route")
 		}
+	}
+}
+
+func TestServerExpandsFileAndMethodVariables(t *testing.T) {
+	methods, err := restclient.Parse("test.http", strings.NewReader(`@host = example.com
+@greeting = Hello, {{$name}}!\nHost: {{host}}
+@query = a b&c
+
+### Greets
+@host = method.test
+GET /hi/:name
+X-Link: https://{{host}}/?q={{%query}}
+Content-Type: text/plain
+
+{{greeting}}
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/hi/Ada", nil))
+	if want := "Hello, Ada!\nHost: method.test"; response.Body.String() != want {
+		t.Fatalf("body = %q, want %q", response.Body.String(), want)
+	}
+	if got, want := response.Header().Get("X-Link"), "https://method.test/?q=a%20b%26c"; got != want {
+		t.Fatalf("X-Link = %q, want %q", got, want)
 	}
 }

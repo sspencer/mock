@@ -47,7 +47,7 @@ export function buildCurl(request) {
 export function formatRoute(route) {
     const responseHeaders = Object.entries(route.headers || {}).flatMap(([name, values]) => values.map(value => `${name}: ${value}`)).join('\n');
     const matchHeaders = Object.entries(route.matchHeaders || {}).flatMap(([name, values]) => values.map(value => `${name}: ${value}`)).join('\n');
-    const variables = Object.entries(route.variables || {}).map(([key, value]) => `$${key}=${value}`).join('\n');
+    const variables = Object.entries(route.variables || {}).map(([key, value]) => `@${key} = ${value}`).join('\n');
     return [
         `${route.method} ${route.path}${route.query ? '?' + route.query : ''}`,
         `Source: ${route.source || '(unknown)'}:${route.line || '?'} · revision ${route.revision}`,
@@ -55,7 +55,7 @@ export function formatRoute(route) {
         `Request header requirements\n${matchHeaders || '(none)'}`,
         `Response headers\n${responseHeaders || '(automatic)'}`,
         `Variables\n${variables || '(none)'}`,
-        route.file ? `Body file: ${route.file}${route.body ? '\nInline body takes precedence over this file.' : ''}` : 'Inline response body',
+        route.file ? `Body file: ${route.file}` : 'Inline response body',
         route.body || (route.file ? '(read from file when requested)' : '(empty body)'),
         route.bodyTruncated ? '[Template preview truncated after 65536 bytes]' : '',
     ].filter(Boolean).join('\n\n');

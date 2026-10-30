@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"log/slog"
+	"maps"
 	"net/http"
 	"strconv"
 	"strings"
@@ -166,27 +167,29 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	checkedMethods := make([]restclient.Method, 0, len(methods))
 	for _, method := range methods {
-		if raw, ok := method.Variables["delay"]; ok {
+		if raw, ok := method.Variable("delay"); ok {
 			if _, err := time.ParseDuration(raw); err != nil {
-				logger.Warn("invalid $delay will be ignored", "delay", raw, "method", method.Name, "source", method.Source, "error", err)
+				logger.Warn("invalid @delay will be ignored", "delay", raw, "method", method.Name, "source", method.Source, "error", err)
 			}
 		}
 		checked := method
 		if path, ok := resolveFilePath(&method); ok && method.Body == "" {
-			if body, err := readResponseFile(method, path); err == nil && fileTemplatesEnabled(method, path) && isMostlyText(body) {
+			if body, err := readResponseFile(method); err == nil && fileTemplatesEnabled(method, path) && isMostlyText(body) {
 				checked.Body = string(body)
 			}
 		}
 		warnUnknownPlaceholders(logger, checked)
-		for _, name := range restclient.UnusedCustomVariables(checked) {
-			logger.Warn("unused custom variable (not referenced as {{$"+name+"}} in body or response headers)",
-				"variable", "$"+name,
-				"method", method.Name,
-				"source", method.Source,
-			)
-		}
+		checkedMethods = append(checkedMethods, checked)
 		warnIncomingHeadersUsedAsResponse(logger, method)
+	}
+	for _, unused := range restclient.UnusedVariables(checkedMethods) {
+		logger.Warn("unused variable (not referenced as {{"+unused.Name+"}} in a body or response header)",
+			"variable", "@"+unused.Name,
+			"source", unused.Source,
+			"line", unused.Line,
+		)
 	}
 }
 
@@ -236,7 +239,7 @@ func warnIncomingHeadersUsedAsResponse(logger *slog.Logger, method restclient.Me
 		if method.MatchHeaders.Get(canonical) != "" {
 			continue
 		}
-		logger.Warn("header after the request line is a response header; use # $header."+canonical+"=value to match incoming requests",
+		logger.Warn("header after the request line is a response header; use @header."+canonical+" = value to match incoming requests",
 			"header", canonical,
 			"method", method.Name,
 			"source", method.Source,
@@ -252,7 +255,7 @@ func cloneMethods(methods []restclient.Method) []restclient.Method {
 		if methods[i].Status >= 200 && methods[i].Status <= 999 {
 			out[i].Status = methods[i].Status
 		}
-		if raw, ok := methods[i].Variables["delay"]; ok {
+		if raw, ok := methods[i].Variable("delay"); ok {
 			out[i].Delay, _ = time.ParseDuration(raw)
 		}
 		out[i].Headers = methods[i].Headers.Clone()
@@ -262,6 +265,7 @@ func cloneMethods(methods []restclient.Method) []restclient.Method {
 		for k, v := range methods[i].Variables {
 			out[i].Variables[k] = v
 		}
+		out[i].VariableLines = maps.Clone(methods[i].VariableLines)
 		out[i].Query = make(map[string][]string, len(methods[i].Query))
 		for k, v := range methods[i].Query {
 			out[i].Query[k] = append([]string(nil), v...)
@@ -272,9 +276,6 @@ func cloneMethods(methods []restclient.Method) []restclient.Method {
 
 func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method) {
 	known := make(map[string]bool)
-	for k := range method.Variables {
-		known[k] = true
-	}
 	for k := range method.Query {
 		known[k] = true
 	}
@@ -287,14 +288,26 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method) {
 	for _, values := range method.Headers {
 		texts = append(texts, values...)
 	}
+	seen := make(map[string]bool)
 	for _, text := range texts {
 		for _, match := range restclient.PlaceholderPattern.FindAllStringSubmatch(text, -1) {
-			key := match[1]
-			if known[key] || isGeneratedKey(key) {
+			prefix, key := match[1], match[2]
+			if seen[prefix+key] {
 				continue
 			}
-			known[key] = true
-			logger.Warn("unresolved placeholder preserved literally (may be supplied by a request query)", "placeholder", key, "source", method.Source, "line", method.Line, "method", method.Name)
+			if prefix == "$" {
+				if known[key] || isGeneratedKey(key) {
+					continue
+				}
+			} else if _, ok := method.Variables[key]; ok {
+				continue
+			}
+			seen[prefix+key] = true
+			if prefix == "$" {
+				logger.Warn("unresolved placeholder preserved literally (may be supplied by a request query)", "placeholder", key, "source", method.Source, "line", method.Line, "method", method.Name)
+			} else {
+				logger.Warn("unresolved placeholder preserved literally (no @"+key+" variable is defined)", "placeholder", key, "source", method.Source, "line", method.Line, "method", method.Name)
+			}
 		}
 	}
 }

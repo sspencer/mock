@@ -49,11 +49,8 @@ func responseHeaders(method restclient.Method, values map[string]string, filePat
 
 func renderBody(method restclient.Method, values map[string]string, filePath string, hasFile bool) ([]byte, error) {
 	if method.Body == "" {
-		if _, configured := method.Variables["file"]; configured && !hasFile {
-			return nil, fmt.Errorf("invalid $file path")
-		}
 		if hasFile {
-			body, err := readResponseFile(method, filePath)
+			body, err := readResponseFile(method)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", filePath, err)
 			}
@@ -70,22 +67,14 @@ func renderBody(method restclient.Method, values map[string]string, filePath str
 }
 
 func expandPlaceholders(input string, method restclient.Method, values map[string]string) string {
-	return placeholderPattern.ReplaceAllStringFunc(input, func(match string) string {
-		parts := placeholderPattern.FindStringSubmatch(match)
-		if len(parts) != 2 {
-			return match
-		}
-		key := parts[1]
+	return restclient.Expand(input, method.Variables, func(key string) (string, bool) {
 		if value, ok := values[key]; ok {
-			return value
-		}
-		if value, ok := method.Variables[key]; ok {
-			return value
+			return value, true
 		}
 		if value := generatedValue(key); value != "" {
-			return value
+			return value, true
 		}
-		return match
+		return "", false
 	})
 }
 
@@ -105,12 +94,10 @@ func isMostlyText(body []byte) bool {
 }
 
 func resolveFilePath(method *restclient.Method) (string, bool) {
-	raw, ok := method.Variables["file"]
-	if !ok {
+	if method.File == "" {
 		return "", false
 	}
-	path, err := restclient.ResolveFile(method.Source, raw)
-	return path, err == nil
+	return restclient.ResolveFile(method.Source, method.File), true
 }
 
 func generatedValue(key string) string {
@@ -173,18 +160,29 @@ func isGeneratedKey(key string) bool {
 }
 
 // readResponseFile uses a rooted filesystem to prevent symlinks from escaping
-// the fixture directory, including when a dependency is replaced during reload.
-func readResponseFile(method restclient.Method, path string) ([]byte, error) {
-	root, err := os.OpenRoot(filepath.Dir(method.Source))
+// the root the file is found in (the .http file's directory or the workspace
+// root), including when a dependency is replaced during reload.
+func readResponseFile(method restclient.Method) ([]byte, error) {
+	var firstErr error
+	for _, dir := range restclient.BodyFileRoots(method.Source) {
+		body, err := readRooted(dir, method.File)
+		if err == nil {
+			return body, nil
+		}
+		if firstErr == nil || os.IsNotExist(firstErr) && !os.IsNotExist(err) {
+			firstErr = err
+		}
+	}
+	return nil, firstErr
+}
+
+func readRooted(dir, name string) ([]byte, error) {
+	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return nil, err
 	}
 	defer root.Close()
-	relative, err := filepath.Rel(filepath.Dir(method.Source), path)
-	if err != nil {
-		return nil, err
-	}
-	return root.ReadFile(relative)
+	return root.ReadFile(filepath.Clean(name))
 }
 
 // JSON string interpolation must escape request values without changing raw

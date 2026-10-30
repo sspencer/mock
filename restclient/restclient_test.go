@@ -1,9 +1,14 @@
 package restclient
 
 import (
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParse(t *testing.T) {
@@ -100,7 +105,7 @@ GET /missing
 func TestParseOnlyTreatsWholeCommentsAsVariables(t *testing.T) {
 	input := `### User
 # this mentions $delay=1s but is not a variable
-# $delay=250ms
+@delay = 250ms
 POST /users
 
 created
@@ -123,8 +128,8 @@ created
 
 func TestParseMatchHeadersFromDollarHeaderComments(t *testing.T) {
 	input := `### Secured
-# $header.Authorization=Bearer secret
-# $header.X-Trace=*
+@header.Authorization = Bearer secret
+@header.X-Trace = *
 GET /secure
 Content-Type: application/json
 
@@ -150,14 +155,89 @@ Content-Type: application/json
 
 func TestFileDependencies(t *testing.T) {
 	methods := []Method{
-		{Variables: map[string]string{"file": "users.json"}},
-		{Variables: map[string]string{"file": "users.json"}},
-		{Variables: map[string]string{"file": "index.html"}},
-		{Variables: map[string]string{}},
+		{File: "users.json"},
+		{File: "users.json"},
+		{File: "index.html"},
+		{},
 	}
 	deps := FileDependencies(methods)
 	if len(deps) != 2 {
 		t.Fatalf("deps = %#v, want 2 unique paths", deps)
+	}
+}
+
+func TestParseExternalBodyFile(t *testing.T) {
+	methods, err := Parse("test.http", strings.NewReader("### Spaced\nPOST /a\nContent-Type: application/xml\n\n<   my dir/demo file.xml \n\n### Inline\nPOST /b\n\n<not a file\n"))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if got, want := methods[0].File, "  my dir/demo file.xml "; got != want {
+		t.Errorf("File = %q, want %q (whitespace preserved)", got, want)
+	}
+	if methods[0].Body != "" {
+		t.Errorf("Body = %q, want empty for an external body", methods[0].Body)
+	}
+	if methods[1].File != "" || methods[1].Body != "<not a file" {
+		t.Errorf("inline body = %q, file = %q; only \"< \" starts a file reference", methods[1].Body, methods[1].File)
+	}
+}
+
+func TestRejectInvalidExternalBody(t *testing.T) {
+	for input, want := range map[string]string{
+		"### r\nGET /x\n\n< \n":             `"< " must be followed by a file path`,
+		"### r\nGET /x\n\n< a.json\nmore\n": "must be only the file path line",
+		"### r\n@file = a.json\nGET /x\n":   `start the response body with "< path"`,
+		"### r\n# $file=a.json\nGET /x\n":   `start the response body with "< path"`,
+	} {
+		_, err := Parse("test.http", strings.NewReader(input))
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Parse(%q) error = %v, want %q", input, err, want)
+		}
+	}
+}
+
+func TestRejectUnsafeExternalBodyPaths(t *testing.T) {
+	for path, want := range map[string]string{
+		"/etc/passwd":    "must be relative",
+		"../secret.json": "cannot contain ..",
+		"a/../../b.json": "cannot contain ..",
+		"a/./..":         "cannot contain ..",
+		"./":             "must name a file",
+	} {
+		_, err := Parse("test.http", strings.NewReader("### r\nGET /x\n\n< "+path+"\n"))
+		if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "test.http:4:") {
+			t.Errorf("Parse(< %s) error = %v, want %q at line 4", path, err, want)
+		}
+	}
+	if _, err := Parse("test.http", strings.NewReader("### r\nGET /x\n\n< sub/dir/a..b.json\n")); err != nil {
+		t.Errorf("dots inside a name rejected: %v", err)
+	}
+}
+
+func TestResolveFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "requests"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	source := filepath.Join(dir, "requests", "a.http")
+	// Neither exists: the path next to the .http file is reported.
+	if got, want := ResolveFile(source, "body.json"), filepath.Join(dir, "requests", "body.json"); got != want {
+		t.Errorf("missing = %q, want %q", got, want)
+	}
+	// Only the workspace-root copy exists.
+	if err := os.WriteFile("body.json", nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := ResolveFile(source, "body.json"), filepath.Join(dir, "body.json"); got != want {
+		t.Errorf("workspace root = %q, want %q", got, want)
+	}
+	// The copy next to the .http file wins.
+	if err := os.WriteFile(filepath.Join(dir, "requests", "body.json"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := ResolveFile(source, "body.json"), filepath.Join(dir, "requests", "body.json"); got != want {
+		t.Errorf("next to http file = %q, want %q", got, want)
 	}
 }
 
@@ -196,36 +276,152 @@ ok
 	}
 }
 
-func TestUnusedCustomVariables(t *testing.T) {
-	methods, err := Parse("test.http", strings.NewReader(`### Used
-# $greeting=hello
-# $unused=1000ms
-GET /hi
-X-Greeting: {{$greeting}}
+func TestUnusedVariables(t *testing.T) {
+	methods, err := Parse("test.http", strings.NewReader(`@shared = hi
+@orphan = nobody
 
-{{$greeting}}
+### Used
+@greeting = hello
+@unused = 1000ms
+GET /hi
+X-Greeting: {{greeting}}
+
+{{greeting}} {{shared}}
+
+### Overrides
+@shared = bye
+GET /bye
+
+{{shared}}
 `))
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	unused := UnusedCustomVariables(methods[0])
-	if len(unused) != 1 || unused[0] != "unused" {
-		t.Fatalf("UnusedCustomVariables() = %#v, want [unused]", unused)
+	var got []string
+	for _, unused := range UnusedVariables(methods) {
+		got = append(got, fmt.Sprintf("%s:%d", unused.Name, unused.Line))
+	}
+	if want := []string{"orphan:2", "unused:6"}; !slices.Equal(got, want) {
+		t.Fatalf("UnusedVariables() = %v, want %v", got, want)
 	}
 
-	// Control vars and referenced custom vars are not reported.
+	// Control variables and variables referenced by other variables are not reported.
 	methods, err = Parse("test.http", strings.NewReader(`### Ok
-# $delay=1s
-# $name=Ada
+@delay = 1s
+@name = Ada
+@greeting = hi {{name}}
 GET /hi
 
-hi {{$name}}
+{{greeting}}
 `))
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	if got := UnusedCustomVariables(methods[0]); len(got) != 0 {
-		t.Fatalf("UnusedCustomVariables() = %#v, want none", got)
+	if got := UnusedVariables(methods); len(got) != 0 {
+		t.Fatalf("UnusedVariables() = %#v, want none", got)
+	}
+}
+
+func TestFileAndMethodScopedVariables(t *testing.T) {
+	input := `@host = example.com
+@delay = 100ms
+@header.X-Tenant = {{host}}
+
+### Inherits
+GET /a
+
+### Variables-only block
+@token = abc
+
+### Overrides
+@delay = 2s
+@host = other.test
+@header.x-tenant = {{host}}
+GET /b
+
+{{host}} {{token}}
+`
+	methods, err := Parse("test.http", strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(methods) != 2 {
+		t.Fatalf("len(methods) = %d, want 2 (variables-only block is not a route)", len(methods))
+	}
+	inherits, overrides := methods[0], methods[1]
+	if inherits.Delay != 100*time.Millisecond || overrides.Delay != 2*time.Second {
+		t.Fatalf("delays = %v, %v", inherits.Delay, overrides.Delay)
+	}
+	if got := inherits.MatchHeaders.Get("X-Tenant"); got != "example.com" {
+		t.Fatalf("inherited X-Tenant = %q", got)
+	}
+	if got := overrides.MatchHeaders["X-Tenant"]; !slices.Equal(got, []string{"other.test"}) {
+		t.Fatalf("overridden X-Tenant = %q", got)
+	}
+	if got := inherits.Variables["token"]; got != "abc" {
+		t.Fatalf("file variable from a later variables-only block = %q, want abc", got)
+	}
+	if got, _ := overrides.Variable("host"); got != "other.test" {
+		t.Fatalf("host = %q", got)
+	}
+}
+
+func TestVariableDefinitionSyntax(t *testing.T) {
+	input := "@  spaced.name-1  =   a b  c  \n" +
+		`@escaped = one\ntwo\tthree\\n` + "\n" +
+		"@base = http://x\n" +
+		"@url = {{base}}/a b\n\n" +
+		"### r\nGET /x\n"
+	methods, err := Parse("test.http", strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	vars := methods[0].Variables
+	if got := vars["spaced.name-1"]; got != "a b  c" {
+		t.Errorf("trimmed value = %q", got)
+	}
+	if got, want := vars["escaped"], "one\ntwo\tthree\\n"; got != want {
+		t.Errorf("escaped value = %q, want %q", got, want)
+	}
+	if got, _ := methods[0].Variable("url"); got != "http://x/a b" {
+		t.Errorf("referenced value = %q", got)
+	}
+}
+
+func TestRejectInvalidVariableDefinitions(t *testing.T) {
+	for input, want := range map[string]string{
+		"@no-equals\n### r\nGET /x":                   `expected "@name = value"`,
+		"@two words = 1\n### r\nGET /x":               "cannot contain spaces",
+		"@ = 1\n### r\nGET /x":                        "variable name is required",
+		"@1bad = 1\n### r\nGET /x":                    "invalid variable name",
+		"### r\n@status = 201\nGET /x":                "@status is not supported",
+		"### r\n# $delay=1s\nGET /x":                  `use "@delay = 1s"`,
+		"# comment before any section\n### r\nGET /x": "content before first ### section",
+	} {
+		_, err := Parse("test.http", strings.NewReader(input))
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Parse(%q) error = %v, want %q", input, err, want)
+		}
+	}
+}
+
+func TestExpand(t *testing.T) {
+	vars := map[string]string{"a": "x y&z", "b": "[{{a}}]", "loop": "{{loop}}", "enc": "{{%a}}"}
+	dollar := func(name string) (string, bool) { return strings.ToUpper(name), name != "missing" }
+	for input, want := range map[string]string{
+		"{{a}}":              "x y&z",
+		"{{%a}}":             "x%20y%26z",
+		"{{b}}":              "[x y&z]",
+		"{{enc}}":            "x%20y%26z",
+		"{{%b}}":             "%5Bx%20y%26z%5D",
+		"{{loop}}":           "{{loop}}",
+		"{{nope}} {{$nope}}": "{{nope}} NOPE",
+		"{{$missing}}":       "{{$missing}}",
+		"{{ a }} {a} {{a}":   "{{ a }} {a} {{a}",
+	} {
+		if got := Expand(input, vars, dollar); got != want {
+			t.Errorf("Expand(%q) = %q, want %q", input, got, want)
+		}
 	}
 }
 
@@ -299,10 +495,10 @@ GET /users
 		{
 			name: "empty header matcher name",
 			input: `### User
-# $header.=value
+@header. = value
 GET /users
 `,
-			want: []string{"test.http:2:", "$header. requires a header name"},
+			want: []string{"test.http:2:", "@header. requires a header name"},
 		},
 		{
 			name: "status below final range",

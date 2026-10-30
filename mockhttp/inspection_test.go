@@ -29,7 +29,7 @@ func TestInspectionCapturesMatchAndSequence(t *testing.T) {
 }
 
 func TestUnmatchedRequestExplainsConstraints(t *testing.T) {
-	methods, err := restclient.Parse("fixtures.http", strings.NewReader("### protected\n# $header.Authorization=secret\nGET /x?kind=cat\n\nok"))
+	methods, err := restclient.Parse("fixtures.http", strings.NewReader("### protected\n@header.Authorization = secret\nGET /x?kind=cat\n\nok"))
 	if err != nil {
 		t.Fatal(err)
 	}

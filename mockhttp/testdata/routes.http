@@ -1,5 +1,5 @@
 ### Get loaves
-# $delay=1s
+@delay = 1s
 GET /bread/
 Content-Type: application/json
 
@@ -15,7 +15,7 @@ Content-Type: application/json
 ]
 
 ### [201] Create loaf
-# $delay=2s
+@delay = 2s
 POST /bread/
 Content-Type: application/json
 

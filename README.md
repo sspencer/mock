@@ -47,7 +47,7 @@ Available mock methods:
   GET     /users/:id                     Return any user
 ```
 
-While it is running, it watches the given `.http` file(s) and any `$file`
+While it is running, it watches the given `.http` file(s) and any `< path`
 response bodies they reference. Save a file and the server reloads the routes
 and reprints the updated method list. A failed reload keeps the previous routes
 and logs the error.
@@ -138,8 +138,8 @@ when the `mock` binary or static UI changes. Because the file is mounted from
 the host, edits to the host `.http` file are picked up by the running container
 and reloaded automatically.
 
-If the request file uses `$file` response bodies, mount the whole directory so
-relative file references are available inside the container:
+If the request file uses `< path` external response bodies, mount the whole
+directory so relative file references are available inside the container:
 
 ```sh
 docker run --rm \
@@ -176,7 +176,7 @@ from stdin. Empty input fails fast with an error that points at the expected
 request-section format.
 
 Request files passed on the command line are watched for changes, including
-relative `$file` response bodies. On save, `mock` reloads those files, swaps in
+relative `< path` response bodies. On save, `mock` reloads those files, swaps in
 the new routes without restarting the process, and prints the updated route list.
 SIGINT/SIGTERM shut the server down cleanly and stop the file watcher.
 
@@ -187,14 +187,15 @@ server from `/` instead of loading mock routes or the request-log UI.
 
 **Headers after the request line are response headers.** To match incoming
 request headers such as `Authorization`, `Cookie`, or `Accept`, use
-`# $header.Name=value` above the request line — not a header below it.
+`@header.Name = value` above the request line — not a header below it.
 `Content-Type` after the request line is the usual way to set the mock response
 content type. `mock` warns at load time if a well-known incoming header is used
-as a response header without a matching `$header.*` matcher.
+as a response header without a matching `@header.*` matcher.
 
 Each response starts with `###`, followed by an optional `[status]` and a name,
 optional variables, an HTTP request line, optional **response** headers, a blank
-line, and an optional body.
+line, and an optional body. File-wide variables may be defined above the first
+`###` (see [Variables](#variables)).
 
 ```http
 ### Return user
@@ -219,7 +220,7 @@ status: `### [204] Delete user` returns `204` and is named "Delete user". The
 bracketed code is optional and defaults to `200`. The supported final status
 range is `200`–`999`; invalid codes are load errors. Brackets that do not hold
 only digits, such as `### [beta] Users`, stay part of the name. The old
-`# $status=…` variable is no longer supported and is also a load error.
+`$status` variable is no longer supported and is also a load error.
 
 ### Supported dialect
 
@@ -227,56 +228,120 @@ only digits, such as `### [beta] Users`, stay part of the name. The old
 
 | Supported | Not supported |
 |-----------|----------------|
-| `###` named sections | `@name` / request separators beyond `###` |
-| `# $var=value` control variables | Environment files / `{{env}}` from IDE |
+| `###` named sections | Request separators beyond `###` |
+| `@name = value` file and method variables | Environment files / `{{env}}` from IDE |
 | Request line `METHOD /path` | Full multi-step scripts |
 | Response headers after the request line | Separate request vs response documents |
-| `# $header.Name=value` request header matchers | Body-content matchers |
-| `{{$placeholder}}` in bodies and response headers | Imports of other `.http` files |
-| `$file` relative body files | Absolute `$file` paths |
+| `@header.Name = value` request header matchers | Body-content matchers |
+| `{{name}}`, `{{%name}}` and `{{$placeholder}}` in bodies and response headers | Request variables (`{{login.response.body.token}}`) |
+| `< path` external body files | Mixing inline text and `< path` in one body; imports of other `.http` files |
 
 Inline bodies normalize line endings to LF and discard trailing blank lines.
 A line beginning `###` is always a section boundary, including within a body.
-Use a `$file` dependency for content that must preserve line endings, trailing
+Use an external body file (`< path`) for content that must preserve line endings, trailing
 whitespace, or literal section delimiters. Individual inline lines are limited
-to 1 MiB. Malformed queries, invalid headers, and invalid control directives
+to 1 MiB. Malformed queries, invalid headers, and invalid directives
 produce source-and-line errors; a failed reload retains the working routes.
+
+## External response bodies
+
+To serve a file as the response body, make the body a single line that starts
+with `<` and a space, followed by the file path:
+
+```http
+### Return users
+GET /users
+Content-Type: application/json
+
+< ./users.json
+```
+
+The path is everything after `< `, whitespace included, so names with spaces
+work as written. It must be relative, and is looked up:
+
+- next to the `.http` file that names it; then
+- relative to the workspace root, which is the directory `mock` runs from. This
+  is tried only when the file does not exist next to the `.http` file.
+
+Absolute paths and `..` path segments are load errors. A file must stay inside
+the directory it is found in (the `.http` file's directory or the workspace
+root); symlinks cannot escape it, including when a file is replaced during a
+reload.
+
+The body must be only that line; extra text after it is a load error. A first
+line that starts with `<` without a following space, such as `<html>`, is an
+ordinary inline body. The old `@file` and `$file` variables are no longer
+supported and are a load error.
+
+The file is read on every request, so edits show up immediately, and `mock`
+watches it for reloads. A missing file returns a 500 for that route. If no
+explicit `Content-Type` header is set, it is inferred from the file extension
+when possible. Placeholders (`{{name}}`, `{{$name}}`) are expanded when the
+content type is text, JSON, XML or JavaScript (explicit or inferred) and the
+file is valid UTF-8 without binary control bytes. Other files are served as raw
+bytes.
 
 ## Variables
 
-Variables live in comments directly below the `###` line:
+A variable is defined on a line of its own as `@name = value`. The name cannot
+contain spaces. The value can hold any characters, including spaces; leading
+and trailing whitespace is trimmed. Use a backslash to write a line break
+(`\n`), a tab (`\t`), a carriage return (`\r`) or a literal backslash (`\\`).
+A value may reference other variables, such as `@url = {{host}}/users`, and
+generated values, such as `@id = {{$uuid}}`.
+
+Where a variable is defined sets its scope:
+
+- **File scope:** above the first `###` line, or in a `###` section that holds
+  only variable definitions (no request line). File variables apply to every
+  section in the file, wherever they are defined.
+- **Method scope:** between a `###` line and its request line. These apply only
+  to that section and override a file variable of the same name.
 
 ```http
-# $delay=500ms
-# $file=users.json
-# $header.Authorization=Bearer secret
+@host = example.com
+@delay = 250ms
+
+### Home
+GET /
+
+< index.html
+
+### Slow users
+@delay = 2s
+@header.Authorization = Bearer secret
+GET /users
+Content-Type: application/json
+
+{"link": "https://{{host}}/users?q={{%query}}"}
 ```
 
-Supported control variables:
+A blank line between the definitions and the request line is allowed but not
+required. Plain `# comment` lines may also appear there. The old
+`# $name=value` comment variables are no longer supported and are a load error
+that points to the `@name = value` form.
 
-- `$delay`: response delay parsed with Go duration syntax, such as `250ms` or `2s`. Negative or invalid durations are load errors.
-- `$file`: response body file, resolved relative to the `.http` file.
-- `$header.Name=value`: require the incoming request to include that header. Use `*` as the value to accept any non-empty header.
+Variable names with a special meaning, which `mock` consumes itself:
 
-`$file` paths must be relative and cannot contain `..` path segments. If no
-explicit `Content-Type` header is set, file-backed responses infer it from the
-file extension when possible. Placeholder expansion requires a text, JSON, XML,
-or JavaScript content type (explicit or inferred) and valid UTF-8 text without
-binary control bytes. Other files are served as raw bytes. Symlinks cannot escape
-the directory containing the `.http` file.
+- `@delay`: response delay parsed with Go duration syntax, such as `250ms` or `2s`. Negative or invalid durations are load errors. Set at file scope, it is the default for every section.
+- `@header.Name`: require the incoming request to include that header. Use `*` as the value to accept any non-empty header. Set at file scope, it applies to every section; a method-scoped header of the same name replaces it.
+
+Every other variable is only used through `{{name}}` references. `mock` warns
+at load time about variables that nothing references.
 
 ## Placeholders
 
-Response bodies **and response headers** can contain `{{$name}}` placeholders.
-`mock` resolves them from:
+Response bodies **and response headers** can contain placeholders:
 
-- Path parameters, such as `:id` in `/users/:id`.
-- Query parameters, such as `type` in `/names?type=cat`.
-- Variables declared in comments, such as `$delay`.
-- Built-in generated values.
+- `{{name}}` inserts the value of the `@name` variable in scope.
+- `{{%name}}` inserts it percent-encoded (a space becomes `%20`, `&` becomes `%26`).
+- `{{$name}}` inserts a request or generated value. `mock` resolves it from:
+  - Path parameters, such as `:id` in `/users/:id`.
+  - Query parameters, such as `type` in `/names?type=cat`.
+  - Built-in generated values.
 
 Path parameters take precedence over query parameters with the same name.
-Variable names may contain dots and hyphens after their first character.
+Variable and placeholder names may contain dots and hyphens after their first character.
 Unknown placeholders remain literal and produce load-time warnings; query
 parameters supplied only at request time can resolve those warnings at runtime.
 Inside JSON strings, inserted values are JSON-escaped. Outside strings, values
@@ -303,7 +368,7 @@ Unknown placeholders resolve to an empty string.
 ## Matching
 
 Routes match on HTTP method, path, any query parameters declared in the
-`.http` file, and any `$header.*` matchers.
+`.http` file, and any `@header.*` matchers.
 
 ```http
 ### Cat names
@@ -329,7 +394,7 @@ Content-Type: application/json
 
 ```http
 ### Secure read
-# $header.Authorization=Bearer secret
+@header.Authorization = Bearer secret
 GET /secure
 Content-Type: application/json
 

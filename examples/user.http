@@ -1,15 +1,17 @@
 ### Return home page external html file
-# $file=index.html
 GET /
 
+< index.html
 
 ### Return home page external html file, specify path
-# $file=index.html
 GET /index.html
 
+< index.html
+
 ### Return external json file
-# $file=users.json
 GET /users
+
+< users.json
 
 ### [201] Create random user
 POST /users
@@ -94,9 +96,9 @@ Content-Type: application/json
 DELETE /users/:id
 
 ### Music Include
-# $file=chords.txt
 GET /chords
 
+< chords.txt
 
 ### Music embed
 GET /chords2
@@ -129,7 +131,7 @@ Content-Type: application/json
 }
 
 ### Return a page after a delay
-# $delay=1500ms
+@delay = 1500ms
 GET /delay
 Content-Type: application/json
 

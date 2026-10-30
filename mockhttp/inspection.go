@@ -66,7 +66,7 @@ func describeRoute(method restclient.Method, index int, revision uint64) RouteIn
 	}
 	return RouteInfo{ID: fmt.Sprintf("%d:%d", revision, index), Revision: revision, Name: method.Name, Method: method.Method,
 		Path: (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath(), Query: method.Query.Encode(), Source: method.Source, Line: method.Line, Status: method.Status,
-		Delay: method.Delay.String(), File: method.Variables["file"], Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
+		Delay: method.Delay.String(), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
 		Variables: cloneVariables(method.Variables), Body: body, BodyTruncated: truncated}
 }
 

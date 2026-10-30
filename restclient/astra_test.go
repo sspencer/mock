@@ -6,7 +6,7 @@ import (
 )
 
 func TestRejectInvalidConstraints(t *testing.T) {
-	for _, input := range []string{"### q\nGET /x?a=%ZZ", "### h\nGET /x\nBad Header: yes", "### h\nGET /x\nX-Test: bad\x00value", "### f\n# $file=../secret\nGET /x"} {
+	for _, input := range []string{"### q\nGET /x?a=%ZZ", "### h\nGET /x\nBad Header: yes", "### h\nGET /x\nX-Test: bad\x00value", "### f\n@file = ../secret\nGET /x"} {
 		if _, err := Parse("test.http", strings.NewReader(input)); err == nil {
 			t.Errorf("accepted invalid input %q", input)
 		}

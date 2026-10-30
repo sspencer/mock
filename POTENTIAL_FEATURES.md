@@ -10,9 +10,9 @@ separately below so they do not remain in the backlog.
   and JSON output for CI. Loading already validates request constraints, headers,
   and control directives with source/line errors and emits template/header warnings.
 - **Broader REST Client import:** unnamed sections, comments before the first
-  section, HTTP versions on request lines, file/environment variables, and
+  section, HTTP versions on request lines, environment variables and request variables, and
   explicit request-to-response conversion warnings. Named `###` sections and
-  `$header.*` matchers are supported; warnings already flag likely request
+  `@header.*` matchers and `@name = value` file variables are supported; warnings already flag likely request
   headers used as response headers.
 - **Richer matching:** JSON/body fields, regular expressions, absent-header
   predicates, explicit priorities, and fallback routes. Current matching covers

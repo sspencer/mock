@@ -66,7 +66,7 @@ func TestTextClassificationChecksEntireBody(t *testing.T) {
 }
 func TestPlaceholderGrammarAndUnknownPreservation(t *testing.T) {
 	method := restclient.Method{Variables: map[string]string{"user-name": "Alice", "user.name": "Bob"}}
-	if got := expandPlaceholders("{{$user-name}} {{$user.name}} {{$typo}}", method, nil); got != "Alice Bob {{$typo}}" {
+	if got := expandPlaceholders("{{user-name}} {{user.name}} {{typo}} {{$typo}}", method, nil); got != "Alice Bob {{typo}} {{$typo}}" {
 		t.Fatal(got)
 	}
 }
@@ -92,7 +92,8 @@ func TestResponseFileCannotEscapeThroughSymlink(t *testing.T) {
 	if err := os.Symlink("../secret", filepath.Join(dir, "fixtures", "link")); err != nil {
 		t.Skip(err)
 	}
-	method := restclient.Method{Source: filepath.Join(dir, "fixtures", "test.http"), Variables: map[string]string{"file": "link"}}
+	t.Chdir(filepath.Join(dir, "fixtures", ".."))
+	method := restclient.Method{Source: filepath.Join(dir, "fixtures", "test.http"), File: "link"}
 	path, ok := resolveFilePath(&method)
 	if !ok {
 		t.Fatal("expected lexical path to resolve")
@@ -107,7 +108,7 @@ func TestBinaryMIMEPreventsTextLikeFileExpansion(t *testing.T) {
 	path := filepath.Join(dir, "body.bin")
 	want := "printable binary {{$name}}"
 	os.WriteFile(path, []byte(want), 0600)
-	method := restclient.Method{Source: filepath.Join(dir, "test.http"), Variables: map[string]string{"file": "body.bin"}}
+	method := restclient.Method{Source: filepath.Join(dir, "test.http"), File: "body.bin"}
 	body, err := renderBody(method, nil, path, true)
 	if err != nil || string(body) != want {
 		t.Fatalf("binary changed: %q, %v", body, err)

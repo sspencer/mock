@@ -1,1 +1,1 @@
-testdata/baddelay.http:2: $delay must be a non-negative duration
+testdata/baddelay.http:2: @delay must be a non-negative duration
