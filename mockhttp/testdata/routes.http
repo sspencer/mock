@@ -14,9 +14,9 @@ Content-Type: application/json
   "pita"
 ]
 
-### Create loaf
+### [201] Create loaf
 # $delay=2s
-POST/201 /bread/
+POST /bread/
 Content-Type: application/json
 
 {

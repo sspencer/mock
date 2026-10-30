@@ -7,9 +7,9 @@ import (
 )
 
 func TestParse(t *testing.T) {
-	input := `### Create User
+	input := `### [201] Create User
 # creates a user
-POST/201 /users
+POST /users
 Content-Type: application/json
 X-Trace: yes
 
@@ -17,8 +17,8 @@ X-Trace: yes
   "success": true
 }
 
-### Delete User
-DELETE/204 /users/:id
+### [204] Delete User
+DELETE /users/:id
 `
 
 	methods, err := Parse("test.http", strings.NewReader(input))
@@ -49,41 +49,50 @@ DELETE/204 /users/:id
 	}
 }
 
-func TestParseStatusAfterMethod(t *testing.T) {
-	input := `### Delete
-DELETE/204 /users/:id
+func TestParseStatusInSectionName(t *testing.T) {
+	input := `### [204] Delete
+DELETE /users/:id
 
-### Create
-post/201 /users
+### [201] Create
+post /users
 
-### Accepted
-GET/202 /accepted
+### [202] Accepted
+GET /accepted
 
 ### Default
 GET /default
+
+### [beta] Bracketed label
+GET /beta
+
+### [ 404 ]  Spaced status
+GET /missing
 `
 	methods, err := Parse("test.http", strings.NewReader(input))
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
 	want := []struct {
+		name   string
 		method string
 		path   string
 		status int
 	}{
-		{http.MethodDelete, "/users/:id", 204},
-		{http.MethodPost, "/users", 201},
-		{http.MethodGet, "/accepted", 202},
-		{http.MethodGet, "/default", 200},
+		{"Delete", http.MethodDelete, "/users/:id", 204},
+		{"Create", http.MethodPost, "/users", 201},
+		{"Accepted", http.MethodGet, "/accepted", 202},
+		{"Default", http.MethodGet, "/default", 200},
+		{"[beta] Bracketed label", http.MethodGet, "/beta", 200},
+		{"Spaced status", http.MethodGet, "/missing", 404},
 	}
 	if len(methods) != len(want) {
 		t.Fatalf("len(methods) = %d, want %d", len(methods), len(want))
 	}
 	for i, w := range want {
 		m := methods[i]
-		if m.Method != w.method || m.Path != w.path || m.Status != w.status {
-			t.Errorf("methods[%d] = %s %s status %d, want %s %s status %d",
-				i, m.Method, m.Path, m.Status, w.method, w.path, w.status)
+		if m.Name != w.name || m.Method != w.method || m.Path != w.path || m.Status != w.status {
+			t.Errorf("methods[%d] = %q %s %s status %d, want %q %s %s status %d",
+				i, m.Name, m.Method, m.Path, m.Status, w.name, w.method, w.path, w.status)
 		}
 	}
 }
@@ -162,7 +171,7 @@ GET /users HTTP/1.1
 		t.Fatal("Parse() error = nil, want error")
 	}
 	msg := err.Error()
-	for _, want := range []string{"test.http:2:", "invalid HTTP request line", "METHOD[/STATUS] /path"} {
+	for _, want := range []string{"test.http:2:", "invalid HTTP request line", "METHOD /path"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("error = %q, want to contain %q", msg, want)
 		}
@@ -244,7 +253,7 @@ GET /users
 			input: `### User
 # comment only
 `,
-			want: []string{"test.http:2:", `section "User" is missing an HTTP request line`, "METHOD[/STATUS] /path"},
+			want: []string{"test.http:2:", `section "User" is missing an HTTP request line`, "METHOD /path"},
 		},
 		{
 			name: "missing request line empty section",
@@ -296,32 +305,28 @@ GET /users
 			want: []string{"test.http:2:", "$header. requires a header name"},
 		},
 		{
-			name: "non-numeric status after method",
-			input: `### User
-DELETE/gone /users/:id
-`,
-			want: []string{"test.http:2:", "invalid response status", `"gone"`},
-		},
-		{
 			name: "status below final range",
-			input: `### User
-GET/100 /users
+			input: `### [100] User
+GET /users
 `,
-			want: []string{"test.http:2:", "invalid response status", `"100"`},
+			want: []string{"test.http:1:", "invalid response status [100]"},
 		},
 		{
-			name: "empty status after slash",
-			input: `### User
-GET/ /users
+			name: "status above final range",
+			input: `### Good
+GET /ok
+
+### [1000] User
+GET /users
 `,
-			want: []string{"test.http:2:", "invalid response status"},
+			want: []string{"test.http:4:", "invalid response status [1000]"},
 		},
 		{
-			name: "unknown method with status",
-			input: `### User
-FETCH/204 /users
+			name: "status without name",
+			input: `### [204]
+GET /users
 `,
-			want: []string{"test.http:2:", "unrecognized HTTP method", `"FETCH"`},
+			want: []string{"test.http:1:", "method name is required after the status"},
 		},
 		{
 			name: "error line in later section",

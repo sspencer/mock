@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- Add `METHOD/STATUS` request-line syntax (for example `DELETE/204 /users/:id`) to set the response status. The slash and code are optional and default to `200`.
-- Remove the `$status` variable; using it is now a load error that points to the request-line status.
+- Add an optional `[status]` prefix on section names (for example `### [204] Delete a user`) to set the response status. It defaults to `200`.
+- Remove the `$status` variable; using it is now a load error that points to the section-name status.
 - Convert the example `.http` files to the new syntax.
 
 ## v0.1.4 - 2026-09-06

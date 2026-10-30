@@ -16,7 +16,7 @@ import (
 // Exercise the embedded module UI, real TLS/net/http behavior, and SSE protocol
 // together; recorder-only tests cannot verify actual transport metadata.
 func TestTLSCaptureAndEmbeddedDashboardIntegration(t *testing.T) {
-	methods, err := restclient.Parse("test.http", strings.NewReader("### response\nPOST/201 /x/:id\nContent-Type: application/json\nSet-Cookie: one=1\nSet-Cookie: two=2\n\n{\"id\":\"{{$id}}\"}"))
+	methods, err := restclient.Parse("test.http", strings.NewReader("### [201] response\nPOST /x/:id\nContent-Type: application/json\nSet-Cookie: one=1\nSet-Cookie: two=2\n\n{\"id\":\"{{$id}}\"}"))
 	if err != nil {
 		t.Fatal(err)
 	}

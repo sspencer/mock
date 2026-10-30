@@ -11,8 +11,8 @@ GET /index.html
 # $file=users.json
 GET /users
 
-### Create random user
-POST/201 /users
+### [201] Create random user
+POST /users
 Content-Type: application/json
 
 {
@@ -22,8 +22,8 @@ Content-Type: application/json
     "event": "{{$uuid}}"
 }
 
-### Create user failure
-POST/400 /users
+### [400] Create user failure
+POST /users
 Content-Type: application/json
 
 {
@@ -90,8 +90,8 @@ Content-Type: application/json
     "blurb": "{{$sentence}}"
 }
 
-### Delete a user
-DELETE/204 /users/:id
+### [204] Delete a user
+DELETE /users/:id
 
 ### Music Include
 # $file=chords.txt

@@ -112,9 +112,9 @@ func lineValue(body, key string) string {
 	return ""
 }
 
-func TestServerUsesStatusVariableAndSuppressesNoContentBody(t *testing.T) {
-	methods, err := restclient.Parse("test.http", strings.NewReader(`### Delete User
-DELETE/204 /users/:id
+func TestServerUsesSectionStatusAndSuppressesNoContentBody(t *testing.T) {
+	methods, err := restclient.Parse("test.http", strings.NewReader(`### [204] Delete User
+DELETE /users/:id
 
 ignored
 `))
@@ -136,14 +136,14 @@ ignored
 	}
 }
 
-func TestServerStatusAfterMethodOverridesStatusVariable(t *testing.T) {
-	methods, err := restclient.Parse("test.http", strings.NewReader(`### Delete User
-DELETE/204 /users/:id
+func TestServerUsesSectionNameStatus(t *testing.T) {
+	methods, err := restclient.Parse("test.http", strings.NewReader(`### [204] Delete User
+DELETE /users/:id
 
 ignored
 
-### Create User
-POST/201 /users
+### [201] Create User
+POST /users
 
 created
 `))
@@ -168,14 +168,14 @@ created
 }
 
 func TestServerAlternatesDuplicateMethodAndURL(t *testing.T) {
-	methods, err := restclient.Parse("test.http", strings.NewReader(`### Create User
-POST/201 /users
+	methods, err := restclient.Parse("test.http", strings.NewReader(`### [201] Create User
+POST /users
 Content-Type: application/json
 
 {"success":true}
 
-### Create User Failure
-POST/400 /users
+### [400] Create User Failure
+POST /users
 Content-Type: application/json
 
 {"success":false}
@@ -210,8 +210,8 @@ Content-Type: application/json
 }
 
 func TestServerRequestEventIncludesRequestAndResponseBodies(t *testing.T) {
-	methods, err := restclient.Parse("test.http", strings.NewReader(`### Create User
-POST/201 /users
+	methods, err := restclient.Parse("test.http", strings.NewReader(`### [201] Create User
+POST /users
 Content-Type: application/json
 
 {
@@ -593,13 +593,13 @@ old
 		t.Fatalf("initial response status = %d body = %q, want 200 old", response.Code, response.Body.String())
 	}
 
-	updated, err := restclient.Parse("test.http", strings.NewReader(`### First
-POST/201 /users
+	updated, err := restclient.Parse("test.http", strings.NewReader(`### [201] First
+POST /users
 
 one
 
-### Second
-POST/400 /users
+### [400] Second
+POST /users
 
 two
 `))

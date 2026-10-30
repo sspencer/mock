@@ -192,8 +192,9 @@ request headers such as `Authorization`, `Cookie`, or `Accept`, use
 content type. `mock` warns at load time if a well-known incoming header is used
 as a response header without a matching `$header.*` matcher.
 
-Each response starts with `###`, followed by a name, optional variables, an HTTP
-request line, optional **response** headers, a blank line, and an optional body.
+Each response starts with `###`, followed by an optional `[status]` and a name,
+optional variables, an HTTP request line, optional **response** headers, a blank
+line, and an optional body.
 
 ```http
 ### Return user
@@ -206,18 +207,19 @@ Content-Type: application/json
   "requestId": "{{$uuid}}"
 }
 
-### Delete user
-DELETE/204 /users/:id
+### [204] Delete user
+DELETE /users/:id
 ```
 
 The request target may be a path or a full URL. Only the path and query string
 are used for matching.
 
-Append `/` and a status code directly to the method (no spaces) to set the
-response status: `DELETE/204 /users/:id` returns `204`. The slash and code are
-optional and default to `200`, so `GET /users` is the same as `GET/200 /users`.
-The supported final status range is `200`–`999`; invalid codes are load errors.
-The old `# $status=…` variable is no longer supported and is also a load error.
+Start a section name with a status code in square brackets to set the response
+status: `### [204] Delete user` returns `204` and is named "Delete user". The
+bracketed code is optional and defaults to `200`. The supported final status
+range is `200`–`999`; invalid codes are load errors. Brackets that do not hold
+only digits, such as `### [beta] Users`, stay part of the name. The old
+`# $status=…` variable is no longer supported and is also a load error.
 
 ### Supported dialect
 
@@ -227,7 +229,7 @@ The old `# $status=…` variable is no longer supported and is also a load error
 |-----------|----------------|
 | `###` named sections | `@name` / request separators beyond `###` |
 | `# $var=value` control variables | Environment files / `{{env}}` from IDE |
-| Request line `METHOD[/STATUS] /path` | Full multi-step scripts |
+| Request line `METHOD /path` | Full multi-step scripts |
 | Response headers after the request line | Separate request vs response documents |
 | `# $header.Name=value` request header matchers | Body-content matchers |
 | `{{$placeholder}}` in bodies and response headers | Imports of other `.http` files |
@@ -342,14 +344,14 @@ This is useful for retry paths and stateful client behavior without building a
 stateful fake server.
 
 ```http
-### First create succeeds
-POST/201 /users
+### [201] First create succeeds
+POST /users
 Content-Type: application/json
 
 {"id":1}
 
-### Second create fails
-POST/400 /users
+### [400] Second create fails
+POST /users
 Content-Type: application/json
 
 {"error":"duplicate user"}

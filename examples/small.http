@@ -13,8 +13,8 @@ X-Request-ID: request-{{$id}}
     "message": "In a Bottle"
 }
 
-### Create user
-POST/201 http://localhost:8080/user
+### [201] Create user
+POST http://localhost:8080/user
 Content-Type: application/json
 
 {

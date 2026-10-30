@@ -18,8 +18,8 @@ Content-Type: application/json
 
 { "n":  2 }
 
-### Status variant
-GET/202 /status-variant
+### [202] Status variant
+GET /status-variant
 Content-Type: application/json
 
 { "accepted": true }

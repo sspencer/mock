@@ -14,14 +14,14 @@ import (
 )
 
 func TestServerRotationIgnoresUnusedQueryParams(t *testing.T) {
-	methods, err := restclient.Parse("test.http", strings.NewReader(`### Create User
-POST/201 /users
+	methods, err := restclient.Parse("test.http", strings.NewReader(`### [201] Create User
+POST /users
 Content-Type: application/json
 
 {"success":true}
 
-### Create User Failure
-POST/400 /users
+### [400] Create User Failure
+POST /users
 Content-Type: application/json
 
 {"success":false}

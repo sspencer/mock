@@ -1,5 +1,5 @@
-### Create loaf
-post/201 /bread
+### [201] Create loaf
+post /bread
 Content-Type: application/json
 
 {

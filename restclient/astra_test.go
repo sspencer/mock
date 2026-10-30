@@ -23,9 +23,9 @@ func TestRejectInvalidDirectives(t *testing.T) {
 			t.Errorf("accepted %s", directive)
 		}
 	}
-	for _, method := range []string{"GET/103", "GET/0", "GET/oops", "GET/-1", "GET/1000"} {
-		if _, err := Parse("test.http", strings.NewReader("### route\n"+method+" /x")); err == nil {
-			t.Errorf("accepted %s", method)
+	for _, name := range []string{"[103] route", "[0] route", "[1000] route", "[204]"} {
+		if _, err := Parse("test.http", strings.NewReader("### "+name+"\nGET /x")); err == nil {
+			t.Errorf("accepted section name %q", name)
 		}
 	}
 }
@@ -35,7 +35,7 @@ func TestRejectStatusVariable(t *testing.T) {
 	if err == nil {
 		t.Fatal("accepted $status variable")
 	}
-	for _, want := range []string{"test.http:2:", "$status is no longer supported", "DELETE/204"} {
+	for _, want := range []string{"test.http:2:", "$status is no longer supported", "### [204] Delete a user"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error = %q, want to contain %q", err, want)
 		}
