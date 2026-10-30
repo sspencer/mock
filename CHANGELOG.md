@@ -9,6 +9,7 @@
 - Replace the `$file` variable with an external body: start the body with `< ` followed by the file path, such as `< ./users.json`. Paths must be relative, without `..` segments, and are looked up next to the `.http` file and then in the workspace root; symlinks cannot escape either directory. `$file` and `@file` are now load errors that point to the new syntax.
 - Warn about unused variables once per definition instead of per section.
 - Remove the `$status` variable; using it is now a load error that points to the section-name status.
+- Expand `{{name}}` variables in the request target and ignore the scheme and host of a full URL, so `GET {{host}}/users` in a shared REST Client file matches `/users`. See `examples/restclient.http`.
 - Convert the example `.http` files to the new syntax.
 
 ## v0.1.4 - 2026-09-06

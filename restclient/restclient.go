@@ -22,6 +22,10 @@ import (
 // Headers on the Method are response headers. Use MatchHeaders (from
 // @header.Name = value variables) to require request headers when matching.
 //
+// Target is the request target as written, with any {{name}} references
+// unexpanded. It may be a full URL such as "{{host}}/users", so the same file
+// can drive a REST client; only the path and query are kept in Path and Query.
+//
 // File is the external response body path, as written after "< " at the start
 // of the body; Body is empty then. Use ResolveFile to locate it on disk.
 //
@@ -32,6 +36,7 @@ import (
 type Method struct {
 	Name          string
 	Method        string
+	Target        string
 	Path          string
 	EscapedPath   string
 	Query         url.Values
@@ -405,17 +410,21 @@ func parseSection(pending pendingSection, fileDefs []definition, source string) 
 			method.Name, requestLine[0])
 	}
 
-	target, err := url.ParseRequestURI(requestLine[1])
+	method.Target = requestLine[1]
+	rawTarget := Expand(method.Target, method.Variables, nil)
+	target, err := url.ParseRequestURI(rawTarget)
 	if err != nil {
 		return method, parseErrorf(source, lineAt(i),
 			`section %q has an invalid request target %s: %v (use a path like "/users/:id" or a full URL)`,
-			method.Name, quoteSnippet(requestLine[1]), err)
+			method.Name, quoteSnippet(rawTarget), err)
 	}
-	if target.Path == "" && !strings.HasPrefix(requestLine[1], "/") {
+	// A full URL may omit the path ("https://host"), which means "/".
+	fullURL := target.Scheme != "" && target.Host != ""
+	if target.Path == "" && !fullURL && !strings.HasPrefix(rawTarget, "/") {
 		// ParseRequestURI can accept some odd forms; require a usable path for matching.
 		return method, parseErrorf(source, lineAt(i),
 			`section %q has an invalid request target %s (path is required, example: "/users")`,
-			method.Name, quoteSnippet(requestLine[1]))
+			method.Name, quoteSnippet(rawTarget))
 	}
 	method.Path = target.Path
 	method.EscapedPath = target.EscapedPath()
@@ -629,10 +638,10 @@ type UnusedVariable struct {
 }
 
 // UnusedVariables returns the @name definitions that are not control variables
-// (@delay) and are never referenced as {{name}} in the body or response
-// headers of a method they apply to, or in another variable's value. A file
-// variable is used if any method it applies to references it. Callers should
-// warn; these are not errors.
+// (@delay) and are never referenced as {{name}} in the request target, body, or
+// response headers of a method they apply to, or in another variable's value.
+// A file variable is used if any method it applies to references it. Callers
+// should warn; these are not errors.
 func UnusedVariables(methods []Method) []UnusedVariable {
 	type site struct {
 		source string
@@ -679,6 +688,7 @@ func collectPlaceholders(text string, into map[string]bool) {
 
 func placeholderNames(method Method) map[string]bool {
 	used := make(map[string]bool)
+	collectPlaceholders(method.Target, used)
 	collectPlaceholders(method.Body, used)
 	for _, values := range method.Headers {
 		for _, value := range values {

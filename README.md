@@ -212,8 +212,13 @@ Content-Type: application/json
 DELETE /users/:id
 ```
 
-The request target may be a path or a full URL. Only the path and query string
-are used for matching.
+The request target may be a path or a full URL, and may use variables such as
+`GET {{host}}/users`. Variables are expanded first, then everything before the
+path (scheme and host) is dropped; only the path and query string are used for
+matching. This lets one file serve both a REST client and `mock`, as in
+[`examples/restclient.http`](examples/restclient.http). Headers and bodies are
+still read as the mock's response, so a REST client's request headers there
+trigger a warning.
 
 Start a section name with a status code in square brackets to set the response
 status: `### [204] Delete user` returns `204` and is named "Delete user". The

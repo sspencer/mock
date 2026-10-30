@@ -322,6 +322,52 @@ GET /hi
 	}
 }
 
+func TestFullURLRequestTarget(t *testing.T) {
+	methods, err := Parse("test.http", strings.NewReader(`@host = https://api.example.com
+@token = abc123
+
+### Get all users
+GET {{host}}/users?page=2
+Authorization: Bearer {{token}}
+
+### Create a user
+@host = http://localhost:9000/ignored
+POST {{host}}/users
+
+### Literal URL
+GET https://api.example.com/users/42
+
+### Bare host
+GET {{host}}
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	want := []struct{ method, path, page string }{
+		{"GET", "/users", "2"},
+		{"POST", "/ignored/users", ""},
+		{"GET", "/users/42", ""},
+		{"GET", "/", ""},
+	}
+	if len(methods) != len(want) {
+		t.Fatalf("got %d methods, want %d", len(methods), len(want))
+	}
+	for i, w := range want {
+		m := methods[i]
+		if m.Method != w.method || m.Path != w.path || m.Query.Get("page") != w.page {
+			t.Errorf("methods[%d] = %s %s ?page=%q, want %s %s ?page=%q",
+				i, m.Method, m.Path, m.Query.Get("page"), w.method, w.path, w.page)
+		}
+	}
+	if methods[0].Target != "{{host}}/users?page=2" {
+		t.Errorf("Target = %q, want the unexpanded request target", methods[0].Target)
+	}
+	// host is referenced only from request targets; token only from a header.
+	if got := UnusedVariables(methods); len(got) != 0 {
+		t.Errorf("UnusedVariables() = %#v, want none", got)
+	}
+}
+
 func TestFileAndMethodScopedVariables(t *testing.T) {
 	input := `@host = example.com
 @delay = 100ms
