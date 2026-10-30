@@ -1,37 +1,26 @@
-Ranked by value. 
-
-**Do first**
-1. **Close small test gaps.** There's no test for the load-time warning on bad placeholder arguments (`warnUnknownPlaceholders`). I only checked it by hand. The Docker examples may also still need a second `-p` mapping for the admin port, so check that.
-
-**Next**
-2. **Richer matching.** Matching on JSON body fields, absent-header checks, and explicit priority or fallback routes. Today you can only match on method, path, query, and exact headers. This is probably the most common reason someone outgrows the tool.
-3. **Seeded generated data.** A seed makes faker output and `$randomInt` reproducible, which tests need. Reusing one generated value several times within a response would help too.
-4. **Named scenarios.** Selecting a response mode explicitly, or switching stateful scenarios, instead of only rotating through responses.
-
-**Later**
-- Redact credentials in captures, copied cURL and HAR exports (they currently include them).
-- Request assertions, such as expected counts and ordering, for integration tests.
-- Broader REST Client import: unnamed sections, comments before the first section, HTTP versions on request lines.
-- Proxy/recording mode and graphical fixture editing. These are bigger and lower priority.
-
-Steve - probably 2 next
-
-
-
-
 # Potential features
 
-Planning notes checked against the current codebase on 2026-09-06. These are
+Planning notes checked against the current codebase on 2026-10-29. These are
 ideas for future work, not committed release plans. Implemented items are kept
 separately below so they do not remain in the backlog.
+
+## Suggested order
+
+1. **Close small test gaps.** The load-time warning for bad placeholder
+   arguments (`warnUnknownPlaceholders`) is only covered by `mock validate` and
+   manual checks; add a direct test.
+2. **Richer matching.** The most common reason to outgrow the tool today.
+3. **Seeded generated data.**
+4. **Named scenarios.**
 
 ## Deferred ideas
 
 - **Broader REST Client import:** unnamed sections, comments before the first
-  section, HTTP versions on request lines, environment variables and request variables, and
-  explicit request-to-response conversion warnings. Named `###` sections and
-  `@header.*` matchers and `@name = value` file variables are supported; warnings already flag likely request
-  headers used as response headers.
+  section, HTTP versions on request lines, environment variables and request
+  variables, and explicit request-to-response conversion warnings. Named `###`
+  sections, `@header.*` matchers, `@name = value` variables, and `{{host}}` or
+  full URLs in the request target are supported; warnings already flag likely
+  request headers used as response headers.
 - **Richer matching:** JSON/body fields, regular expressions, absent-header
   predicates, explicit priorities, and fallback routes. Current matching covers
   methods, encoded paths and path parameters, declared query values, and exact
@@ -39,14 +28,16 @@ separately below so they do not remain in the backlog.
 - **Response modes and scenarios:** explicit selection modes and named stateful
   scenarios beyond the existing rotation through matching responses and manual
   sequence reset.
-- **Reproducible generated data:** seeded values and configurable reuse of a
-  generated placeholder within a response.
+- **Reproducible generated data:** seeded values (including `{{$randomInt}}`)
+  and configurable reuse of a generated placeholder within a response.
 - **Request assertions:** structured assertions for integration tests, such as
   expected request counts, ordering, and matching constraints.
 - **Template operators and namespaces:** context-aware operators and explicit
   path/query/fixture namespaces. JSON string escaping, header expansion, and
   preservation of unresolved placeholders already exist; path parameters take
-  precedence over query parameters with the same name.
+  precedence over query parameters with the same name. Generators with
+  arguments (`{{$randomInt}}`, `{{$timestamp}}`, `{{$datetime}}`,
+  `{{$localDatetime}}`) are implemented, but there are no general operators.
 - **Credential redaction:** optional redaction for diagnostic history, copied
   requests, and exports. Current captures and Copy cURL include credentials.
 - **Explicit body modes:** selectable raw/template response-file modes and exact
@@ -57,6 +48,15 @@ separately below so they do not remain in the backlog.
 
 ## Implemented from the original ideas
 
+- **Separate admin port:** the request console listens on its own port (`-a`,
+  `MOCK_UI_PORT`, default `8081`) so any path can be mocked, and `-x` skips it.
+  Mock and admin ports that collide are a startup error.
+- **Sample curl for routes:** selecting a route shows a copyable `curl` command
+  for the mock server, with sample values for path parameters.
+- **REST Client generators:** `{{$guid}}`, `{{$randomInt min max}}`,
+  `{{$timestamp [offset option]}}`, `{{$datetime rfc1123|iso8601 [offset option]}}`,
+  and `{{$localDatetime ...}}`. Invalid arguments stay literal with a load-time
+  warning.
 - **Validation CLI:** `mock validate` loads request files without serving them,
   reports load errors and startup warnings, supports `-strict` and `-json`, and
   exits non-zero for CI. It stops at the first load error rather than
@@ -80,7 +80,7 @@ separately below so they do not remain in the backlog.
 - **Mobile navigation:** traffic and route selections open the detail view with
   a back button to return to the lists.
 
-Admin paths above are served on the admin port (`-a`, default `8081`).
+Admin paths above (`/events`, `/clear`, `/reset`, `/state`, `/routes`) are served on the admin port.
 
 ## Related improvements already available
 

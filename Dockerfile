@@ -16,6 +16,6 @@ COPY --from=builder /src/examples ./examples
 
 USER nobody
 
-EXPOSE 8080
+EXPOSE 8080 8081
 ENTRYPOINT ["mock"]
 CMD ["-b", "0.0.0.0", "examples/user.http"]
