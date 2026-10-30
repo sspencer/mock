@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.1 - 2026-10-29
+
+Help flag fix and documentation corrections after v0.2.0.
+
+- Print usage and exit `0` for `-h`, `-help` and `--help` (and `mock validate -h`) instead of failing with "flag: help requested".
+- Expose the admin port (`8081`) in the Docker image.
+- Correct the README: version reporting for `go run`, `go build` and `make build`, the `send-requests.sh` description, the admin POST protection, header-match semantics, and the Docker and Quick Start examples.
+
 ## v0.2.0 - 2026-10-29
 
 The request console moves to its own port, `.http` files get `@name = value` variables, and `mock validate` and REST Client–style generator placeholders arrive. This release has breaking changes; see below.

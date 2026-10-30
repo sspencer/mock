@@ -14,7 +14,7 @@ Prism, or Mockoon, and not the Go unit-test mocking libraries (gomock, mockery).
 Requires [Go](https://go.dev/dl/) 1.26 or newer:
 
 ```sh
-go install github.com/sspencer/mock@v0.2.0
+go install github.com/sspencer/mock@v0.2.1
 mock -version
 ```
 
@@ -45,6 +45,7 @@ Available mock methods:
   GET     /                              Return home page external html file
   POST    /users                         Create random user
   GET     /users/:id                     Return any user
+  ...
 ```
 
 While it is running, it watches the given `.http` file(s) and any `< path`
@@ -55,7 +56,7 @@ and logs the error.
 ```sh
 curl http://localhost:8080/users/42
 curl -X POST http://localhost:8080/users
-curl http://localhost:8080/names?type=cat
+curl 'http://localhost:8080/names?type=cat'
 ```
 
 Open the request console at [http://localhost:8081/](http://localhost:8081/).
@@ -72,7 +73,8 @@ To populate the console during UI development, start the server with
 ```
 
 It sends 15 requests across the example routes, including JSON request bodies,
-the rotating `201`/`400` responses, a `204` deletion, and the delayed response.
+the rotating `201`/`400` responses, and a `204` deletion. The `/delay` request
+is commented out in the script; uncomment it to try the delayed route.
 It prints status/timing summaries and leaves response bodies for inspection in
 the console. Rerun it whenever you need more traffic.
 
@@ -114,9 +116,10 @@ That serves the mock API on `127.0.0.1:9090` and the request log at
 mock -version
 ```
 
-`go run .` and other local builds from a git checkout report a
-`git describe`-style version, such as `v0.2.0+dirty` when the tree has
-uncommitted changes.
+A plain `go build` or `go install` from a git checkout reports a Go
+pseudo-version, such as `v0.2.1-0.20261030055820-57bd1986cbf7` (with `+dirty`
+appended when the tree has uncommitted changes), and `go run .` reports `dev`.
+Only `make build` reports the `git describe` form, such as `v0.2.0-4-g57bd198`.
 
 ## Docker
 
@@ -144,7 +147,9 @@ docker run --rm \
   mock -b 0.0.0.0 /mock/user.http
 ```
 
-The bind mount keeps the request file outside the image. Rebuild the image only
+`examples/user.http` references external body files, so with only that one file
+mounted the routes that use them return `500`; mount the directory as shown
+below to serve them. The bind mount keeps the request file outside the image. Rebuild the image only
 when the `mock` binary or static UI changes. Because the file is mounted from
 the host, edits to the host `.http` file are picked up by the running container
 and reloaded automatically.
@@ -441,7 +446,9 @@ These REST Client–style generators take arguments:
   wins over the bare placeholder, but not over a call with arguments.
 
 Unknown placeholders are left as written (for example `{{$nope}}`) and
-produce a load-time warning; see [Placeholders](#placeholders).
+produce a load-time warning. Other REST Client dynamic variables, such as
+`{{$processEnv}}`, `{{$dotenv}}` and `{{$aadToken}}`, are not supported and are
+treated as unknown placeholders.
 
 ## Matching
 
@@ -469,6 +476,11 @@ Content-Type: application/json
 ```
 
 ### Header matching
+
+An `@header.Name = value` matcher requires the incoming request to carry that
+header. The header name is case-insensitive, the value must match exactly
+(case-sensitive), and `*` accepts any non-empty value. A request that does not
+match gets a `404`.
 
 ```http
 ### Secure read
@@ -519,12 +531,12 @@ The UI is served at the root of the admin port (`-a`, default `8081`):
 Selecting a route shows a sample `curl` command for the mock port, ready to paste
 into a shell (**Copy cURL** copies it). The host is the one you used to open the
 UI, path parameters get sample values (`:id` becomes `1`), and required request
-headers from `@header.*` are included.
+headers from `@header.*` are included (a `*` wildcard value becomes `example`).
 
 UI features: theme toggle, filter, pause stream, independent clear/reset controls,
 HAR export, a Help dialog, and a routes panel that refreshes after hot-reload.
-Both administrative POST endpoints require `X-Requested-With` or JSON
-`Content-Type` (or a same-origin browser request), and reject cross-origin requests.
+Both administrative POST endpoints require an `X-Requested-With` header or a JSON
+`Content-Type`, and reject cross-origin and cross-site requests.
 
 ### Resizing and mobile navigation
 
@@ -596,6 +608,7 @@ active requests before closing remaining connections.
 This repository is intentionally small:
 
 - `main.go` / `watch.go` / `version.go` wire CLI flags, input loading, watching, and lifecycle.
+- `validate.go` implements `mock validate`.
 - `restclient/` parses `.http` files.
 - `mockhttp/` matches requests, renders responses, and streams request-log events.
 - `static/` contains the request log UI (embedded at build time).
