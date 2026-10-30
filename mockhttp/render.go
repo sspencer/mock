@@ -67,8 +67,15 @@ func renderBody(method restclient.Method, values map[string]string, filePath str
 }
 
 func expandPlaceholders(input string, method restclient.Method, values map[string]string) string {
-	return restclient.Expand(input, method.Variables, func(key string) (string, bool) {
+	return restclient.Expand(input, method.Variables, func(key string, args []string) (string, bool) {
+		if len(args) > 0 {
+			value, err := callFunction(key, args, time.Now())
+			return value, err == nil
+		}
 		if value, ok := values[key]; ok {
+			return value, true
+		}
+		if value, err := callFunction(key, nil, time.Now()); err == nil {
 			return value, true
 		}
 		if value := generatedValue(key); value != "" {

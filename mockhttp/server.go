@@ -291,8 +291,15 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method) {
 	seen := make(map[string]bool)
 	for _, text := range texts {
 		for _, match := range restclient.PlaceholderPattern.FindAllStringSubmatch(text, -1) {
-			prefix, key := match[1], match[2]
-			if seen[prefix+key] {
+			prefix, key, args := match[1], match[2], strings.Fields(match[3])
+			if seen[match[0]] {
+				continue
+			}
+			if prefix == "$" && isFunction(key) {
+				seen[match[0]] = true
+				if _, err := callFunction(key, args, time.Now()); err != nil {
+					logger.Warn("invalid placeholder arguments preserved literally", "placeholder", match[0], "error", err, "source", method.Source, "line", method.Line, "method", method.Name)
+				}
 				continue
 			}
 			if prefix == "$" {
@@ -302,7 +309,7 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method) {
 			} else if _, ok := method.Variables[key]; ok {
 				continue
 			}
-			seen[prefix+key] = true
+			seen[match[0]] = true
 			if prefix == "$" {
 				logger.Warn("unresolved placeholder preserved literally (may be supplied by a request query)", "placeholder", key, "source", method.Source, "line", method.Line, "method", method.Name)
 			} else {

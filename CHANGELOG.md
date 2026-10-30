@@ -15,6 +15,7 @@
 - Warn about unused variables once per definition instead of per section.
 - Remove the `$status` variable; using it is now a load error that points to the section-name status.
 - Expand `{{name}}` variables in the request target and ignore the scheme and host of a full URL, so `GET {{host}}/users` in a shared REST Client file matches `/users`. See `examples/restclient.http`.
+- Add REST Client–style generator placeholders with arguments: `{{$randomInt min max}}`, `{{$timestamp [offset option]}}`, `{{$datetime rfc1123|iso8601 [offset option]}}`, and `{{$localDatetime rfc1123|iso8601 [offset option]}}`. `{{$guid}}` already worked. Invalid arguments stay literal and log a load-time warning.
 - Convert the example `.http` files to the new syntax.
 
 ## v0.1.4 - 2026-09-06

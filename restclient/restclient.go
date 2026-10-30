@@ -563,33 +563,35 @@ var controlVariables = map[string]struct{}{
 	"delay": {},
 }
 
-// PlaceholderPattern matches {{name}}, {{%name}} and {{$name}} placeholders in
-// bodies and headers. Submatch 1 is the optional "%" (percent-encode) or "$"
-// (request parameter or generated value) prefix; submatch 2 is the name.
-var PlaceholderPattern = regexp.MustCompile(`\{\{([%$]?)([A-Za-z_][A-Za-z0-9_.-]*)}}`)
+// PlaceholderPattern matches {{name}}, {{%name}} and {{$name args}} placeholders
+// in bodies and headers. Submatch 1 is the optional "%" (percent-encode) or "$"
+// (request parameter or generated value) prefix; submatch 2 is the name;
+// submatch 3 is the space-separated arguments, which only {{$name}} accepts.
+var PlaceholderPattern = regexp.MustCompile(`\{\{([%$]?)([A-Za-z_][A-Za-z0-9_.-]*)(?:[ \t]+([^{}]*?))?[ \t]*}}`)
 
 // Expand replaces placeholders in input. {{name}} and {{%name}} (percent-encoded)
 // resolve from vars, whose values may themselves hold placeholders; a variable
 // that refers back to itself is left unexpanded. {{$name}} resolves through
-// dollar, when it is not nil. Unresolved placeholders are kept literally.
-func Expand(input string, vars map[string]string, dollar func(name string) (string, bool)) string {
+// dollar, when it is not nil, with the placeholder's arguments (such as "1 10"
+// in {{$randomInt 1 10}}). Unresolved placeholders are kept literally.
+func Expand(input string, vars map[string]string, dollar func(name string, args []string) (string, bool)) string {
 	return expand(input, vars, dollar, make(map[string]bool))
 }
 
-func expand(input string, vars map[string]string, dollar func(string) (string, bool), active map[string]bool) string {
+func expand(input string, vars map[string]string, dollar func(string, []string) (string, bool), active map[string]bool) string {
 	return PlaceholderPattern.ReplaceAllStringFunc(input, func(match string) string {
 		parts := PlaceholderPattern.FindStringSubmatch(match)
-		prefix, name := parts[1], parts[2]
+		prefix, name, args := parts[1], parts[2], strings.Fields(parts[3])
 		if prefix == "$" {
 			if dollar != nil {
-				if value, ok := dollar(name); ok {
+				if value, ok := dollar(name, args); ok {
 					return value
 				}
 			}
 			return match
 		}
 		raw, ok := vars[name]
-		if !ok || active[name] {
+		if !ok || active[name] || len(args) > 0 {
 			return match
 		}
 		active[name] = true

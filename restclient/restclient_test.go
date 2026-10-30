@@ -453,7 +453,9 @@ func TestRejectInvalidVariableDefinitions(t *testing.T) {
 
 func TestExpand(t *testing.T) {
 	vars := map[string]string{"a": "x y&z", "b": "[{{a}}]", "loop": "{{loop}}", "enc": "{{%a}}"}
-	dollar := func(name string) (string, bool) { return strings.ToUpper(name), name != "missing" }
+	dollar := func(name string, args []string) (string, bool) {
+		return strings.ToUpper(name) + strings.Join(args, ","), name != "missing"
+	}
 	for input, want := range map[string]string{
 		"{{a}}":              "x y&z",
 		"{{%a}}":             "x%20y%26z",
@@ -464,6 +466,8 @@ func TestExpand(t *testing.T) {
 		"{{nope}} {{$nope}}": "{{nope}} NOPE",
 		"{{$missing}}":       "{{$missing}}",
 		"{{ a }} {a} {{a}":   "{{ a }} {a} {{a}",
+		"{{$fn 1  -2 d }}":   "FN1,-2,d",
+		"{{a extra}}":        "{{a extra}}",
 	} {
 		if got := Expand(input, vars, dollar); got != want {
 			t.Errorf("Expand(%q) = %q, want %q", input, got, want)

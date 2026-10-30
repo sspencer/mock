@@ -377,6 +377,28 @@ Useful generated values:
 Generated values are random faker data and are recalculated each time a
 response body is rendered.
 
+These REST Client–style generators take arguments:
+
+```text
+{{$randomInt min max}}
+{{$timestamp [offset option]}}
+{{$datetime rfc1123|iso8601 [offset option]}}
+{{$localDatetime rfc1123|iso8601 [offset option]}}
+```
+
+- `$randomInt` returns an integer from `min` (inclusive) up to `max` (exclusive).
+  `max` must be greater than `min`.
+- `$timestamp` returns the current Unix time in seconds.
+- `$datetime` returns the current UTC time as an RFC 1123 or ISO 8601 string;
+  `$localDatetime` uses the local time zone.
+- The optional offset is an integer (negative for the past) followed by one of
+  `y` (years), `Q` (quarters), `M` (months), `w` (weeks), `d` (days), `h`,
+  `m`, `s`, or `ms`. For example, `{{$timestamp -1 d}}` is one day ago and
+  `{{$datetime iso8601 2 h}}` is two hours from now.
+- Invalid arguments leave the placeholder literal and log a load-time warning.
+- A path or query parameter named like a function (for example `?timestamp=`)
+  wins over the bare placeholder, but not over a call with arguments.
+
 Unknown placeholders resolve to an empty string.
 
 ## Matching

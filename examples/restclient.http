@@ -36,3 +36,17 @@ Content-Type: application/json
   "name": "Penny",
   "email": "penny@example.com"
 }
+
+### Generated values
+GET {{host}}/generated
+Content-Type: application/json
+
+{
+  "id": "{{$guid}}",
+  "lucky": {{$randomInt 1 100}},
+  "created": {{$timestamp}},
+  "expires": {{$timestamp 1 d}},
+  "updated": "{{$datetime iso8601 -2 h}}",
+  "header": "{{$datetime rfc1123}}",
+  "local": "{{$localDatetime iso8601}}"
+}
