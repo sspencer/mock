@@ -14,7 +14,7 @@ Prism, or Mockoon, and not the Go unit-test mocking libraries (gomock, mockery).
 Requires [Go](https://go.dev/dl/) 1.26 or newer:
 
 ```sh
-go install github.com/sspencer/mock@v0.1.4
+go install github.com/sspencer/mock@v0.2.0
 mock -version
 ```
 
@@ -114,12 +114,23 @@ That serves the mock API on `127.0.0.1:9090` and the request log at
 mock -version
 ```
 
+`go run .` and other local builds from a git checkout report a
+`git describe`-style version, such as `v0.2.0+dirty` when the tree has
+uncommitted changes.
+
 ## Docker
 
 Build the image:
 
 ```sh
 docker build -t mock .
+```
+
+The image exposes `8080` (mock API) and `8081` (admin UI). With no arguments
+it serves the bundled `examples/user.http` on `0.0.0.0`:
+
+```sh
+docker run --rm -p 8080:8080 -p 8081:8081 mock
 ```
 
 Run it with a `.http` file from your host machine. Containers must bind
@@ -156,7 +167,10 @@ mock [flags] <directory>
 cat file.http | mock
 mock validate [-strict] [-json] <file.http> [file.http...]
 mock -version
+mock -h
 ```
+
+`mock -h` (or `--help`) prints this usage and the flag list, then exits `0`.
 
 Flags:
 
@@ -210,8 +224,12 @@ It exits `0` when the files are valid, `1` when there are errors (or warnings
 with `-strict`), and `2` for usage mistakes, so it fits in CI:
 
 ```sh
-mock validate -strict examples/*.http
+mock validate -strict path/to/*.http
 ```
+
+The bundled `examples/small.http` intentionally uses `{{$delay}}`, which is
+supplied only by a request query (`?delay=`), so it reports two warnings and
+fails under `-strict`.
 
 A file literally named `validate` must be passed as `./validate`.
 
@@ -422,7 +440,8 @@ These REST Client–style generators take arguments:
 - A path or query parameter named like a function (for example `?timestamp=`)
   wins over the bare placeholder, but not over a call with arguments.
 
-Unknown placeholders resolve to an empty string.
+Unknown placeholders are left as written (for example `{{$nope}}`) and
+produce a load-time warning; see [Placeholders](#placeholders).
 
 ## Matching
 
