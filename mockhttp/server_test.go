@@ -137,6 +137,38 @@ ignored
 	}
 }
 
+func TestServerStatusAfterMethodOverridesStatusVariable(t *testing.T) {
+	methods, err := restclient.Parse("test.http", strings.NewReader(`### Delete User
+# $status=500
+DELETE/204 /users/:id
+
+ignored
+
+### Create User
+POST/201 /users
+
+created
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	for _, tt := range []struct {
+		method, target string
+		want           int
+	}{
+		{http.MethodDelete, "/users/7", http.StatusNoContent},
+		{http.MethodPost, "/users", http.StatusCreated},
+	} {
+		response := httptest.NewRecorder()
+		server.ServeHTTP(response, httptest.NewRequest(tt.method, tt.target, nil))
+		if response.Code != tt.want {
+			t.Errorf("%s %s status = %d, want %d", tt.method, tt.target, response.Code, tt.want)
+		}
+	}
+}
+
 func TestServerAlternatesDuplicateMethodAndURL(t *testing.T) {
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### Create User
 # $status=201

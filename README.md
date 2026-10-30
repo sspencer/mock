@@ -207,12 +207,15 @@ Content-Type: application/json
 }
 
 ### Delete user
-# $status=204
-DELETE /users/:id
+DELETE/204 /users/:id
 ```
 
 The request target may be a path or a full URL. Only the path and query string
 are used for matching.
+
+Append `/` and a status code directly to the method (no spaces) to set the
+response status: `DELETE/204 /users/:id` returns `204`. The slash and code are
+optional and default to `200`, so `GET /users` is the same as `GET/200 /users`.
 
 ### Supported dialect
 
@@ -222,7 +225,7 @@ are used for matching.
 |-----------|----------------|
 | `###` named sections | `@name` / request separators beyond `###` |
 | `# $var=value` control variables | Environment files / `{{env}}` from IDE |
-| Request line `METHOD /path` | Full multi-step scripts |
+| Request line `METHOD[/STATUS] /path` | Full multi-step scripts |
 | Response headers after the request line | Separate request vs response documents |
 | `# $header.Name=value` request header matchers | Body-content matchers |
 | `{{$placeholder}}` in bodies and response headers | Imports of other `.http` files |
@@ -248,7 +251,7 @@ Variables live in comments directly below the `###` line:
 
 Supported control variables:
 
-- `$status`: response status code. Defaults to `200`. The supported final status range is `200`–`999`; invalid values are load errors.
+- `$status`: response status code. Defaults to `200`. The supported final status range is `200`–`999`; invalid values are load errors. A status on the request line (`POST/201 /users`) overrides `$status`, so prefer the request-line form.
 - `$delay`: response delay parsed with Go duration syntax, such as `250ms` or `2s`. Negative or invalid durations are load errors.
 - `$file`: response body file, resolved relative to the `.http` file.
 - `$header.Name=value`: require the incoming request to include that header. Use `*` as the value to accept any non-empty header.
@@ -340,15 +343,13 @@ stateful fake server.
 
 ```http
 ### First create succeeds
-# $status=201
-POST /users
+POST/201 /users
 Content-Type: application/json
 
 {"id":1}
 
 ### Second create fails
-# $status=400
-POST /users
+POST/400 /users
 Content-Type: application/json
 
 {"error":"duplicate user"}

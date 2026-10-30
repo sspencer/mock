@@ -254,7 +254,9 @@ func cloneMethods(methods []restclient.Method) []restclient.Method {
 	out := append([]restclient.Method(nil), methods...)
 	for i := range out {
 		out[i].Status = http.StatusOK
-		if raw, ok := methods[i].Variables["status"]; ok {
+		if methods[i].StatusFromRequestLine && methods[i].Status >= 200 && methods[i].Status <= 999 {
+			out[i].Status = methods[i].Status
+		} else if raw, ok := methods[i].Variables["status"]; ok {
 			if status, err := parseStatusCode(raw); err == nil {
 				out[i].Status = status
 			}

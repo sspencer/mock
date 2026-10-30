@@ -34,6 +34,9 @@ type Method struct {
 	Line         int
 	Status       int
 	Delay        time.Duration
+	// StatusFromRequestLine is true when Status came from a METHOD/CODE request
+	// line, which overrides any $status variable.
+	StatusFromRequestLine bool
 }
 
 var commentVariablePattern = regexp.MustCompile(`^\$([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(.*)$`)
@@ -206,7 +209,7 @@ func parseSection(method Method, lines []string, bodyStartLine, sectionNameLine 
 			hintLine = lineAt(len(lines) - 1)
 		}
 		return method, parseErrorf(source, hintLine,
-			`section %q is missing an HTTP request line (expected "METHOD /path", example: "GET /users")`, method.Name)
+			`section %q is missing an HTTP request line (expected "METHOD[/STATUS] /path", example: "GET /users" or "DELETE/204 /users/:id")`, method.Name)
 	}
 
 	rawRequest := strings.TrimSpace(lines[i])
@@ -214,22 +217,33 @@ func parseSection(method Method, lines []string, bodyStartLine, sectionNameLine 
 	switch {
 	case len(requestLine) == 0:
 		return method, parseErrorf(source, lineAt(i),
-			`section %q is missing an HTTP request line (expected "METHOD /path")`, method.Name)
+			`section %q is missing an HTTP request line (expected "METHOD[/STATUS] /path")`, method.Name)
 	case len(requestLine) == 1:
 		return method, parseErrorf(source, lineAt(i),
-			`section %q has an incomplete HTTP request line %s (expected "METHOD /path", example: "GET /users")`,
+			`section %q has an incomplete HTTP request line %s (expected "METHOD[/STATUS] /path", example: "GET /users" or "DELETE/204 /users/:id")`,
 			method.Name, quoteSnippet(rawRequest))
 	case len(requestLine) > 2:
 		return method, parseErrorf(source, lineAt(i),
-			`section %q has an invalid HTTP request line %s (expected exactly "METHOD /path"; HTTP version tokens are not supported)`,
+			`section %q has an invalid HTTP request line %s (expected exactly "METHOD[/STATUS] /path"; HTTP version tokens are not supported)`,
 			method.Name, quoteSnippet(rawRequest))
 	}
 
-	method.Method = strings.ToUpper(requestLine[0])
+	methodToken, statusToken, hasStatus := strings.Cut(requestLine[0], "/")
+	method.Method = strings.ToUpper(methodToken)
 	if !isHTTPMethod(method.Method) {
 		return method, parseErrorf(source, lineAt(i),
 			`section %q has an unrecognized HTTP method %q (supported: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, CONNECT, TRACE)`,
-			method.Name, requestLine[0])
+			method.Name, methodToken)
+	}
+	if hasStatus {
+		status, err := strconv.Atoi(statusToken)
+		if err != nil || status < 200 || status > 999 {
+			return method, parseErrorf(source, lineAt(i),
+				`section %q has an invalid response status %q after the method (expected a final HTTP status between 200 and 999, example: "DELETE/204 /users/:id")`,
+				method.Name, statusToken)
+		}
+		method.Status = status
+		method.StatusFromRequestLine = true
 	}
 
 	target, err := url.ParseRequestURI(requestLine[1])

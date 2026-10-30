@@ -12,8 +12,7 @@ GET /index.html
 GET /users
 
 ### Create random user
-# $status=201
-POST /users
+POST/201 /users
 Content-Type: application/json
 
 {
@@ -24,8 +23,7 @@ Content-Type: application/json
 }
 
 ### Create user failure
-# $status=400
-POST /users
+POST/400 /users
 Content-Type: application/json
 
 {
@@ -34,7 +32,6 @@ Content-Type: application/json
 }
 
 ### Idempotent user creation
-# $status=200
 PUT /users
 Content-Type: application/json
 
@@ -94,8 +91,7 @@ Content-Type: application/json
 }
 
 ### Delete a user
-# $status=204
-DELETE /users/:id
+DELETE/204 /users/:id
 
 ### Music Include
 # $file=chords.txt

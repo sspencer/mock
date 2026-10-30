@@ -51,6 +51,53 @@ DELETE /users/:id
 	}
 }
 
+func TestParseStatusAfterMethod(t *testing.T) {
+	input := `### Delete
+DELETE/204 /users/:id
+
+### Create
+# $status=200
+post/201 /users
+
+### Overridden
+# $status=500
+GET/202 /override
+
+### Variable only
+# $status=201
+GET /variable
+
+### Default
+GET /default
+`
+	methods, err := Parse("test.http", strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	want := []struct {
+		method string
+		path   string
+		status int
+		inline bool
+	}{
+		{http.MethodDelete, "/users/:id", 204, true},
+		{http.MethodPost, "/users", 201, true},
+		{http.MethodGet, "/override", 202, true},
+		{http.MethodGet, "/variable", 201, false},
+		{http.MethodGet, "/default", 200, false},
+	}
+	if len(methods) != len(want) {
+		t.Fatalf("len(methods) = %d, want %d", len(methods), len(want))
+	}
+	for i, w := range want {
+		m := methods[i]
+		if m.Method != w.method || m.Path != w.path || m.Status != w.status || m.StatusFromRequestLine != w.inline {
+			t.Errorf("methods[%d] = %s %s status %d inline %v, want %s %s status %d inline %v",
+				i, m.Method, m.Path, m.Status, m.StatusFromRequestLine, w.method, w.path, w.status, w.inline)
+		}
+	}
+}
+
 func TestParseOnlyTreatsWholeCommentsAsVariables(t *testing.T) {
 	input := `### User
 # this mentions $status=500 but is not a variable
@@ -125,7 +172,7 @@ GET /users HTTP/1.1
 		t.Fatal("Parse() error = nil, want error")
 	}
 	msg := err.Error()
-	for _, want := range []string{"test.http:2:", "invalid HTTP request line", "METHOD /path"} {
+	for _, want := range []string{"test.http:2:", "invalid HTTP request line", "METHOD[/STATUS] /path"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("error = %q, want to contain %q", msg, want)
 		}
@@ -208,7 +255,7 @@ GET /users
 			input: `### User
 # comment only
 `,
-			want: []string{"test.http:2:", `section "User" is missing an HTTP request line`, "METHOD /path"},
+			want: []string{"test.http:2:", `section "User" is missing an HTTP request line`, "METHOD[/STATUS] /path"},
 		},
 		{
 			name: "missing request line empty section",
@@ -258,6 +305,34 @@ GET /users
 GET /users
 `,
 			want: []string{"test.http:2:", "$header. requires a header name"},
+		},
+		{
+			name: "non-numeric status after method",
+			input: `### User
+DELETE/gone /users/:id
+`,
+			want: []string{"test.http:2:", "invalid response status", `"gone"`},
+		},
+		{
+			name: "status below final range",
+			input: `### User
+GET/100 /users
+`,
+			want: []string{"test.http:2:", "invalid response status", `"100"`},
+		},
+		{
+			name: "empty status after slash",
+			input: `### User
+GET/ /users
+`,
+			want: []string{"test.http:2:", "invalid response status"},
+		},
+		{
+			name: "unknown method with status",
+			input: `### User
+FETCH/204 /users
+`,
+			want: []string{"test.http:2:", "unrecognized HTTP method", `"FETCH"`},
 		},
 		{
 			name: "error line in later section",

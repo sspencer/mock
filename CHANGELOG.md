@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add `METHOD/STATUS` request-line syntax (for example `DELETE/204 /users/:id`) to set the response status. The slash and code are optional and default to `200`; the request-line status overrides `$status`, which is still supported.
+- Convert the example `.http` files to the new syntax.
+
 ## v0.1.4 - 2026-09-06
 
 Audit cleanup after v0.1.3: tighter admin CSRF checks and small correctness/housekeeping fixes.
