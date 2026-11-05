@@ -14,6 +14,9 @@ import (
 )
 
 func TestConfigRejectsInvalidPorts(t *testing.T) {
+	// The -a 8080 case relies on the default mock port, so ignore the caller's environment.
+	t.Setenv("MOCK_PORT", "")
+	t.Setenv("MOCK_UI_PORT", "")
 	for _, args := range [][]string{{"-p", "65536"}, {"-p", "-1"}, {"-a", "65536"}, {"-a", "-1"}, {"-p", "9000", "-a", "9000"}, {"-a", "8080"}} {
 		if _, err := parseConfig(args); err == nil {
 			t.Errorf("accepted %v", args)
