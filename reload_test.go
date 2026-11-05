@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sspencer/mock/internal/ui"
 	"github.com/sspencer/mock/mockhttp"
 	"github.com/sspencer/mock/restclient"
 )
@@ -27,11 +28,11 @@ func TestReloadErrorsReachDashboardState(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := mockhttp.New(methods, nil)
-	assets, err := staticFileSystem()
+	assets, err := ui.Assets()
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := newAdminHandler(server, assets, uiConfig{})
+	handler := ui.NewHandler(server, assets, ui.Config{})
 	if err := os.WriteFile(path, []byte("### invalid\nNOT-A-METHOD /x"), 0600); err != nil {
 		t.Fatal(err)
 	}

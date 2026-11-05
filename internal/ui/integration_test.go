@@ -1,4 +1,4 @@
-package main
+package ui
 
 import (
 	"bufio"
@@ -22,13 +22,13 @@ func TestTLSCaptureAndEmbeddedDashboardIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	mock := mockhttp.New(methods, nil)
-	assets, err := staticFileSystem()
+	assets, err := Assets()
 	if err != nil {
 		t.Fatal(err)
 	}
 	server := httptest.NewTLSServer(mock)
 	defer server.Close()
-	admin := httptest.NewTLSServer(newAdminHandler(mock, assets, uiConfig{}))
+	admin := httptest.NewTLSServer(NewHandler(mock, assets, Config{}))
 	defer admin.Close()
 	client := server.Client()
 	adminClient := admin.Client()

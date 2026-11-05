@@ -21,7 +21,7 @@ fmt-check:
 	@files="$$(git ls-files '*.go' | xargs gofmt -l)"; if [ -n "$$files" ]; then printf '%s\n' "$$files"; exit 1; fi
 
 test-ui:
-	node --test tests/*.test.mjs
+	node --test internal/ui/tests/*.test.mjs
 
 # Pin the scanner independently of runtime dependencies.
 vulncheck:

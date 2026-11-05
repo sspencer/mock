@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -21,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/sspencer/mock/internal/ui"
 	"github.com/sspencer/mock/mockhttp"
 	"github.com/sspencer/mock/restclient"
 )
@@ -220,7 +219,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		if err := validateMethods(input.Methods, cfg.Args); err != nil {
 			return runError("%v", err)
 		}
-		staticFS, err = staticFileSystem()
+		staticFS, err = ui.Assets()
 		if err != nil {
 			return runError("failed to load static files: %v", err)
 		}
@@ -265,7 +264,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	var adminListener net.Listener
 	if mockServer != nil && !cfg.NoAdmin {
 		// Built after the mock listeners bind so the UI knows the real mock port.
-		adminHandler = newAdminHandler(mockServer, staticFS, uiConfig{
+		adminHandler = ui.NewHandler(mockServer, staticFS, ui.Config{
 			Version:   currentVersion(),
 			MockPort:  plan.uiPort(),
 			MultiPort: len(plan.ports) > 1,
@@ -425,52 +424,6 @@ func stdinIsTerminal(file *os.File) bool {
 
 func newStaticFileHandler(dir string) http.Handler {
 	return http.FileServer(http.Dir(dir))
-}
-
-// newAdminHandler serves the request console and its API at the root of the
-// admin listener.
-func newAdminHandler(mockServer *mockhttp.Server, staticFS fs.FS, ui uiConfig) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/events", mockServer.ServeEvents)
-	mux.HandleFunc("/clear", mockServer.ServeClear)
-	mux.HandleFunc("/routes", mockServer.ServeRoutes)
-	mux.HandleFunc("/state", mockServer.ServeState)
-	mux.HandleFunc("/reset", mockServer.ServeReset)
-	mux.Handle("/", uiFileServer(staticFS, ui))
-	return mux
-}
-
-// uiConfig is the bootstrap data injected into the UI page. MockPort lets the
-// UI build sample requests for routes on the default mock port, which differs
-// from the UI port. MultiPort reports more than one mock listener, so the UI
-// shows each request's host and port and each route's port.
-type uiConfig struct {
-	Version   string `json:"version"`
-	MockPort  int    `json:"mockPort"`
-	MultiPort bool   `json:"multiPort,omitempty"`
-}
-
-func uiFileServer(staticFS fs.FS, ui uiConfig) http.Handler {
-	files := http.FileServer(http.FS(staticFS))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" && r.URL.Path != "/index.html" {
-			files.ServeHTTP(w, r)
-			return
-		}
-		data, err := fs.ReadFile(staticFS, "index.html")
-		if err != nil {
-			http.Error(w, "index.html missing", http.StatusInternalServerError)
-			return
-		}
-		payload, err := json.Marshal(ui)
-		if err != nil {
-			http.Error(w, "failed to encode UI config", http.StatusInternalServerError)
-			return
-		}
-		data = bytes.Replace(data, []byte(`{"version":"dev"}`), payload, 1)
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write(data)
-	})
 }
 
 func reloadMockFiles(mockServer *mockhttp.Server, files []string, plan *portPlan, logger *slog.Logger, out, errOut io.Writer) {

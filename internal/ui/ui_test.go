@@ -1,4 +1,4 @@
-package main
+package ui
 
 import (
 	"context"
@@ -26,7 +26,7 @@ ok
 		t.Fatalf("Parse() error = %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := newAdminHandler(mockhttp.New(methods, logger), os.DirFS(staticDir), uiConfig{})
+	handler := NewHandler(mockhttp.New(methods, logger), os.DirFS(staticDir), Config{})
 
 	bare := httptest.NewRecorder()
 	handler.ServeHTTP(bare, httptest.NewRequest(http.MethodPost, "/clear", nil))
@@ -52,12 +52,12 @@ ok
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	staticFS, err := staticFileSystem()
+	staticFS, err := Assets()
 	if err != nil {
-		t.Fatalf("staticFileSystem() error = %v", err)
+		t.Fatalf("Assets() error = %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := newAdminHandler(mockhttp.New(methods, logger), staticFS, uiConfig{Version: "1.2.3", MockPort: 8080, MultiPort: true})
+	handler := NewHandler(mockhttp.New(methods, logger), staticFS, Config{Version: "1.2.3", MockPort: 8080, MultiPort: true})
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
@@ -89,7 +89,7 @@ ok
 		t.Fatalf("Parse() error = %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := newAdminHandler(mockhttp.New(methods, logger), os.DirFS(staticDir), uiConfig{})
+	handler := NewHandler(mockhttp.New(methods, logger), os.DirFS(staticDir), Config{})
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
@@ -118,12 +118,12 @@ ok
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	staticFS, err := staticFileSystem()
+	staticFS, err := Assets()
 	if err != nil {
-		t.Fatalf("staticFileSystem() error = %v", err)
+		t.Fatalf("Assets() error = %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := newAdminHandler(mockhttp.New(methods, logger), staticFS, uiConfig{})
+	handler := NewHandler(mockhttp.New(methods, logger), staticFS, Config{})
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
@@ -155,7 +155,7 @@ ok
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mock := mockhttp.New(methods, logger)
-	handler := newAdminHandler(mock, os.DirFS(staticDir), uiConfig{})
+	handler := NewHandler(mock, os.DirFS(staticDir), Config{})
 
 	response := httptest.NewRecorder()
 	mock.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/users", nil))
