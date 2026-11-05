@@ -35,6 +35,7 @@ const doc=new EventTarget();doc.getElementById=element;doc.querySelector=()=>ele
 element('mock-config').textContent='{"version":"test"}';table.append(element('requestTableBody'));
 globalThis.document=doc;
 globalThis.window={matchMedia:()=>({matches:false})};
+globalThis.location={hostname:'localhost'};
 globalThis.localStorage={getItem(){throw new Error('storage blocked');},setItem(){throw new Error('storage blocked');}};
 let source;globalThis.EventSource=class extends EventTarget{constructor(){super();source=this;}};
 const frames=[];globalThis.requestAnimationFrame=fn=>frames.push(fn);
@@ -88,11 +89,15 @@ test('inspector toggles Pretty/Raw, shows match metadata, and copies original bo
 });
 
 test('routes open their configuration and reset posts without removing traffic', async () => {
- routesData=[{id:'2:0',revision:2,name:'Create user',method:'POST',path:'/users',source:'users.http',line:1,status:201,delay:'1s',headers:{},matchHeaders:{},variables:{},body:'{"ok":true}'}];
+ routesData=[{id:'2:0',revision:2,name:'Create user',method:'POST',path:'/users',port:8080,source:'users.http',line:1,status:201,delay:'1s',headers:{},matchHeaders:{},variables:{},body:'{"ok":true}'}];
  click('refreshRoutesButton');await new Promise(resolve=>setImmediate(resolve));
  const button=element('routesList').querySelector('button');button.dispatchEvent(new Event('click'));
  assert.equal(element('routeView').hidden,false);
  assert.match(element('routeDetails').textContent,/POST \/users/);
+ assert.equal(element('routeTitle').textContent,'Create user');
+ assert.match(element('routeSummary').textContent,/users.http:1/);
+ let copied='';Object.defineProperty(globalThis,'navigator',{configurable:true,value:{clipboard:{writeText:async text=>{copied=text;}}}});
+ click('copyRouteCurlButton');await Promise.resolve();assert.equal(copied,"curl --request POST 'http://localhost:8080/users'");
  const count=element('requestTableBody').children.length;
  click('resetResponsesButton');await new Promise(resolve=>setImmediate(resolve));
  assert.ok(posted.includes('reset'));assert.equal(element('requestTableBody').children.length,count);

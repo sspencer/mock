@@ -5,23 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="favicon.ico" type="image/x-icon" />
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
-    <meta name="theme-color" content="#10271e" />
+    <meta name="theme-color" content="#ebe3d1" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
     <title>Mock Server</title>
-    <link rel="stylesheet" href="style.css?v=20260906-inspector" />
+    <link rel="stylesheet" href="style.css?v=20261104-effects" />
 </head>
 <body>
 <main class="app-shell">
     <header class="topbar">
         <div class="brand-lockup">
-            <div class="brand-mark" aria-hidden="true">
-                <span class="brand-mark-node"></span>
-                <span class="brand-mark-route"></span>
-                <span class="brand-mark-node"></span>
-            </div>
-            <div>
-                <p class="eyebrow status-line"><span class="live-pip"></span><span id="streamStatus" role="status">Connecting</span> <span class="eyebrow-divider">/</span> Local HTTP traffic</p>
-                <h1>Request console</h1>
-            </div>
+            <span class="brand-mark" aria-hidden="true"></span>
+            <h1>mock</h1>
+            <p class="status-line"><span class="live-pip" aria-hidden="true"></span><span id="streamStatus" role="status">Connecting</span></p>
         </div>
         <div class="topbar-actions" role="toolbar" aria-label="Console controls">
             <button id="pauseButton" class="clear-button" type="button" aria-label="Pause request log" aria-pressed="false">
@@ -101,29 +96,30 @@
 
         <div id="workspaceSplitter" class="splitter vertical" role="separator" aria-label="Resize traffic and inspector panels" aria-orientation="vertical" aria-controls="requestPanel inspectorPanel" tabindex="0"></div>
         <section id="inspectorPanel" class="side-panel" aria-label="Inspector">
-            <header class="inspector-header">
+            <div class="inspector-header">
                 <button id="backToList" class="clear-button mobile-back" type="button">← Back to traffic &amp; routes</button>
-                <div class="inspector-heading"><h2 id="inspectorTitle" tabindex="-1">Inspector</h2><button id="copyCurlButton" class="clear-button" type="button" disabled>Copy cURL</button></div>
-                <p id="matchSummary" class="match-summary">Select a request or a configured route.</p>
-                <p id="copyNotice" class="copy-notice" role="status"></p>
-                <details id="mismatchPanel" hidden><summary>Why didn’t this request match?</summary><div id="mismatchDetails"></div></details>
-            </header>
+            </div>
             <section id="exchangeView" class="detail-panel" aria-label="Request and response details">
                 <div class="detail-section">
-                    <div class="detail-label">
-                        <h2>Request</h2>
+                    <div class="panel-header">
+                        <h2 id="requestTitle" tabindex="-1">Request</h2>
                         <div class="detail-actions" role="group" aria-label="Request display">
                             <button id="requestPretty" class="clear-button" type="button" aria-pressed="true">Pretty</button>
                             <button id="requestRaw" class="clear-button" type="button" aria-pressed="false">Raw</button>
                             <button id="copyRequestBody" class="clear-button" type="button" disabled>Copy body</button>
+                            <button id="copyCurlButton" class="clear-button" type="button" disabled>Copy cURL</button>
                         </div>
                     </div>
-                    <p id="requestBodyNotice" class="body-notice"></p>
+                    <div class="detail-meta">
+                        <p id="matchSummary" class="match-summary"></p>
+                        <details id="mismatchPanel" hidden><summary>Why didn’t this request match?</summary><div id="mismatchDetails"></div></details>
+                        <p id="requestBodyNotice" class="body-notice"></p>
+                    </div>
                     <pre id="requestDetails" class="detail-content" tabindex="0" aria-label="Request content"></pre>
                 </div>
                 <div id="exchangeSplitter" class="splitter horizontal" role="separator" aria-label="Resize request and response panels" aria-orientation="horizontal" aria-controls="requestDetails responseDetails" tabindex="0"></div>
                 <div class="detail-section">
-                    <div class="detail-label">
+                    <div class="panel-header compact">
                         <h2>Response</h2>
                         <div class="detail-actions" role="group" aria-label="Response display">
                             <button id="responsePretty" class="clear-button" type="button" aria-pressed="true">Pretty</button>
@@ -131,13 +127,25 @@
                             <button id="copyResponseBody" class="clear-button" type="button" disabled>Copy body</button>
                         </div>
                     </div>
-                    <p id="responseBodyNotice" class="body-notice"></p>
+                    <div class="detail-meta">
+                        <p id="responseBodyNotice" class="body-notice"></p>
+                    </div>
                     <pre id="responseDetails" class="detail-content" tabindex="0" aria-label="Response content"></pre>
                 </div>
             </section>
-            <section id="routeView" class="route-inspector" aria-label="Route configuration" hidden>
+            <section id="routeView" class="detail-section route-inspector" aria-label="Route configuration" hidden>
+                <div class="panel-header">
+                    <h2 id="routeTitle" tabindex="-1">Route</h2>
+                    <div class="detail-actions">
+                        <button id="copyRouteCurlButton" class="clear-button" type="button" disabled>Copy cURL</button>
+                    </div>
+                </div>
+                <div class="detail-meta">
+                    <p id="routeSummary" class="match-summary"></p>
+                </div>
                 <pre id="routeDetails" class="detail-content" tabindex="0" aria-label="Route configuration content"></pre>
             </section>
+            <p id="copyNotice" class="copy-notice" role="status"></p>
         </section>
     </section>
 </main>

@@ -4,10 +4,16 @@ export function clampPercent(value, fallback, min = 20, max = 80) {
 }
 
 // A splitter is both a pointer target and a keyboard-operable ARIA separator.
+// initial is the default percentage, or a function that computes it from the
+// current layout; it applies when nothing is saved and on double-click.
 export function attachSplitter(handle, container, { axis, property, key, initial, min = 20, max = 80 }, preferences) {
-    let value = clampPercent(preferences.get(key), initial, min, max);
+    const fallback = () => {
+        const computed = typeof initial === 'function' ? initial() : initial;
+        return Number.isFinite(computed) ? computed : 50;
+    };
+    let value = clampPercent(preferences.get(key), null, min, max) ?? clampPercent(fallback(), 50, min, max);
     const set = (next, persist = true) => {
-        value = clampPercent(next, initial, min, max);
+        value = clampPercent(next, value, min, max);
         container.style.setProperty(property, `${value}%`);
         handle.setAttribute('aria-valuenow', String(Math.round(value)));
         handle.setAttribute('aria-valuetext', `${Math.round(value)} percent`);
@@ -36,7 +42,7 @@ export function attachSplitter(handle, container, { axis, property, key, initial
     handle.addEventListener('pointerup', stop);
     handle.addEventListener('pointercancel', stop);
     handle.addEventListener('lostpointercapture', stop);
-    handle.addEventListener('dblclick', () => set(initial));
+    handle.addEventListener('dblclick', () => set(fallback()));
     handle.addEventListener('keydown', event => {
         const lower = axis === 'x' ? 'ArrowLeft' : 'ArrowUp';
         const upper = axis === 'x' ? 'ArrowRight' : 'ArrowDown';
@@ -44,4 +50,12 @@ export function attachSplitter(handle, container, { axis, property, key, initial
         event.preventDefault();
         set(event.key === 'Home' ? min : event.key === 'End' ? max : value + (event.key === lower ? -1 : 1) * (event.shiftKey ? 10 : 2));
     });
+}
+
+// alignedTrafficHeight returns the --traffic-height percentage that makes the
+// panel below the traffic table as tall as responseHeight. It returns fallback
+// when either height is unknown, as when the inspector is hidden on narrow screens.
+export function alignedTrafficHeight(panelHeight, responseHeight, fallback) {
+    if (!(panelHeight > 0) || !(responseHeight > 0)) return fallback;
+    return 100 - (responseHeight / panelHeight) * 100;
 }
