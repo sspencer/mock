@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.3.0 - 2026-11-04
 
 Serve several mock services, each on its own port, from one set of request files. This release has breaking changes; see below.
 
