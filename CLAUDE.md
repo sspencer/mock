@@ -20,7 +20,7 @@ go run . validate -strict examples/*.http   # lint request files without serving
 
 Fuzz targets: `go test ./restclient -run '^$' -fuzz FuzzParse -fuzztime 10s` and `go test ./mockhttp -run '^$' -fuzz FuzzMatchEscapedPath -fuzztime 10s`.
 
-A project hook in `.claude/settings.json` runs `gofmt -w` on every `.go` file after you edit it.
+Project hooks in `.claude/settings.json` run `gofmt -w` on edited `.go` files and `go run . validate` on edited `.http` files (both need `jq`).
 
 ## Architecture
 

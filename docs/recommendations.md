@@ -92,7 +92,7 @@ original implementation and are superseded by the follow-up notes above.
 
 | # | Item | Status |
 |---|------|--------|
-| 1 | CORS (`-cors`) | done |
+| 1 | CORS (`-cors`) | removed; the project serves HTTP clients, not browser pages |
 | 2 | Request header matching from `.http` headers | done |
 | 3 | Reset rotation counters + clear events API | done |
 | 4 | Basic OpenAPI → route summary import helper | removed (feature deleted) |

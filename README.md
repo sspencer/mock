@@ -214,8 +214,8 @@ server from `/` instead of loading mock routes or the request-log UI.
 
 `mock validate` loads the files without starting a server and prints every
 problem it finds, one per line as `file:line: level: message`. It checks the
-same things `mock` checks at startup: syntax errors, invalid `@delay` and
-placeholder arguments, unresolved placeholders, unused variables, and request
+same things `mock` checks at startup: syntax errors, invalid `@delay` or `@port`
+values, a URL port that conflicts with `@port`, invalid placeholder arguments, unresolved placeholders, unused variables, and request
 headers used as response headers.
 
 | Flag | Description |
@@ -506,8 +506,9 @@ served on.
 
 The default port is only opened when some route uses it. A route can declare
 the default port explicitly; it is served by the same listener. `mock` binds
-every port before it serves anything, and exits naming the file and section if
-a port is already in use or is the admin UI port.
+every port before it serves anything. If a port a route declares is already in
+use or is the admin UI port, it exits naming the file and section; a busy
+default port reports a plain `server failed` error.
 
 Hot reload can add, change, or remove routes on the ports that are already open,
 but cannot open new ones: a reload that needs a new port is rejected, the
@@ -593,15 +594,18 @@ The UI is served at the root of the admin port (`-a`, default `8081`):
 | `/clear` | `POST` clears stored events without changing rotation counters |
 | `/reset` | `POST` resets response sequences without clearing traffic |
 | `/state` | `GET` active revision, route count, last successful reload, and reload error |
-| `/routes` | `GET` route configuration, including source location, match headers, status, delay, and body preview |
+| `/routes` | `GET` route configuration, including source location, port, match headers, status, delay, and body preview |
 
-Selecting a route shows a sample `curl` command for the mock port, ready to paste
+Selecting a route shows a sample `curl` command for that route's port (the
+default mock port when the route declares none), ready to paste
 into a shell (**Copy cURL** copies it). The host is the one you used to open the
 UI, path parameters get sample values (`:id` becomes `1`), and required request
 headers from `@header.*` are included (a `*` wildcard value becomes `example`).
 
 UI features: theme toggle, filter, pause stream, independent clear/reset controls,
 HAR export, a Help dialog, and a routes panel that refreshes after hot-reload.
+When `mock` listens on more than one port, the request table shows each
+request's host and port, and routes are labeled with their port.
 Both administrative POST endpoints require an `X-Requested-With` header or a JSON
 `Content-Type`, and reject cross-origin and cross-site requests.
 
@@ -642,8 +646,8 @@ sequence position, and configuration revision (or mismatch candidates). History 
 events; gaps are reported rather than silently hidden. Event bodies include
 separate byte counts, truncation metadata, and base64 encoding for binary data.
 
-Export HAR downloads captured requests, including their actual HTTP/HTTPS
-scheme, byte sizes and binary response encoding. Capture is limited to 64 KiB
+Export HAR downloads captured requests, including byte sizes and binary
+response encoding. Capture is limited to 64 KiB
 per body. HAR extension fields mark truncated bodies and binary requests; these
 are diagnostic captures, not complete replay fixtures. Only total server handler
 time is measured, so individual network timing phases remain unknown.
