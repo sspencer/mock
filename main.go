@@ -66,13 +66,27 @@ type config struct {
 	Help string
 }
 
-const usageSummary = `usage:
+const defaultBind = "127.0.0.1"
+
+// usageText is printed by -h. Every flag has a short and a long name; Go's
+// flag package accepts either with one or two dashes.
+const usageText = `usage:
   mock [flags] <file.http> [file.http...]
   mock [flags] <directory>
   cat file.http | mock
   mock validate [-strict] [-json] <file.http> [file.http...]
 
 flags:
+  -p, --port PORT      default HTTP port, for routes whose request target or
+                       @port gives no port (default 8080, or MOCK_PORT)
+  -a, --ui-port PORT   admin UI port; 0 picks a random port (default
+                       MOCK_UI_PORT, else 8081, or random if -p or MOCK_PORT
+                       is set)
+  -x, --no-ui          do not start the admin UI
+  -b, --bind ADDR      bind address; use 0.0.0.0 for all interfaces
+                       (default 127.0.0.1, or MOCK_BIND)
+      --version        print version and exit
+  -h, --help           print this help and exit
 `
 
 func parseConfig(args []string) (config, error) {
@@ -87,18 +101,28 @@ func parseConfig(args []string) (config, error) {
 	if err != nil {
 		return config{}, err
 	}
-	flagSet.IntVar(&cfg.Port, "p", portDefault, "default HTTP port, for routes whose request target or @port gives no port")
-	flagSet.IntVar(&cfg.AdminPort, "a", adminDefault, "admin UI port; 0 picks a random port (random if -p or MOCK_PORT is set; MOCK_UI_PORT sets the default)")
-	flagSet.BoolVar(&cfg.NoAdmin, "x", false, "do not start the admin UI")
-	flagSet.StringVar(&cfg.Bind, "b", "127.0.0.1", "bind address; use 0.0.0.0 for all interfaces")
-	flagSet.BoolVar(&cfg.Version, "version", false, "print version and exit")
+	bindDefault := defaultBind
+	if raw := strings.TrimSpace(os.Getenv("MOCK_BIND")); raw != "" {
+		bindDefault = raw
+	}
+	// Each long name shares its short name's variable. The help text is
+	// hand-written in usageText, so the per-flag usage strings stay empty.
+	for _, name := range []string{"p", "port"} {
+		flagSet.IntVar(&cfg.Port, name, portDefault, "")
+	}
+	for _, name := range []string{"a", "ui-port"} {
+		flagSet.IntVar(&cfg.AdminPort, name, adminDefault, "")
+	}
+	for _, name := range []string{"x", "no-ui"} {
+		flagSet.BoolVar(&cfg.NoAdmin, name, false, "")
+	}
+	for _, name := range []string{"b", "bind"} {
+		flagSet.StringVar(&cfg.Bind, name, bindDefault, "")
+	}
+	flagSet.BoolVar(&cfg.Version, "version", false, "")
 	if err := flagSet.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			var help strings.Builder
-			help.WriteString(usageSummary)
-			flagSet.SetOutput(&help)
-			flagSet.PrintDefaults()
-			return config{Help: help.String()}, nil
+			return config{Help: usageText}, nil
 		}
 		return config{}, usageError("failed to parse flags: %v", err)
 	}
@@ -111,11 +135,11 @@ func parseConfig(args []string) (config, error) {
 	}
 	var adminSet, portSet bool
 	flagSet.Visit(func(f *flag.Flag) {
-		adminSet = adminSet || f.Name == "a"
-		portSet = portSet || f.Name == "p"
+		adminSet = adminSet || f.Name == "a" || f.Name == "ui-port"
+		portSet = portSet || f.Name == "p" || f.Name == "port"
 	})
 	if cfg.NoAdmin && adminSet {
-		return config{}, usageError("-a and -x cannot be used together")
+		return config{}, usageError("-a (--ui-port) and -x (--no-ui) cannot be used together")
 	}
 	if !adminSet && !envAdminSet && (portSet || envPortSet) {
 		cfg.AdminPort = 0

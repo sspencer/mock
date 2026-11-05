@@ -273,3 +273,49 @@ ok
 		}
 	}
 }
+
+func TestParseConfigLongFlags(t *testing.T) {
+	t.Setenv("MOCK_PORT", "")
+	t.Setenv("MOCK_UI_PORT", "")
+	t.Setenv("MOCK_BIND", "")
+	for _, prefix := range []string{"-", "--"} {
+		cfg, err := parseConfig([]string{prefix + "port", "9000", prefix + "ui-port", "9001", prefix + "bind", "0.0.0.0", "api.http"})
+		if err != nil {
+			t.Fatalf("parseConfig(%s long flags) error = %v", prefix, err)
+		}
+		if cfg.Port != 9000 || cfg.AdminPort != 9001 || cfg.Bind != "0.0.0.0" {
+			t.Fatalf("parseConfig(%s long flags) = %+v", prefix, cfg)
+		}
+		cfg, err = parseConfig([]string{prefix + "no-ui", "api.http"})
+		if err != nil || !cfg.NoAdmin {
+			t.Fatalf("parseConfig(%sno-ui) = %+v, %v", prefix, cfg, err)
+		}
+	}
+	// --port counts as setting the mock port, so the UI port turns random.
+	cfg, err := parseConfig([]string{"--port", "9000", "api.http"})
+	if err != nil || cfg.AdminPort != 0 {
+		t.Fatalf("parseConfig(--port) AdminPort = %d, err = %v; want 0", cfg.AdminPort, err)
+	}
+	// --ui-port counts as setting the admin port, so it conflicts with --no-ui.
+	if _, err := parseConfig([]string{"--no-ui", "--ui-port", "9001", "api.http"}); err == nil {
+		t.Fatal("parseConfig() accepted --no-ui with --ui-port")
+	}
+	if _, err := parseConfig([]string{"--port", "9000", "--ui-port", "9000", "api.http"}); err == nil {
+		t.Fatal("parseConfig() accepted the same --port and --ui-port")
+	}
+}
+
+func TestParseConfigBindFromEnv(t *testing.T) {
+	t.Setenv("MOCK_BIND", "")
+	cfg, err := parseConfig([]string{"api.http"})
+	if err != nil || cfg.Bind != "127.0.0.1" {
+		t.Fatalf("default Bind = %q, err = %v; want 127.0.0.1", cfg.Bind, err)
+	}
+	t.Setenv("MOCK_BIND", " 0.0.0.0 ")
+	if cfg, err = parseConfig([]string{"api.http"}); err != nil || cfg.Bind != "0.0.0.0" {
+		t.Fatalf("MOCK_BIND Bind = %q, err = %v; want 0.0.0.0", cfg.Bind, err)
+	}
+	if cfg, err = parseConfig([]string{"-b", "192.168.1.5", "api.http"}); err != nil || cfg.Bind != "192.168.1.5" {
+		t.Fatalf("-b over MOCK_BIND Bind = %q, err = %v; want 192.168.1.5", cfg.Bind, err)
+	}
+}

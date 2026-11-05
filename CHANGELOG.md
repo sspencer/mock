@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Restyle the admin UI with a simpler, flatter look: a warm parchment light theme, a deep "midnight" dark theme with a teal accent and clearly layered panels, and a smaller header. The inspector drops its title bar: Request and Response get the same headers as Traffic and Routes, and Copy cURL moves next to the Request buttons. By default the Routes panel is as tall as the Response pane.
+- Add a long name for every flag: `--port` (`-p`), `--ui-port` (`-a`), `--no-ui` (`-x`), and `--bind` (`-b`). The short names are unchanged. `mock -h` now lists both names on one line.
+- Add the `MOCK_BIND` environment variable to set the default bind address, matching `MOCK_PORT` and `MOCK_UI_PORT`. An explicit `-b` still wins, and the default stays `127.0.0.1`.
 
 ## v0.3.0 - 2026-11-04
 
