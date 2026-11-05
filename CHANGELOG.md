@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Reorganize the source tree: `main.go` is now a thin entry point, the command lives in `internal/cli/`, and the admin UI (embedded files, handler, and Node tests) lives in `internal/ui/`. Install paths, flags, and build flags are unchanged.
+
 ## v0.3.1 - 2026-11-04
 
 A refreshed admin UI with new light and dark themes, plus long names for every flag and a `MOCK_BIND` environment variable.

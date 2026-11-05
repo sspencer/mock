@@ -1,14 +1,15 @@
-package main
+package cli
 
 import (
 	"fmt"
-	"github.com/fsnotify/fsnotify"
-	"github.com/sspencer/mock/restclient"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
+	"github.com/sspencer/mock/restclient"
 )
 
 const reloadDebounce = 250 * time.Millisecond

@@ -23,12 +23,12 @@ For each behavior change, check the matching docs:
 
 | Code area | Docs to check |
 |---|---|
-| Flags, env vars, defaults, exit codes (`main.go`, `validate.go`, `ports.go`) | README `## CLI` flag table, `### Validating request files`, Quick Start banner text, the `usage`/`validateUsage` strings |
+| Flags, env vars, defaults, exit codes (`internal/cli/`: `config.go`, `run.go`, `validate.go`, `ports.go`) | README `## CLI` flag table, `### Validating request files`, Quick Start banner text, the `usage`/`validateUsage` strings |
 | Parser and dialect (`restclient/`) | README `## Request File Format`, `### Supported dialect`, `## Variables`, `## External response bodies`, and the load-error messages users will see |
 | Placeholders (`mockhttp/functions.go`, `render.go`) | README `## Placeholders`. Every function must be listed with the right arguments, and nothing removed may still be listed |
-| Matching, rotation, ports (`match.go`, `server.go`, `ports.go`) | README `## Matching`, `## Multiple Responses`, `## Multiple ports` |
-| Admin endpoints and UI (`inspection.go`, `details.go`, `events.go`, `static/`) | README `## Admin UI And API` endpoint table, `## Clients and safety` |
-| Reload (`watch.go`) | README statements about hot reload and reload errors |
+| Matching, rotation, ports (`match.go`, `server.go`, `internal/cli/ports.go`) | README `## Matching`, `## Multiple Responses`, `## Multiple ports` |
+| Admin endpoints and UI (`inspection.go`, `details.go`, `events.go`, `internal/ui/`) | README `## Admin UI And API` endpoint table, `## Clients and safety` |
+| Reload (`internal/cli/watch.go`, `reload.go`) | README statements about hot reload and reload errors |
 | Dockerfile, Makefile, `.goreleaser.yaml` | README `## Install`, `## Building From Source`, `## Docker`, CONTRIBUTING |
 | Package layout, commands, architecture | CLAUDE.md, README `## Development` |
 | `examples/*.http` | README snippets that reference them, `examples/send-requests.sh`. Also check they still pass `go run . validate examples/*.http` |

@@ -1,11 +1,14 @@
-package main
+package cli
 
 import (
-	"github.com/sspencer/mock/restclient"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/sspencer/mock/restclient"
 )
 
 func TestDependencyOwnership(t *testing.T) {
@@ -73,4 +76,52 @@ func TestWatcherReconcilesNewDependencies(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("nested file changes not watched")
 	}
+}
+
+func TestWatchFilesInvokesCallbackOnWrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "api.http")
+	if err := os.WriteFile(path, []byte("initial\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	changed := make(chan struct{}, 1)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	closer, err := watchFiles([]string{path}, func() {
+		select {
+		case changed <- struct{}{}:
+		default:
+		}
+	}, logger)
+	if err != nil {
+		t.Fatalf("watchFiles() error = %v", err)
+	}
+	t.Cleanup(func() { _ = closer.Close() })
+
+	// Allow the watcher to attach before writing.
+	time.Sleep(50 * time.Millisecond)
+	if err := os.WriteFile(path, []byte("updated\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	select {
+	case <-changed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for watchFiles callback")
+	}
+}
+
+func TestResolveWatchPathsIncludesDependencies(t *testing.T) {
+	paths := resolveWatchPaths([]string{"examples/user.http"}, []restclient.Method{{Source: "examples/user.http", File: "users.json"}, {Source: "examples/user.http", File: "index.html"}})
+	if len(paths) < 3 {
+		t.Fatalf("paths = %#v, want http file plus dependencies", paths)
+	}
+}
+
+func absPath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	return abs
 }

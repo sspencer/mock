@@ -3,10 +3,11 @@ package mockhttp
 import (
 	"encoding/json"
 	"errors"
-	"github.com/sspencer/mock/restclient"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/sspencer/mock/restclient"
 )
 
 func TestInspectionCapturesMatchAndSequence(t *testing.T) {

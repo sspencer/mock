@@ -685,11 +685,10 @@ active requests before closing remaining connections.
 
 This repository is intentionally small:
 
-- `main.go` / `watch.go` / `version.go` wire CLI flags, input loading, watching, and lifecycle.
-- `validate.go` implements `mock validate`.
+- `main.go` is the thin entry point; `internal/cli/` holds CLI flags, input loading, ports, watching, lifecycle, and `mock validate`.
 - `restclient/` parses `.http` files.
 - `mockhttp/` matches requests, renders responses, and streams request-log events.
-- `static/` contains the request log UI (embedded at build time).
+- `internal/ui/` contains the request log UI (`static/`, embedded at build time), its admin handler, and its Node tests.
 - `examples/` contains request files you can run locally.
 - `docs/recommendations.md` tracks improvement history.
 

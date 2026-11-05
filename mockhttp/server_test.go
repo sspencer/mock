@@ -3,6 +3,7 @@ package mockhttp
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log/slog"
@@ -707,5 +708,199 @@ Content-Type: text/plain
 	}
 	if got, want := response.Header().Get("X-Link"), "https://method.test/?q=a%20b%26c"; got != want {
 		t.Fatalf("X-Link = %q, want %q", got, want)
+	}
+}
+
+func TestCaptureStructuredBytesAndTLS(t *testing.T) {
+	s := New([]restclient.Method{{Method: "POST", Path: "/x", Body: "é\n", Headers: make(http.Header)}}, nil)
+	r := httptest.NewRequest("POST", "https://localhost/x", strings.NewReader("é\n"))
+	r.TLS = &tls.ConnectionState{}
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, r)
+	event := s.events[0]
+	if event.Request.Scheme != "https" || event.Request.Body.Size != 3 || event.Response.Body.Size != 3 || event.Response.Body.Text != "é\n" {
+		t.Fatalf("bad capture: %+v", event)
+	}
+	if event.Response.Headers.Get("Content-Length") != "3" || event.Response.Headers.Get("Content-Type") == "" {
+		t.Fatal("missing actual metadata")
+	}
+	binary := eventBody(loggedBody{text: string([]byte{0, 255})}, 2)
+	if binary.Encoding != "base64" || binary.Text != "AP8=" {
+		t.Fatalf("lost binary bytes: %+v", binary)
+	}
+}
+func TestHeadDoesNotCaptureSuppressedBody(t *testing.T) {
+	s := New([]restclient.Method{{Method: "HEAD", Path: "/x", Body: "body", Headers: make(http.Header)}}, nil)
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, httptest.NewRequest("HEAD", "/x", nil))
+	if s.events[0].Response.Body.Size != 0 || w.Body.Len() != 0 || w.Header().Get("Content-Length") != "4" {
+		t.Fatal("HEAD capture included a body")
+	}
+}
+
+type deadlineRecorder struct {
+	*httptest.ResponseRecorder
+	deadlines []time.Time
+}
+
+func (w *deadlineRecorder) SetWriteDeadline(d time.Time) error {
+	w.deadlines = append(w.deadlines, d)
+	return nil
+}
+func TestWriteBudgetStartsAfterConfiguredDelay(t *testing.T) {
+	s := New([]restclient.Method{{Method: "GET", Path: "/", Body: "ok", Variables: map[string]string{"delay": "10ms"}}}, nil)
+	w := &deadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
+	s.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
+	if len(w.deadlines) != 2 || !w.deadlines[0].IsZero() || time.Until(w.deadlines[1]) < 29*time.Second {
+		t.Fatalf("bad write budget: %v", w.deadlines)
+	}
+}
+func TestClearRejectsCrossOriginEvenWithCustomHeader(t *testing.T) {
+	r := httptest.NewRequest("POST", "http://localhost/clear", nil)
+	r.Header.Set("X-Requested-With", "xhr")
+	r.Header.Set("Origin", "https://other.test")
+	if clearRequestAllowed(r) {
+		t.Fatal("cross-origin clear accepted")
+	}
+	r.Header.Set("Origin", "https://localhost")
+	if clearRequestAllowed(r) {
+		t.Fatal("different scheme accepted")
+	}
+	r.Header.Set("Origin", "http://localhost")
+	if !clearRequestAllowed(r) {
+		t.Fatal("same-origin clear rejected")
+	}
+	form := httptest.NewRequest("POST", "http://localhost/clear", nil)
+	form.Header.Set("Origin", "http://localhost")
+	form.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if clearRequestAllowed(form) {
+		t.Fatal("same-origin form POST accepted without X-Requested-With or JSON")
+	}
+}
+func TestClearWhileSubscriberReads(t *testing.T) {
+	s := New(nil, nil)
+	_, ch := s.subscribe()
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-ch:
+			case <-stop:
+				return
+			}
+		}
+	}()
+	for range 1000 {
+		s.ClearEvents()
+	}
+	close(stop)
+	<-done
+	s.unsubscribe(ch)
+}
+
+func TestServerRotationIgnoresUnusedQueryParams(t *testing.T) {
+	methods, err := restclient.Parse("test.http", strings.NewReader(`### [201] Create User
+POST /users
+Content-Type: application/json
+
+{"success":true}
+
+### [400] Create User Failure
+POST /users
+Content-Type: application/json
+
+{"success":false}
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	targets := []string{"/users", "/users?extra=1", "/users?foo=bar"}
+	wants := []struct {
+		status int
+		body   string
+	}{
+		{status: http.StatusCreated, body: `"success":true`},
+		{status: http.StatusBadRequest, body: `"success":false`},
+		{status: http.StatusCreated, body: `"success":true`},
+	}
+
+	for i, want := range wants {
+		request := httptest.NewRequest(http.MethodPost, targets[i], nil)
+		response := httptest.NewRecorder()
+		server.ServeHTTP(response, request)
+		if response.Code != want.status {
+			t.Fatalf("request %d %s status = %d, want %d", i+1, targets[i], response.Code, want.status)
+		}
+		if body := response.Body.String(); !strings.Contains(body, want.body) {
+			t.Fatalf("request %d body = %q, want to contain %q", i+1, body, want.body)
+		}
+	}
+}
+
+func TestWarnIncomingHeadersUsedAsResponse(t *testing.T) {
+	methods, err := restclient.Parse("test.http", strings.NewReader(`### Auth as response
+GET /oops
+Authorization: Bearer secret
+Content-Type: application/json
+Cookie: session=1
+
+{"ok":true}
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	_ = New(methods, logger)
+	logText := buf.String()
+	if !strings.Contains(logText, "header after the request line is a response header") {
+		t.Fatalf("log = %q, want incoming-header-as-response warning", logText)
+	}
+	if !strings.Contains(logText, "Authorization") || !strings.Contains(logText, "Cookie") {
+		t.Fatalf("log = %q, want Authorization and Cookie warnings", logText)
+	}
+	if strings.Contains(logText, "Content-Type") {
+		t.Fatalf("log = %q, Content-Type must not warn", logText)
+	}
+
+	matched, err := restclient.Parse("test.http", strings.NewReader(`### Secured
+@header.Authorization = Bearer secret
+GET /secure
+Authorization: Bearer secret
+Content-Type: text/plain
+
+ok
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	buf.Reset()
+	_ = New(matched, logger)
+	logText = buf.String()
+	if strings.Contains(logText, "Authorization") {
+		t.Fatalf("log = %q, $header.Authorization should suppress the warning", logText)
+	}
+}
+
+func TestRequestEventIncludesStartedAt(t *testing.T) {
+	methods, err := restclient.Parse("test.http", strings.NewReader(`### User
+GET /users
+
+ok
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	server.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/users", nil))
+	if len(server.events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(server.events))
+	}
+	if _, err := time.Parse(time.RFC3339Nano, server.events[0].Request.StartedAt); err != nil {
+		t.Fatalf("startedAt = %q, want RFC3339", server.events[0].Request.StartedAt)
 	}
 }

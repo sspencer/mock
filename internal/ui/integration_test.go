@@ -1,16 +1,17 @@
-package main
+package ui
 
 import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"github.com/sspencer/mock/mockhttp"
-	"github.com/sspencer/mock/restclient"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/sspencer/mock/mockhttp"
+	"github.com/sspencer/mock/restclient"
 )
 
 // Exercise the embedded module UI, real TLS/net/http behavior, and SSE protocol
@@ -21,13 +22,13 @@ func TestTLSCaptureAndEmbeddedDashboardIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	mock := mockhttp.New(methods, nil)
-	assets, err := staticFileSystem()
+	assets, err := Assets()
 	if err != nil {
 		t.Fatal(err)
 	}
 	server := httptest.NewTLSServer(mock)
 	defer server.Close()
-	admin := httptest.NewTLSServer(newAdminHandler(mock, assets, uiConfig{}))
+	admin := httptest.NewTLSServer(NewHandler(mock, assets, Config{}))
 	defer admin.Close()
 	client := server.Client()
 	adminClient := admin.Client()

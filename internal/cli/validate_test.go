@@ -1,10 +1,9 @@
-package main
+package cli
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,14 +24,6 @@ func runValidateArgs(t *testing.T, args ...string) (stdout string, err error) {
 	var out bytes.Buffer
 	err = runValidate(args, &out)
 	return out.String(), err
-}
-
-func exitCode(err error) int {
-	var exitErr *exitError
-	if errors.As(err, &exitErr) {
-		return exitErr.code
-	}
-	return -1
 }
 
 const (
@@ -63,7 +54,7 @@ func TestValidateWarningsFailOnlyInStrictMode(t *testing.T) {
 	}
 
 	_, err = runValidateArgs(t, "-strict", path)
-	if exitCode(err) != 1 {
+	if ExitCode(err) != 1 {
 		t.Fatalf("-strict error = %v, want exit code 1", err)
 	}
 }
@@ -71,11 +62,11 @@ func TestValidateWarningsFailOnlyInStrictMode(t *testing.T) {
 func TestValidateReportsLoadErrors(t *testing.T) {
 	for name, content := range map[string]string{"broken": brokenFile, "empty": "# nothing here\n"} {
 		out, err := runValidateArgs(t, writeValidateFile(t, content))
-		if exitCode(err) != 1 || !strings.Contains(out, "error: ") {
+		if ExitCode(err) != 1 || !strings.Contains(out, "error: ") {
 			t.Errorf("%s: err = %v, output = %q; want exit 1 with an error line", name, err, out)
 		}
 	}
-	if _, err := runValidateArgs(t, filepath.Join(t.TempDir(), "missing.http")); exitCode(err) != 1 {
+	if _, err := runValidateArgs(t, filepath.Join(t.TempDir(), "missing.http")); ExitCode(err) != 1 {
 		t.Fatalf("missing file error = %v, want exit code 1", err)
 	}
 }
@@ -98,7 +89,7 @@ func TestValidateJSONReport(t *testing.T) {
 	}
 
 	out, err = runValidateArgs(t, "-json", writeValidateFile(t, brokenFile))
-	if exitCode(err) != 1 {
+	if ExitCode(err) != 1 {
 		t.Fatalf("broken file error = %v", err)
 	}
 	if err := json.Unmarshal([]byte(out), &report); err != nil || report.OK || report.Diagnostics[0].Level != "error" {
@@ -108,7 +99,7 @@ func TestValidateJSONReport(t *testing.T) {
 
 func TestValidateUsageErrors(t *testing.T) {
 	for _, args := range [][]string{nil, {"-bogus", "x.http"}} {
-		if _, err := runValidateArgs(t, args...); exitCode(err) != 2 {
+		if _, err := runValidateArgs(t, args...); ExitCode(err) != 2 {
 			t.Errorf("runValidate(%q) error = %v, want usage error", args, err)
 		}
 	}
@@ -117,12 +108,12 @@ func TestValidateUsageErrors(t *testing.T) {
 func TestHelpFlagsPrintUsageAndSucceed(t *testing.T) {
 	for _, args := range [][]string{{"-h"}, {"--help"}, {"-help"}} {
 		var out bytes.Buffer
-		if err := run(context.Background(), args, strings.NewReader(""), &out, &bytes.Buffer{}, nil); err != nil {
-			t.Fatalf("run(%q) error = %v, want nil", args, err)
+		if err := Run(context.Background(), args, strings.NewReader(""), &out, &bytes.Buffer{}, nil); err != nil {
+			t.Fatalf("Run(%q) error = %v, want nil", args, err)
 		}
 		for _, want := range []string{"usage:", "mock validate", "-p, --port", "-a, --ui-port", "-x, --no-ui", "-b, --bind", "MOCK_BIND"} {
 			if !strings.Contains(out.String(), want) {
-				t.Errorf("run(%q) output missing %q:\n%s", args, want, out.String())
+				t.Errorf("Run(%q) output missing %q:\n%s", args, want, out.String())
 			}
 		}
 	}
@@ -136,7 +127,7 @@ func TestHelpFlagsPrintUsageAndSucceed(t *testing.T) {
 
 func TestRunDispatchesValidateSubcommand(t *testing.T) {
 	var out bytes.Buffer
-	err := run(context.Background(), []string{"validate", writeValidateFile(t, validFile)}, strings.NewReader(""), &out, &bytes.Buffer{}, nil)
+	err := Run(context.Background(), []string{"validate", writeValidateFile(t, validFile)}, strings.NewReader(""), &out, &bytes.Buffer{}, nil)
 	if err != nil || !strings.Contains(out.String(), "ok: 1 routes") {
 		t.Fatalf("run validate: err = %v, output = %q", err, out.String())
 	}
