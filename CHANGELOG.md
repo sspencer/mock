@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add a long name for every flag: `--port` (`-p`), `--ui-port` (`-a`), `--no-ui` (`-x`), and `--bind` (`-b`). The short names are unchanged. `mock -h` now lists both names on one line.
+- Add the `MOCK_BIND` environment variable to set the default bind address, matching `MOCK_PORT` and `MOCK_UI_PORT`. An explicit `-b` still wins, and the default stays `127.0.0.1`.
+
 ## v0.3.0 - 2026-11-04
 
 Serve several mock services, each on its own port, from one set of request files. This release has breaking changes; see below.

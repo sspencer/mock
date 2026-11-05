@@ -181,14 +181,27 @@ Flags:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-p` | `8080`, or `MOCK_PORT` | Default HTTP port, for routes that do not declare a port (see [Multiple ports](#multiple-ports)) |
-| `-x` | (off) | Do not start the admin UI. Cannot be combined with `-a` |
-| `-b` | `127.0.0.1` | Bind address. Use `0.0.0.0` to listen on all interfaces |
-| `-a` | `MOCK_UI_PORT`, else `8081`, or random if `-p` / `MOCK_PORT` is set | Admin UI port. `0` picks a random free port |
-| `-version` | | Print version and exit |
+| `-p`, `--port` | `8080`, or `MOCK_PORT` | Default HTTP port, for routes that do not declare a port (see [Multiple ports](#multiple-ports)) |
+| `-a`, `--ui-port` | `MOCK_UI_PORT`, else `8081`, or random if `-p` / `MOCK_PORT` is set | Admin UI port. `0` picks a random free port |
+| `-x`, `--no-ui` | (off) | Do not start the admin UI. Cannot be combined with `-a` |
+| `-b`, `--bind` | `127.0.0.1`, or `MOCK_BIND` | Bind address. Use `0.0.0.0` to listen on all interfaces |
+| `--version` | | Print version and exit |
+| `-h`, `--help` | | Print usage and exit |
+
+Every flag has a short and a long name. Flags take one or two dashes
+(`-port` and `--port` are the same), and short flags cannot be combined
+(write `-x -b 0.0.0.0`, not `-xb`).
 
 If `-p` is omitted, `mock` uses the `MOCK_PORT` environment variable when it
-is set. An explicit `-p` flag always wins.
+is set. An explicit `-p` flag always wins. Likewise, `MOCK_BIND` sets the
+default bind address and an explicit `-b` overrides it.
+
+`mock` binds to `127.0.0.1` by default, so only this machine can reach it. To
+reach it from another computer, bind to `0.0.0.0` (or one interface's address)
+and allow the ports through any firewall. The admin UI has no authentication
+and shows captured headers and bodies, so `mock` prints a warning when it binds
+to all interfaces. To make that your default, set `MOCK_BIND=0.0.0.0` in your
+shell profile.
 
 The admin UI listens on its own port so it never shadows mock routes. Without
 `-a`, it uses the `MOCK_UI_PORT` environment variable when set; otherwise `8081`

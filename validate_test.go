@@ -120,7 +120,7 @@ func TestHelpFlagsPrintUsageAndSucceed(t *testing.T) {
 		if err := run(context.Background(), args, strings.NewReader(""), &out, &bytes.Buffer{}, nil); err != nil {
 			t.Fatalf("run(%q) error = %v, want nil", args, err)
 		}
-		for _, want := range []string{"usage:", "mock validate", "-p int", "-a int", "-x"} {
+		for _, want := range []string{"usage:", "mock validate", "-p, --port", "-a, --ui-port", "-x, --no-ui", "-b, --bind", "MOCK_BIND"} {
 			if !strings.Contains(out.String(), want) {
 				t.Errorf("run(%q) output missing %q:\n%s", args, want, out.String())
 			}
