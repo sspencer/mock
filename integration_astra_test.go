@@ -25,7 +25,7 @@ func TestTLSCaptureAndEmbeddedDashboardIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewTLSServer(withCORS(mock, "*"))
+	server := httptest.NewTLSServer(mock)
 	defer server.Close()
 	admin := httptest.NewTLSServer(newAdminHandler(mock, assets, uiConfig{}))
 	defer admin.Close()
@@ -47,15 +47,9 @@ func TestTLSCaptureAndEmbeddedDashboardIntegration(t *testing.T) {
 	if res.StatusCode != 201 || string(body) != `{"id":"a%2Fb"}` {
 		t.Fatalf("unexpected response: %d %s", res.StatusCode, body)
 	}
-	if res.Header.Get("Access-Control-Allow-Origin") != "*" {
-		t.Fatal("mock CORS missing")
-	}
 	stream, err := adminClient.Get(admin.URL + "/events")
 	if err != nil {
 		t.Fatal(err)
-	}
-	if stream.Header.Get("Access-Control-Allow-Origin") != "" {
-		t.Fatal("admin SSE exposed through CORS")
 	}
 	var event mockhttp.RequestEvent
 	scanner := bufio.NewScanner(stream.Body)

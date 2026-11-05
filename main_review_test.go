@@ -196,6 +196,13 @@ func TestParseConfigRejectsMountFlag(t *testing.T) {
 	}
 }
 
+func TestParseConfigRejectsCORSFlag(t *testing.T) {
+	t.Setenv("MOCK_PORT", "")
+	if _, err := parseConfig([]string{"-cors", "*", "api.http"}); err == nil {
+		t.Fatal("parseConfig() accepted removed -cors flag")
+	}
+}
+
 func TestRunPrintsHTTPSAdminURLWhenTLSFlagsSet(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "api.http")
@@ -264,47 +271,6 @@ func TestRunWarnsWhenBoundToAllInterfaces(t *testing.T) {
 	}
 	if !regexp.MustCompile(`starting mock HTTP server on 0\.0\.0\.0:[1-9]\d*\n`).MatchString(out.String()) {
 		t.Fatalf("stdout = %q, want actual 0.0.0.0 listen address", out.String())
-	}
-}
-
-func TestWithCORSPreflightAndMockOPTIONS(t *testing.T) {
-	methods, err := restclient.Parse("test.http", strings.NewReader(`### Probe
-OPTIONS /users
-Content-Type: text/plain
-
-mock-options
-`))
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
-	}
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := withCORS(mockhttp.New(methods, logger), "*")
-
-	preflight := httptest.NewRequest(http.MethodOptions, "/users", nil)
-	preflight.Header.Set("Access-Control-Request-Method", "POST")
-	preflight.Header.Set("Access-Control-Request-Headers", "X-Custom, Authorization")
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, preflight)
-	if response.Code != http.StatusNoContent {
-		t.Fatalf("preflight status = %d, want %d", response.Code, http.StatusNoContent)
-	}
-	if got := response.Header().Get("Access-Control-Allow-Origin"); got != "*" {
-		t.Fatalf("CORS origin = %q, want *", got)
-	}
-	if got := response.Header().Get("Vary"); got != "Origin" {
-		t.Fatalf("Vary = %q, want Origin", got)
-	}
-	if got := response.Header().Get("Access-Control-Allow-Headers"); got != "X-Custom, Authorization" {
-		t.Fatalf("Allow-Headers = %q, want reflected custom headers", got)
-	}
-
-	mockOpts := httptest.NewRecorder()
-	handler.ServeHTTP(mockOpts, httptest.NewRequest(http.MethodOptions, "/users", nil))
-	if mockOpts.Code != http.StatusOK {
-		t.Fatalf("non-preflight OPTIONS status = %d, want %d", mockOpts.Code, http.StatusOK)
-	}
-	if body := mockOpts.Body.String(); body != "mock-options" {
-		t.Fatalf("non-preflight OPTIONS body = %q, want mock-options", body)
 	}
 }
 

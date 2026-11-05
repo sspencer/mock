@@ -162,11 +162,11 @@ func TestListenAddress(t *testing.T) {
 
 func TestParseConfigAndVersion(t *testing.T) {
 	t.Setenv("MOCK_PORT", "")
-	cfg, err := parseConfig([]string{"-p", "9090", "-b", "127.0.0.1", "-cors", "*", "api.http"})
+	cfg, err := parseConfig([]string{"-p", "9090", "-b", "127.0.0.1", "api.http"})
 	if err != nil {
 		t.Fatalf("parseConfig() error = %v", err)
 	}
-	if cfg.Port != 9090 || cfg.Bind != "127.0.0.1" || cfg.CORS != "*" || len(cfg.Args) != 1 {
+	if cfg.Port != 9090 || cfg.Bind != "127.0.0.1" || len(cfg.Args) != 1 {
 		t.Fatalf("config = %#v", cfg)
 	}
 
@@ -643,24 +643,6 @@ ok
 	handler.ServeHTTP(routes, httptest.NewRequest(http.MethodGet, "/routes", nil))
 	if routes.Code != http.StatusOK || !strings.Contains(routes.Body.String(), "/users") {
 		t.Fatalf("routes status = %d body = %q", routes.Code, routes.Body.String())
-	}
-}
-
-func TestWithCORS(t *testing.T) {
-	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-	handler := withCORS(inner, "*")
-
-	response := httptest.NewRecorder()
-	preflight := httptest.NewRequest(http.MethodOptions, "/users", nil)
-	preflight.Header.Set("Access-Control-Request-Method", "POST")
-	handler.ServeHTTP(response, preflight)
-	if response.Code != http.StatusNoContent {
-		t.Fatalf("options status = %d, want %d", response.Code, http.StatusNoContent)
-	}
-	if got := response.Header().Get("Access-Control-Allow-Origin"); got != "*" {
-		t.Fatalf("CORS origin = %q, want *", got)
 	}
 }
 

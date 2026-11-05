@@ -55,10 +55,10 @@ func runError(format string, args ...any) error {
 const defaultAdminPort = 8081
 
 type config struct {
-	Bind, CORS, CertFile, KeyFile string
-	Port, AdminPort               int
-	Version, NoAdmin              bool
-	Args                          []string
+	Bind, CertFile, KeyFile string
+	Port, AdminPort         int
+	Version, NoAdmin        bool
+	Args                    []string
 	// Help holds the usage text when -h or --help was requested.
 	Help string
 }
@@ -88,7 +88,6 @@ func parseConfig(args []string) (config, error) {
 	flagSet.IntVar(&cfg.AdminPort, "a", adminDefault, "admin UI port; 0 picks a random port (random if -p or MOCK_PORT is set; MOCK_UI_PORT sets the default)")
 	flagSet.BoolVar(&cfg.NoAdmin, "x", false, "do not start the admin UI")
 	flagSet.StringVar(&cfg.Bind, "b", "127.0.0.1", "bind address; use 0.0.0.0 for all interfaces")
-	flagSet.StringVar(&cfg.CORS, "cors", "", "Access-Control-Allow-Origin value (e.g. * or https://app.local); only real preflights short-circuit; the admin UI is not affected")
 	flagSet.StringVar(&cfg.CertFile, "cert", "", "TLS certificate file (enables HTTPS)")
 	flagSet.StringVar(&cfg.KeyFile, "key", "", "TLS private key file")
 	flagSet.BoolVar(&cfg.Version, "version", false, "print version and exit")
@@ -161,7 +160,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 	}
 	if len(cfg.Args) == 0 {
 		if f, ok := stdin.(*os.File); ok && stdinIsTerminal(f) {
-			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-cors *] [-cert c -key k] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
+			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-cert c -key k] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
 		}
 	}
 	input, err := loadInput(cfg.Args, stdin)
@@ -235,10 +234,6 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 			}
 		}
 	}
-	if cfg.CORS != "" {
-		handler = withCORS(handler, cfg.CORS)
-	}
-
 	var servers []*http.Server
 	listeners := append([]net.Listener(nil), mockListeners...)
 	for range mockListeners {
@@ -468,22 +463,6 @@ func uiFileServer(staticFS fs.FS, ui uiConfig) http.Handler {
 		data = bytes.Replace(data, []byte(`{"version":"dev"}`), payload, 1)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write(data)
-	})
-}
-
-func withCORS(next http.Handler, origin string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Add("Vary", "Origin")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD")
-		if reqHeaders := r.Header.Get("Access-Control-Request-Headers"); reqHeaders != "" {
-			w.Header().Set("Access-Control-Allow-Headers", reqHeaders)
-		}
-		if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
 	})
 }
 

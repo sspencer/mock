@@ -10,6 +10,7 @@ Serve several mock services, each on its own port, from one set of request files
 - Match each route only on its own port. Unmatched-request diagnostics explain when a route is served on another port.
 - Reject a hot reload that needs a port `mock` is not listening on, keeping the previous routes, and ask for a restart.
 - Print one startup line per listener and group the route list by port when there is more than one. The admin UI labels routes with their port, and sample `curl` commands target each route's port.
+- **Breaking:** remove the `-cors` flag. `mock` is for HTTP clients such as curl, tests, and services, not browser pages; `OPTIONS` requests, including preflights, now always run the matching route.
 - **Breaking:** convert `examples/user.http`, `small.http`, `delay.http`, `strategy.http`, and `secure.http` to path-only targets so `-p` still moves them. `examples/restclient.http` keeps its `{{host}}` URLs. Add `examples/services.http`, a multi-port example.
 
 ## v0.2.1 - 2026-10-29

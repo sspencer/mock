@@ -185,7 +185,6 @@ Flags:
 | `-x` | (off) | Do not start the admin UI. Cannot be combined with `-a` |
 | `-b` | `127.0.0.1` | Bind address. Use `0.0.0.0` to listen on all interfaces |
 | `-a` | `MOCK_UI_PORT`, else `8081`, or random if `-p` / `MOCK_PORT` is set | Admin UI port. `0` picks a random free port |
-| `-cors` | (off) | `Access-Control-Allow-Origin` value (`*` or an origin). Only browser preflight `OPTIONS` are short-circuited |
 | `-cert` / `-key` | (off) | Enable HTTPS with the given certificate and key |
 | `-version` | | Print version and exit |
 
@@ -650,18 +649,16 @@ per body. HAR extension fields mark truncated bodies and binary requests; these
 are diagnostic captures, not complete replay fixtures. Only total server handler
 time is measured, so individual network timing phases remain unknown.
 
-## CORS And TLS
+## TLS
 
 ```sh
-mock -cors '*' examples/user.http
 mock -cert cert.pem -key key.pem -p 8443 examples/user.http
 ```
 
-`-cors` adds CORS headers to mock responses (or static-directory responses),
-including `Vary: Origin`. Browser preflights (`OPTIONS` with
-`Access-Control-Request-Method`) return `204` and reflect requested headers.
-Other `OPTIONS` requests run the mock route. The admin port is never affected by
-`-cors`, including when `-cors '*'` is used. Cross-origin clear requests are rejected.
+`mock` is meant to be called by HTTP clients such as curl, test suites, and
+backend services, not by web pages in a browser, so it adds no CORS headers.
+`OPTIONS` requests are matched against routes like any other method. The admin
+UI rejects cross-origin clear and reset requests.
 
 With `-cert`/`-key`, the startup banner prints `https://` for the admin UI.
 Binding to all interfaces (`-b 0.0.0.0`) prints a warning: the admin UI is
