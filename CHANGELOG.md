@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Restyle the admin UI with a simpler, flatter look: a warm parchment light theme, a deep "midnight" dark theme with a teal accent and clearly layered panels, and a smaller header. The inspector drops its title bar: Request and Response get the same headers as Traffic and Routes, and Copy cURL moves next to the Request buttons. By default the Routes panel is as tall as the Response pane.
+
 ## v0.3.0 - 2026-11-04
 
 Serve several mock services, each on its own port, from one set of request files. This release has breaking changes; see below.

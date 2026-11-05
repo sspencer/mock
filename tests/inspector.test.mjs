@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildCurl, buildRouteCurl, formatMessage, formatRoute, bodyNotice, sampleParam } from '../static/inspector.mjs';
-import { attachSplitter, clampPercent } from '../static/layout.mjs';
+import { attachSplitter, clampPercent, alignedTrafficHeight } from '../static/layout.mjs';
 
 const message = {
     method: 'POST', url: '/users?q=one', scheme: 'https', host: 'example.test', httpVersion: 'HTTP/1.1',
@@ -78,4 +78,25 @@ test('Splitter persists clamped pointer and keyboard changes and restores defaul
     assert.equal(saved.width, '45');
     assert.equal(clampPercent(null, 45), 45);
     assert.equal(clampPercent(-100, 45), 20);
+});
+
+test('Traffic height aligns the routes panel with the response pane', () => {
+    assert.equal(alignedTrafficHeight(800, 200, 70), 75);
+    assert.equal(alignedTrafficHeight(0, 200, 70), 70);
+    assert.equal(alignedTrafficHeight(800, 0, 70), 70);
+    assert.equal(alignedTrafficHeight(800, undefined, 70), 70);
+});
+
+test('Splitter computes its default when initial is a function', () => {
+    const handle = new (class extends EventTarget { setAttribute() {} })();
+    const styles = {};
+    const container = { style: { setProperty: (k, v) => styles[k] = v } };
+    let computed = 62;
+    attachSplitter(handle, container, { axis: 'y', property: '--h', key: 'h', initial: () => computed, min: 30, max: 85 }, { get: () => null, set() {} });
+    assert.equal(styles['--h'], '62%');
+    computed = 99;
+    handle.dispatchEvent(new Event('dblclick'));
+    assert.equal(styles['--h'], '85%');
+    attachSplitter(handle, container, { axis: 'y', property: '--h', key: 'h', initial: () => 62 }, { get: () => '40', set() {} });
+    assert.equal(styles['--h'], '40%');
 });

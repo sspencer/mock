@@ -1,5 +1,5 @@
 import { formatMessage, bodyNotice, buildCurl, buildRouteCurl, formatRoute } from './inspector.mjs';
-import { attachSplitter } from './layout.mjs';
+import { attachSplitter, alignedTrafficHeight } from './layout.mjs';
 import { buildHAR } from './har.mjs';
 import { PendingTraffic, streamLabel, requestHost } from './traffic.mjs';
 
@@ -37,7 +37,10 @@ const requestCount = document.getElementById('requestCount');
 const routeCount = document.getElementById('routeCount');
 const streamStatus = document.getElementById('streamStatus');
 const workspace = document.getElementById('workspace');
-const inspectorTitle = document.getElementById('inspectorTitle');
+const requestTitle = document.getElementById('requestTitle');
+const routeTitle = document.getElementById('routeTitle');
+const routeSummary = document.getElementById('routeSummary');
+const copyRouteCurlButton = document.getElementById('copyRouteCurlButton');
 const matchSummary = document.getElementById('matchSummary');
 const exchangeView = document.getElementById('exchangeView');
 const routeView = document.getElementById('routeView');
@@ -75,10 +78,14 @@ const preferences = {
 };
 attachSplitter(document.getElementById('workspaceSplitter'), workspace,
     { axis: 'x', property: '--left-width', key: 'leftWidth', initial: 45, min: 25, max: 75 }, preferences);
-attachSplitter(document.getElementById('routesSplitter'), requestPanel,
-    { axis: 'y', property: '--traffic-height', key: 'trafficHeight', initial: 70, min: 30, max: 85 }, preferences);
 attachSplitter(document.getElementById('exchangeSplitter'), exchangeView,
     { axis: 'y', property: '--request-height', key: 'requestHeight', initial: 50, min: 20, max: 80 }, preferences);
+// By default the Routes panel is as tall as the Response pane, so the two
+// dividers line up. The Request/Response split must be applied first.
+const responseSection = responseDetails.closest('.detail-section');
+attachSplitter(document.getElementById('routesSplitter'), requestPanel,
+    { axis: 'y', property: '--traffic-height', key: 'trafficHeight', min: 30, max: 85,
+      initial: () => alignedTrafficHeight(requestPanel.getBoundingClientRect().height, responseSection?.getBoundingClientRect().height, 70) }, preferences);
 
 function updateStreamStatus() {
     streamStatus.textContent = streamLabel(connected, paused, pending.events.size, pending.dropped) + streamNotice;
@@ -220,6 +227,7 @@ function selectRow(row, http) {
     returnFocus = row;
     showInspector();
     renderInspector();
+    focusInspectorOnMobile();
 }
 
 function selectRowByOffset(currentRow, index) {
@@ -532,7 +540,11 @@ function showInspector() {
     workspace.classList.add('show-inspector');
     copyNotice.textContent = '';
     copyGeneration++;
-    if (window.matchMedia('(max-width: 900px)').matches) inspectorTitle.focus();
+}
+
+// On narrow screens the inspector replaces the list, so move focus to its heading.
+function focusInspectorOnMobile() {
+    if (window.matchMedia('(max-width: 900px)').matches) (selectedRoute ? routeTitle : requestTitle).focus();
 }
 
 backToList.addEventListener('click', () => {
@@ -543,8 +555,7 @@ backToList.addEventListener('click', () => {
 
 function resetInspector() {
     copyGeneration++;
-    inspectorTitle.textContent = 'Inspector';
-    matchSummary.textContent = 'Select a request or a configured route.';
+    matchSummary.textContent = '';
     copyCurlButton.disabled = true;
     mismatchPanel.hidden = true;
     copyNotice.textContent = '';
@@ -564,15 +575,13 @@ function renderInspector() {
     exchangeView.hidden = !!selectedRoute;
     routeView.hidden = !selectedRoute;
     if (selectedRoute) {
-        inspectorTitle.textContent = selectedRoute.name || 'Route configuration';
-        matchSummary.textContent = `Configured route · revision ${selectedRoute.revision} · ${selectedRoute.source}:${selectedRoute.line}`;
+        routeTitle.textContent = selectedRoute.name || 'Route';
+        routeSummary.textContent = `Configured route · revision ${selectedRoute.revision} · ${selectedRoute.source}:${selectedRoute.line}`;
         routeDetails.textContent = formatRoute(selectedRoute, routeCurl(selectedRoute));
-        mismatchPanel.hidden = true;
-        copyCurlButton.disabled = !routePort(selectedRoute);
+        copyRouteCurlButton.disabled = !routePort(selectedRoute);
         return;
     }
     if (!event) { resetInspector(); return; }
-    inspectorTitle.textContent = `${event.request.method} ${event.request.url}`;
     const match = event.match;
     const route = match?.route;
     matchSummary.textContent = route
@@ -629,8 +638,12 @@ for (const kind of ['request', 'response']) {
     });
 }
 copyCurlButton.addEventListener('click', () => {
-    try { copyText(selectedRoute ? routeCurl(selectedRoute) : buildCurl(eventsById.get(selectedId)?.request)); }
+    try { copyText(buildCurl(eventsById.get(selectedId)?.request)); }
     catch (error) { copyNotice.textContent = error.message; }
+});
+copyRouteCurlButton.addEventListener('click', () => {
+    const command = selectedRoute && routeCurl(selectedRoute);
+    if (command) copyText(command);
 });
 
 resetResponsesButton.addEventListener('click', async () => {
@@ -671,7 +684,7 @@ async function loadRoutes() {
         if (selectedRoute) {
             const current = routes.find(route => route.id === selectedRoute.id);
             if (current) { selectedRoute = current; renderInspector(); }
-            else matchSummary.textContent = 'This route belongs to a previous revision. Select a current route to inspect it.';
+            else routeSummary.textContent = 'This route belongs to a previous revision. Select a current route to inspect it.';
         }
         routeCount.textContent = String(routes.length).padStart(2, '0');
         routeCount.setAttribute('aria-label', `${routes.length} configured routes`);
@@ -715,6 +728,7 @@ async function loadRoutes() {
                 syncRowTabindex();
                 showInspector();
                 renderInspector();
+                focusInspectorOnMobile();
             });
             li.append(button);
             routesList.appendChild(li);
