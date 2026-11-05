@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PendingTraffic, streamLabel } from '../static/traffic.mjs';
+import { PendingTraffic, streamLabel, requestHost } from '../static/traffic.mjs';
 test('pause retains bounded traffic and reports overflow', () => {
  const pending=new PendingTraffic(2);
  for(let id=1;id<=3;id++)pending.add({id});
@@ -16,4 +16,10 @@ test('connection errors remain visible when pausing and resuming', () => {
  assert.equal(streamLabel(false,false,0,0),'Reconnecting');
  assert.equal(streamLabel(false,true,5,0),'Reconnecting');
  assert.match(streamLabel(true,true,5,2),/5 new.*2 older omitted/);
+});
+
+test('request host shows only when mock listens on several ports', () => {
+ assert.equal(requestHost({ host: 'localhost:9090' }, true), 'localhost:9090');
+ assert.equal(requestHost({ host: 'localhost:9090' }, false), '');
+ assert.equal(requestHost({}, true), '');
 });

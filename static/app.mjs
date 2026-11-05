@@ -1,7 +1,7 @@
 import { formatMessage, bodyNotice, buildCurl, buildRouteCurl, formatRoute } from './inspector.mjs';
 import { attachSplitter } from './layout.mjs';
 import { buildHAR } from './har.mjs';
-import { PendingTraffic, streamLabel } from './traffic.mjs';
+import { PendingTraffic, streamLabel, requestHost } from './traffic.mjs';
 
 const MAX_EVENTS = 1000;
 const MOCK_CONFIG = JSON.parse(document.getElementById("mock-config").textContent);
@@ -9,6 +9,9 @@ const MOCK_CONFIG = JSON.parse(document.getElementById("mock-config").textConten
 // mock port) on the host the UI was reached by.
 const mockOrigin = (port) => `http://${location.hostname}:${port}`;
 const routePort = (route) => route?.port || MOCK_CONFIG.mockPort;
+// Hosts and ports only distinguish traffic when mock listens on more than one port.
+const multiPort = Boolean(MOCK_CONFIG.multiPort);
+
 const themeToggle = document.getElementById('themeToggle');
 const themeToggleLabel = document.getElementById('themeToggleLabel');
 const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
@@ -427,7 +430,7 @@ function eventMatchesFilter(http) {
     }
     const hay = [
         http.request.method,
-        http.request.url,
+        `${requestHost(http.request, multiPort)}${http.request.url}`,
         String(http.response.status),
         http.response.statusText || '',
     ].join(' ').toLowerCase();
@@ -499,10 +502,18 @@ function renderTable() {
         methodSpan.textContent = http.request.method;
         methodSpan.className = `method-${(http.request.method || '').toLowerCase()}`;
         c2.appendChild(methodSpan);
+        const host = requestHost(http.request, multiPort);
+        const target = `${host}${http.request.url}`;
+        if (host) {
+            const hostSpan = document.createElement('span');
+            hostSpan.className = 'request-host';
+            hostSpan.textContent = ` ${host}`;
+            c2.appendChild(hostSpan);
+        }
         const urlSpan = document.createElement('span');
-        urlSpan.textContent = ` ${http.request.url}`;
-        urlSpan.title = http.request.url;
-        row.title = `${http.request.method} ${http.request.url} · ${http.response.time}`;
+        urlSpan.textContent = host ? http.request.url : ` ${http.request.url}`;
+        urlSpan.title = target;
+        row.title = `${http.request.method} ${target} · ${http.response.time}`;
         c2.appendChild(urlSpan);
     }
 
@@ -673,7 +684,6 @@ async function loadRoutes() {
             return;
         }
         // Label routes with their port only when they are served on more than one.
-        const multiPort = new Set(routes.map(route => route.port)).size > 1;
         for (const route of routes) {
             const li = document.createElement('li');
             const method = document.createElement('span');

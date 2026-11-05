@@ -98,3 +98,13 @@ test('routes open their configuration and reset posts without removing traffic',
  assert.ok(posted.includes('reset'));assert.equal(element('requestTableBody').children.length,count);
  assert.match(element('clearError').textContent,/Traffic was kept/);
 });
+
+test('request column hides the host on a single-port server',()=>{
+ control('reset',0,'hosts');
+ const withHost={...event(1,'hosts'),request:{...event(1,'hosts').request,host:'localhost:8080',url:'/token'}};
+ source.onmessage({data:JSON.stringify(withHost)});flush();
+ const row=element('requestTableBody').children[0];
+ const spans=row.children[2].children;
+ assert.equal(spans.length,2);assert.equal(spans[1].textContent,' /token');
+ assert.equal(row.title,'GET /token · 1ms');
+});

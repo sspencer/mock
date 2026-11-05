@@ -24,3 +24,9 @@ export function streamLabel(connected, paused, pending, dropped) {
     if (!paused) return dropped ? `Listening · ${dropped} older requests omitted` : 'Listening';
     return `Paused · ${pending} new${dropped ? ` · ${dropped} older omitted` : ''}`;
 }
+
+// requestHost is the host and port shown before a request's path. It is empty
+// unless mock listens on more than one port, where it tells the services apart.
+export function requestHost(request, multiPort) {
+    return (multiPort && request?.host) || '';
+}

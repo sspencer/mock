@@ -242,8 +242,9 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if mockServer != nil && !cfg.NoAdmin {
 		// Built after the mock listeners bind so the UI knows the real mock port.
 		adminHandler = newAdminHandler(mockServer, staticFS, uiConfig{
-			Version:  currentVersion(),
-			MockPort: plan.uiPort(),
+			Version:   currentVersion(),
+			MockPort:  plan.uiPort(),
+			MultiPort: len(plan.ports) > 1,
 		})
 		adminListener, err = net.Listen("tcp", listenAddress(cfg.Bind, cfg.AdminPort))
 		if err != nil {
@@ -417,10 +418,12 @@ func newAdminHandler(mockServer *mockhttp.Server, staticFS fs.FS, ui uiConfig) h
 
 // uiConfig is the bootstrap data injected into the UI page. MockPort lets the
 // UI build sample requests for routes on the default mock port, which differs
-// from the UI port.
+// from the UI port. MultiPort reports more than one mock listener, so the UI
+// shows each request's host and port and each route's port.
 type uiConfig struct {
-	Version  string `json:"version"`
-	MockPort int    `json:"mockPort"`
+	Version   string `json:"version"`
+	MockPort  int    `json:"mockPort"`
+	MultiPort bool   `json:"multiPort,omitempty"`
 }
 
 func uiFileServer(staticFS fs.FS, ui uiConfig) http.Handler {

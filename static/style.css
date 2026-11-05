@@ -645,6 +645,8 @@ td.request-cell {
     white-space: nowrap;
 }
 
+.request-host { color: var(--muted); }
+
 th:nth-child(1),
 td:nth-child(1) { width: 86px; }
 
