@@ -2,12 +2,13 @@ package mockhttp
 
 import (
 	"encoding/json"
-	"github.com/sspencer/mock/restclient"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sspencer/mock/restclient"
 )
 
 func TestGeneratedValueSupportsDocumentedKeys(t *testing.T) {

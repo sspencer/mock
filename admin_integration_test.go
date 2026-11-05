@@ -4,13 +4,14 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"github.com/sspencer/mock/mockhttp"
-	"github.com/sspencer/mock/restclient"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/sspencer/mock/mockhttp"
+	"github.com/sspencer/mock/restclient"
 )
 
 // Exercise the embedded module UI, real TLS/net/http behavior, and SSE protocol

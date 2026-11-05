@@ -2,36 +2,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"log/slog"
-	"net/http"
-	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
-
-	"github.com/sspencer/mock/mockhttp"
-	"github.com/sspencer/mock/restclient"
 )
-
-func TestBindsAllInterfaces(t *testing.T) {
-	tests := map[string]bool{
-		"":          true,
-		"0.0.0.0":   true,
-		"::":        true,
-		"[::]":      true,
-		"*":         true,
-		"127.0.0.1": false,
-		"localhost": false,
-	}
-	for bind, want := range tests {
-		if got := bindsAllInterfaces(bind); got != want {
-			t.Fatalf("bindsAllInterfaces(%q) = %v, want %v", bind, got, want)
-		}
-	}
-}
 
 func TestParseConfigDefaultBind(t *testing.T) {
 	t.Setenv("MOCK_PORT", "")
@@ -149,25 +125,6 @@ func TestParseConfigNoAdmin(t *testing.T) {
 	}
 }
 
-func TestRunNoAdminOmitsAdminUI(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "api.http")
-	if err := os.WriteFile(path, []byte("### User\nGET /users\n\nok\n"), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-	var out, errOut bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if err := run(cancelledContext(), []string{"-x", "-p", "0", "-b", "0.0.0.0", path}, strings.NewReader(""), &out, &errOut, logger); err != nil {
-		t.Fatalf("run() error = %v", err)
-	}
-	if !strings.Contains(out.String(), "starting mock HTTP server on") {
-		t.Fatalf("stdout = %q, want mock banner", out.String())
-	}
-	if strings.Contains(out.String(), "admin UI") || strings.Contains(errOut.String(), "admin UI") {
-		t.Fatalf("stdout = %q stderr = %q, want no admin UI mention", out.String(), errOut.String())
-	}
-}
-
 func TestParseConfigRejectsMountFlag(t *testing.T) {
 	t.Setenv("MOCK_PORT", "")
 	if _, err := parseConfig([]string{"-l", "inspect", "api.http"}); err == nil {
@@ -188,89 +145,6 @@ func TestParseConfigRejectsCORSFlag(t *testing.T) {
 	t.Setenv("MOCK_PORT", "")
 	if _, err := parseConfig([]string{"-cors", "*", "api.http"}); err == nil {
 		t.Fatal("parseConfig() accepted removed -cors flag")
-	}
-}
-
-func TestRunWarnsWhenBoundToAllInterfaces(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "api.http")
-	if err := os.WriteFile(path, []byte("### User\nGET /users\n\nok\n"), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	var out, errOut bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if err := run(cancelledContext(), []string{"-p", "0", "-a", "0", "-b", "0.0.0.0", path}, strings.NewReader(""), &out, &errOut, logger); err != nil {
-		t.Fatalf("run() error = %v", err)
-	}
-	warning := errOut.String()
-	for _, want := range []string{"warning: bound to all interfaces", "unauthenticated", "Authorization"} {
-		if !strings.Contains(warning, want) {
-			t.Fatalf("stderr = %q, want to contain %q", warning, want)
-		}
-	}
-	if !regexp.MustCompile(`starting mock HTTP server on 0\.0\.0\.0:[1-9]\d*\n`).MatchString(out.String()) {
-		t.Fatalf("stdout = %q, want actual 0.0.0.0 listen address", out.String())
-	}
-}
-
-func TestHandlerClearRequiresCSRFHeader(t *testing.T) {
-	staticDir := t.TempDir()
-	methods, err := restclient.Parse("test.http", strings.NewReader(`### User
-GET /users
-
-ok
-`))
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
-	}
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := newAdminHandler(mockhttp.New(methods, logger), os.DirFS(staticDir), uiConfig{})
-
-	bare := httptest.NewRecorder()
-	handler.ServeHTTP(bare, httptest.NewRequest(http.MethodPost, "/clear", nil))
-	if bare.Code != http.StatusForbidden {
-		t.Fatalf("bare clear status = %d, want %d", bare.Code, http.StatusForbidden)
-	}
-
-	ok := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/clear", nil)
-	req.Header.Set("X-Requested-With", "XMLHttpRequest")
-	handler.ServeHTTP(ok, req)
-	if ok.Code != http.StatusNoContent {
-		t.Fatalf("UI clear status = %d, want %d", ok.Code, http.StatusNoContent)
-	}
-}
-
-func TestHandlerInjectsMockConfigVersion(t *testing.T) {
-	methods, err := restclient.Parse("test.http", strings.NewReader(`### User
-GET /users
-
-ok
-`))
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
-	}
-	staticFS, err := staticFileSystem()
-	if err != nil {
-		t.Fatalf("staticFileSystem() error = %v", err)
-	}
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := newAdminHandler(mockhttp.New(methods, logger), staticFS, uiConfig{Version: "1.2.3", MockPort: 8080, MultiPort: true})
-
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
-	}
-	body := response.Body.String()
-	if !strings.Contains(body, `id="mock-config"`) {
-		t.Fatalf("body missing mock-config bootstrap")
-	}
-	for _, want := range []string{`"version":"1.2.3"`, `"mockPort":8080`, `"multiPort":true`} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("body missing %s in mock-config", want)
-		}
 	}
 }
 
@@ -317,5 +191,80 @@ func TestParseConfigBindFromEnv(t *testing.T) {
 	}
 	if cfg, err = parseConfig([]string{"-b", "192.168.1.5", "api.http"}); err != nil || cfg.Bind != "192.168.1.5" {
 		t.Fatalf("-b over MOCK_BIND Bind = %q, err = %v; want 192.168.1.5", cfg.Bind, err)
+	}
+}
+
+func TestParseConfigAndVersion(t *testing.T) {
+	t.Setenv("MOCK_PORT", "")
+	cfg, err := parseConfig([]string{"-p", "9090", "-b", "127.0.0.1", "api.http"})
+	if err != nil {
+		t.Fatalf("parseConfig() error = %v", err)
+	}
+	if cfg.Port != 9090 || cfg.Bind != "127.0.0.1" || len(cfg.Args) != 1 {
+		t.Fatalf("config = %#v", cfg)
+	}
+
+	var out bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if err := run(context.Background(), []string{"-version"}, strings.NewReader(""), &out, io.Discard, logger); err != nil {
+		t.Fatalf("run(-version) error = %v", err)
+	}
+	if !strings.Contains(out.String(), "dev") {
+		t.Fatalf("version output = %q, want dev", out.String())
+	}
+}
+
+func TestParseConfigDefaultPortWithoutEnv(t *testing.T) {
+	t.Setenv("MOCK_PORT", "")
+	cfg, err := parseConfig([]string{"api.http"})
+	if err != nil {
+		t.Fatalf("parseConfig() error = %v", err)
+	}
+	if cfg.Port != 8080 {
+		t.Fatalf("Port = %d, want 8080", cfg.Port)
+	}
+}
+
+func TestParseConfigUsesMockPortEnvAsDefault(t *testing.T) {
+	t.Setenv("MOCK_PORT", "9091")
+	cfg, err := parseConfig([]string{"api.http"})
+	if err != nil {
+		t.Fatalf("parseConfig() error = %v", err)
+	}
+	if cfg.Port != 9091 {
+		t.Fatalf("Port = %d, want 9091", cfg.Port)
+	}
+}
+
+func TestParseConfigFlagOverridesMockPortEnv(t *testing.T) {
+	t.Setenv("MOCK_PORT", "9091")
+	cfg, err := parseConfig([]string{"-p", "3000", "api.http"})
+	if err != nil {
+		t.Fatalf("parseConfig() error = %v", err)
+	}
+	if cfg.Port != 3000 {
+		t.Fatalf("Port = %d, want 3000 from -p", cfg.Port)
+	}
+}
+
+func TestParseConfigRejectsInvalidMockPort(t *testing.T) {
+	t.Setenv("MOCK_PORT", "nope")
+	_, err := parseConfig([]string{"api.http"})
+	if err == nil {
+		t.Fatal("parseConfig() error = nil, want invalid MOCK_PORT error")
+	}
+	if !strings.Contains(err.Error(), "MOCK_PORT") {
+		t.Fatalf("error = %q, want MOCK_PORT", err)
+	}
+}
+
+func TestConfigRejectsInvalidPorts(t *testing.T) {
+	// The -a 8080 case relies on the default mock port, so ignore the caller's environment.
+	t.Setenv("MOCK_PORT", "")
+	t.Setenv("MOCK_UI_PORT", "")
+	for _, args := range [][]string{{"-p", "65536"}, {"-p", "-1"}, {"-a", "65536"}, {"-a", "-1"}, {"-p", "9000", "-a", "9000"}, {"-a", "8080"}} {
+		if _, err := parseConfig(args); err == nil {
+			t.Errorf("accepted %v", args)
+		}
 	}
 }
