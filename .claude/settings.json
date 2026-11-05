@@ -7,6 +7,11 @@
           {
             "type": "command",
             "command": "f=$(jq -r '.tool_input.file_path'); case \"$f\" in *.go) gofmt -w \"$f\";; esac"
+          },
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path'); case \"$f\" in *.http) out=$(cd \"$CLAUDE_PROJECT_DIR\" && go run . validate \"$f\" 2>&1) || { echo \"$out\" >&2; exit 2; };; esac",
+            "timeout": 60
           }
         ]
       }

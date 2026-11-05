@@ -13,3 +13,4 @@ lint.txt
 /qodana.yaml
 tag-release.txt
 /.codegraph
+.claude/settings.local.json

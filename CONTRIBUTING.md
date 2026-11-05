@@ -47,6 +47,21 @@ The dashboard event-wiring tests use a small DOM adapter. They do not replace
 visual checks in a real browser at desktop/mobile widths, keyboard navigation,
 and native EventSource integration.
 
+## Claude Code
+
+`CLAUDE.md` and `.claude/` configure [Claude Code](https://claude.com/claude-code) for this
+repository. If you don't use it, you can ignore them. They contain:
+
+- `.claude/settings.json`: hooks that run `gofmt -w` on edited Go files and
+  `go run . validate` on edited `.http` files. They need `jq` on `PATH`.
+- `.claude/skills/smoke/`: an end-to-end smoke test. Run it directly with
+  `.claude/skills/smoke/smoke.sh`. It needs ports 18080–18199 free.
+- `.claude/skills/release/`: the maintainer release checklist.
+- `.claude/agents/docs-sync-reviewer.md`: a read-only reviewer that checks docs
+  against code changes.
+
+Put personal overrides in `.claude/settings.local.json`, which git ignores.
+
 ## Releases
 
 Tagged versions (`vX.Y.Z`) are published by GoReleaser. `-version` reports the
