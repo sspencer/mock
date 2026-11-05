@@ -16,18 +16,6 @@ import (
 	"github.com/sspencer/mock/restclient"
 )
 
-func TestListenScheme(t *testing.T) {
-	if got := listenScheme("", ""); got != "http" {
-		t.Fatalf("listenScheme empty = %q, want http", got)
-	}
-	if got := listenScheme("cert.pem", ""); got != "http" {
-		t.Fatalf("listenScheme cert without key = %q, want http", got)
-	}
-	if got := listenScheme("cert.pem", "key.pem"); got != "https" {
-		t.Fatalf("listenScheme(cert, key) = %q, want https", got)
-	}
-}
-
 func TestBindsAllInterfaces(t *testing.T) {
 	tests := map[string]bool{
 		"":          true,
@@ -167,19 +155,10 @@ func TestRunNoAdminOmitsAdminUI(t *testing.T) {
 	if err := os.WriteFile(path, []byte("### User\nGET /users\n\nok\n"), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	cert := filepath.Join(dir, "cert.pem")
-	key := filepath.Join(dir, "key.pem")
-	for _, file := range []string{cert, key} {
-		if err := os.WriteFile(file, []byte("not valid"), 0o600); err != nil {
-			t.Fatalf("WriteFile() error = %v", err)
-		}
-	}
-	// The invalid certificate makes ServeTLS fail right after the banner prints.
 	var out, errOut bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	err := run([]string{"-x", "-p", "0", "-b", "0.0.0.0", "-cert", cert, "-key", key, path}, strings.NewReader(""), &out, &errOut, logger)
-	if err == nil {
-		t.Fatal("run() error = nil, want TLS failure")
+	if err := run(cancelledContext(), []string{"-x", "-p", "0", "-b", "0.0.0.0", path}, strings.NewReader(""), &out, &errOut, logger); err != nil {
+		t.Fatalf("run() error = %v", err)
 	}
 	if !strings.Contains(out.String(), "starting mock HTTP server on") {
 		t.Fatalf("stdout = %q, want mock banner", out.String())
@@ -196,48 +175,19 @@ func TestParseConfigRejectsMountFlag(t *testing.T) {
 	}
 }
 
+func TestParseConfigRejectsTLSFlags(t *testing.T) {
+	t.Setenv("MOCK_PORT", "")
+	for _, flag := range []string{"-cert", "-key"} {
+		if _, err := parseConfig([]string{flag, "x.pem", "api.http"}); err == nil {
+			t.Fatalf("parseConfig() accepted removed %s flag", flag)
+		}
+	}
+}
+
 func TestParseConfigRejectsCORSFlag(t *testing.T) {
 	t.Setenv("MOCK_PORT", "")
 	if _, err := parseConfig([]string{"-cors", "*", "api.http"}); err == nil {
 		t.Fatal("parseConfig() accepted removed -cors flag")
-	}
-}
-
-func TestRunPrintsHTTPSAdminURLWhenTLSFlagsSet(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "api.http")
-	if err := os.WriteFile(path, []byte("### User\nGET /users\n\nok\n"), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-	cert := filepath.Join(dir, "cert.pem")
-	key := filepath.Join(dir, "key.pem")
-	if err := os.WriteFile(cert, []byte("not a cert"), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-	if err := os.WriteFile(key, []byte("not a key"), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	// The invalid certificate makes ServeTLS fail right after the banner prints.
-	var out bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	err := run([]string{
-		"-p", "0",
-		"-a", "0",
-		"-b", "127.0.0.1",
-		"-cert", cert,
-		"-key", key,
-		path,
-	}, strings.NewReader(""), &out, io.Discard, logger)
-	if err == nil {
-		t.Fatal("run() error = nil, want TLS failure")
-	}
-	got := out.String()
-	if !regexp.MustCompile(`admin UI at https://127\.0\.0\.1:\d+/\n`).MatchString(got) {
-		t.Fatalf("stdout = %q, want https admin URL on the actual admin address", got)
-	}
-	if strings.Contains(got, "admin UI at http://") {
-		t.Fatalf("stdout = %q, TLS banner should not print http:// admin URL", got)
 	}
 }
 
@@ -248,20 +198,10 @@ func TestRunWarnsWhenBoundToAllInterfaces(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	// The invalid certificate makes ServeTLS fail right after the banner prints.
-	cert := filepath.Join(dir, "cert.pem")
-	key := filepath.Join(dir, "key.pem")
-	for _, file := range []string{cert, key} {
-		if err := os.WriteFile(file, []byte("not valid"), 0o600); err != nil {
-			t.Fatalf("WriteFile() error = %v", err)
-		}
-	}
-
 	var out, errOut bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	err := run([]string{"-p", "0", "-a", "0", "-b", "0.0.0.0", "-cert", cert, "-key", key, path}, strings.NewReader(""), &out, &errOut, logger)
-	if err == nil {
-		t.Fatal("run() error = nil, want TLS failure")
+	if err := run(cancelledContext(), []string{"-p", "0", "-a", "0", "-b", "0.0.0.0", path}, strings.NewReader(""), &out, &errOut, logger); err != nil {
+		t.Fatalf("run() error = %v", err)
 	}
 	warning := errOut.String()
 	for _, want := range []string{"warning: bound to all interfaces", "unauthenticated", "Authorization"} {
@@ -316,7 +256,7 @@ ok
 		t.Fatalf("staticFileSystem() error = %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := newAdminHandler(mockhttp.New(methods, logger), staticFS, uiConfig{Version: "1.2.3", MockScheme: "http", MockPort: 8080})
+	handler := newAdminHandler(mockhttp.New(methods, logger), staticFS, uiConfig{Version: "1.2.3", MockPort: 8080})
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
@@ -327,7 +267,7 @@ ok
 	if !strings.Contains(body, `id="mock-config"`) {
 		t.Fatalf("body missing mock-config bootstrap")
 	}
-	for _, want := range []string{`"version":"1.2.3"`, `"mockScheme":"http"`, `"mockPort":8080`} {
+	for _, want := range []string{`"version":"1.2.3"`, `"mockPort":8080`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %s in mock-config", want)
 		}

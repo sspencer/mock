@@ -185,7 +185,6 @@ Flags:
 | `-x` | (off) | Do not start the admin UI. Cannot be combined with `-a` |
 | `-b` | `127.0.0.1` | Bind address. Use `0.0.0.0` to listen on all interfaces |
 | `-a` | `MOCK_UI_PORT`, else `8081`, or random if `-p` / `MOCK_PORT` is set | Admin UI port. `0` picks a random free port |
-| `-cert` / `-key` | (off) | Enable HTTPS with the given certificate and key |
 | `-version` | | Print version and exit |
 
 If `-p` is omitted, `mock` uses the `MOCK_PORT` environment variable when it
@@ -498,7 +497,7 @@ A route's port comes from, in order:
 
 A URL port and an `@port` that disagree are a load error. Only the port of a
 URL is used; its host name and scheme are ignored. `-b` still chooses the
-interface every listener binds to, and `-cert`/`-key` enable TLS on all of them.
+interface every listener binds to.
 
 Each route only matches requests that arrive on its port, so the same path can
 return different responses on different ports. A request sent to the wrong port
@@ -649,18 +648,14 @@ per body. HAR extension fields mark truncated bodies and binary requests; these
 are diagnostic captures, not complete replay fixtures. Only total server handler
 time is measured, so individual network timing phases remain unknown.
 
-## TLS
+## Clients and safety
 
-```sh
-mock -cert cert.pem -key key.pem -p 8443 examples/user.http
-```
-
-`mock` is meant to be called by HTTP clients such as curl, test suites, and
+`mock` serves plain HTTP only; put a TLS-terminating proxy in front of it if a
+client needs HTTPS. It is meant to be called by HTTP clients such as curl, test suites, and
 backend services, not by web pages in a browser, so it adds no CORS headers.
 `OPTIONS` requests are matched against routes like any other method. The admin
 UI rejects cross-origin clear and reset requests.
 
-With `-cert`/`-key`, the startup banner prints `https://` for the admin UI.
 Binding to all interfaces (`-b 0.0.0.0`) prints a warning: the admin UI is
 unauthenticated and request logs may include `Authorization` headers and bodies.
 

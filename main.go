@@ -27,7 +27,10 @@ import (
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	if err := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, logger); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	err := run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr, logger)
+	stop()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		var exitErr *exitError
 		if errors.As(err, &exitErr) {
@@ -55,10 +58,10 @@ func runError(format string, args ...any) error {
 const defaultAdminPort = 8081
 
 type config struct {
-	Bind, CertFile, KeyFile string
-	Port, AdminPort         int
-	Version, NoAdmin        bool
-	Args                    []string
+	Bind             string
+	Port, AdminPort  int
+	Version, NoAdmin bool
+	Args             []string
 	// Help holds the usage text when -h or --help was requested.
 	Help string
 }
@@ -88,8 +91,6 @@ func parseConfig(args []string) (config, error) {
 	flagSet.IntVar(&cfg.AdminPort, "a", adminDefault, "admin UI port; 0 picks a random port (random if -p or MOCK_PORT is set; MOCK_UI_PORT sets the default)")
 	flagSet.BoolVar(&cfg.NoAdmin, "x", false, "do not start the admin UI")
 	flagSet.StringVar(&cfg.Bind, "b", "127.0.0.1", "bind address; use 0.0.0.0 for all interfaces")
-	flagSet.StringVar(&cfg.CertFile, "cert", "", "TLS certificate file (enables HTTPS)")
-	flagSet.StringVar(&cfg.KeyFile, "key", "", "TLS private key file")
 	flagSet.BoolVar(&cfg.Version, "version", false, "print version and exit")
 	if err := flagSet.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -139,7 +140,8 @@ func portFromEnv(name string, def int) (int, bool, error) {
 	return port, true, nil
 }
 
-func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.Logger) error {
+// run serves until ctx is done or a server fails.
+func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.Logger) error {
 	if len(args) > 0 && args[0] == "validate" {
 		return runValidate(args[1:], stdout)
 	}
@@ -155,12 +157,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 		fmt.Fprintln(stdout, currentVersion())
 		return nil
 	}
-	if cfg.CertFile != "" && cfg.KeyFile == "" || cfg.KeyFile != "" && cfg.CertFile == "" {
-		return usageError("both -cert and -key are required for TLS")
-	}
 	if len(cfg.Args) == 0 {
 		if f, ok := stdin.(*os.File); ok && stdinIsTerminal(f) {
-			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-cert c -key k] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
+			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
 		}
 	}
 	input, err := loadInput(cfg.Args, stdin)
@@ -243,9 +242,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 	if mockServer != nil && !cfg.NoAdmin {
 		// Built after the mock listeners bind so the UI knows the real mock port.
 		adminHandler = newAdminHandler(mockServer, staticFS, uiConfig{
-			Version:    currentVersion(),
-			MockScheme: listenScheme(cfg.CertFile, cfg.KeyFile),
-			MockPort:   plan.uiPort(),
+			Version:  currentVersion(),
+			MockPort: plan.uiPort(),
 		})
 		adminListener, err = net.Listen("tcp", listenAddress(cfg.Bind, cfg.AdminPort))
 		if err != nil {
@@ -263,7 +261,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 			fmt.Fprintf(stdout, "starting mock HTTP server on %s\n", boundAddress(cfg.Bind, ln))
 		}
 		if adminHandler != nil {
-			fmt.Fprintf(stdout, "admin UI at %s://%s/\n", listenScheme(cfg.CertFile, cfg.KeyFile), boundAddress(cfg.Bind, adminListener))
+			fmt.Fprintf(stdout, "admin UI at http://%s/\n", boundAddress(cfg.Bind, adminListener))
 		}
 		if adminHandler != nil && bindsAllInterfaces(cfg.Bind) {
 			fmt.Fprintln(stderr, "warning: bound to all interfaces; admin UI is unauthenticated and request logs may include Authorization headers and bodies")
@@ -276,21 +274,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 
 	errCh := make(chan error, len(servers))
 	for i, server := range servers {
-		go func() {
-			if cfg.CertFile != "" {
-				logger.Info("TLS enabled", "cert", cfg.CertFile)
-				errCh <- server.ServeTLS(listeners[i], cfg.CertFile, cfg.KeyFile)
-			} else {
-				errCh <- server.Serve(listeners[i])
-			}
-		}()
+		go func() { errCh <- server.Serve(listeners[i]) }()
 	}
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(sigCh)
 	select {
-	case sig := <-sigCh:
-		logger.Info("shutting down", "signal", sig.String())
+	case <-ctx.Done():
+		logger.Info("shutting down")
 		if err := shutdownHTTPServers(servers, 400*time.Millisecond); err != nil {
 			closeWatcher()
 			return runError("server shutdown failed: %v", err)
@@ -344,13 +332,6 @@ func listenAddress(bind string, port int) string {
 // which differs from the requested port when it was 0.
 func boundAddress(bind string, ln net.Listener) string {
 	return listenAddress(bind, ln.Addr().(*net.TCPAddr).Port)
-}
-
-func listenScheme(certFile, keyFile string) string {
-	if certFile != "" && keyFile != "" {
-		return "https"
-	}
-	return "http"
 }
 
 func bindsAllInterfaces(bind string) bool {
@@ -434,13 +415,12 @@ func newAdminHandler(mockServer *mockhttp.Server, staticFS fs.FS, ui uiConfig) h
 	return mux
 }
 
-// uiConfig is the bootstrap data injected into the UI page. MockScheme and
-// MockPort let the UI build sample requests for the mock listener, which is on
-// a different port than the UI.
+// uiConfig is the bootstrap data injected into the UI page. MockPort lets the
+// UI build sample requests for routes on the default mock port, which differs
+// from the UI port.
 type uiConfig struct {
-	Version    string `json:"version"`
-	MockScheme string `json:"mockScheme"`
-	MockPort   int    `json:"mockPort"`
+	Version  string `json:"version"`
+	MockPort int    `json:"mockPort"`
 }
 
 func uiFileServer(staticFS fs.FS, ui uiConfig) http.Handler {

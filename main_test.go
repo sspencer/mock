@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -172,7 +173,7 @@ func TestParseConfigAndVersion(t *testing.T) {
 
 	var out bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if err := run([]string{"-version"}, strings.NewReader(""), &out, io.Discard, logger); err != nil {
+	if err := run(context.Background(), []string{"-version"}, strings.NewReader(""), &out, io.Discard, logger); err != nil {
 		t.Fatalf("run(-version) error = %v", err)
 	}
 	if !strings.Contains(out.String(), "dev") {
@@ -231,7 +232,7 @@ func TestRunPrintsParseErrorsDirectly(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	err := run([]string{path}, strings.NewReader(""), io.Discard, io.Discard, logger)
+	err := run(context.Background(), []string{path}, strings.NewReader(""), io.Discard, io.Discard, logger)
 	if err == nil {
 		t.Fatal("run() error = nil, want parse error")
 	}
@@ -253,25 +254,18 @@ func TestRunPrintsStartupBannersBeforeMethods(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	// The invalid certificate makes ServeTLS fail right after the banners print.
-	cert := filepath.Join(dir, "cert.pem")
-	key := filepath.Join(dir, "key.pem")
-	for _, file := range []string{cert, key} {
-		if err := os.WriteFile(file, []byte("not valid"), 0o600); err != nil {
-			t.Fatalf("WriteFile() error = %v", err)
-		}
-	}
-
 	var out bytes.Buffer
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	err := run([]string{"-p", "0", "-a", "0", "-b", "127.0.0.1", "-cert", cert, "-key", key, path}, strings.NewReader(""), &out, io.Discard, logger)
-	if err == nil {
-		t.Fatal("run() error = nil, want TLS failure")
+	if err := run(cancelledContext(), []string{"-p", "0", "-a", "0", "-b", "127.0.0.1", path}, strings.NewReader(""), &out, io.Discard, logger); err != nil {
+		t.Fatalf("run() error = %v", err)
 	}
 
 	got := out.String()
 	logged := logs.String()
+	if !regexp.MustCompile(`admin UI at http://127\.0\.0\.1:\d+/\n`).MatchString(got) {
+		t.Fatalf("stdout = %q, want http admin URL on the actual admin address", got)
+	}
 	if strings.Contains(got, "level=INFO") || strings.Contains(got, "msg=") {
 		t.Fatalf("stdout uses slog format: %q", got)
 	}
@@ -701,4 +695,12 @@ func TestEndToEndReloadServesNewRoutes(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("reloaded route /b not served")
+}
+
+// cancelledContext makes run shut down right after binding and printing its
+// startup banners.
+func cancelledContext() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return ctx
 }

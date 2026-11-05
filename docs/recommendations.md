@@ -97,7 +97,7 @@ original implementation and are superseded by the follow-up notes above.
 | 3 | Reset rotation counters + clear events API | done |
 | 4 | Basic OpenAPI → route summary import helper | removed (feature deleted) |
 | 5 | Bind address (`-b`) | done |
-| 6 | Optional TLS (`-cert` / `-key`) | done |
+| 6 | Optional TLS (`-cert` / `-key`) | removed; use a TLS-terminating proxy |
 | 7 | UI filter, pause stream, export HAR | done |
 | 8 | UI routes panel (live route list) | done |
 | 9 | Watch `$file` deps (see P1) | done |

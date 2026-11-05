@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -116,7 +117,7 @@ func TestValidateUsageErrors(t *testing.T) {
 func TestHelpFlagsPrintUsageAndSucceed(t *testing.T) {
 	for _, args := range [][]string{{"-h"}, {"--help"}, {"-help"}} {
 		var out bytes.Buffer
-		if err := run(args, strings.NewReader(""), &out, &bytes.Buffer{}, nil); err != nil {
+		if err := run(context.Background(), args, strings.NewReader(""), &out, &bytes.Buffer{}, nil); err != nil {
 			t.Fatalf("run(%q) error = %v, want nil", args, err)
 		}
 		for _, want := range []string{"usage:", "mock validate", "-p int", "-a int", "-x"} {
@@ -135,7 +136,7 @@ func TestHelpFlagsPrintUsageAndSucceed(t *testing.T) {
 
 func TestRunDispatchesValidateSubcommand(t *testing.T) {
 	var out bytes.Buffer
-	err := run([]string{"validate", writeValidateFile(t, validFile)}, strings.NewReader(""), &out, &bytes.Buffer{}, nil)
+	err := run(context.Background(), []string{"validate", writeValidateFile(t, validFile)}, strings.NewReader(""), &out, &bytes.Buffer{}, nil)
 	if err != nil || !strings.Contains(out.String(), "ok: 1 routes") {
 		t.Fatalf("run validate: err = %v, output = %q", err, out.String())
 	}

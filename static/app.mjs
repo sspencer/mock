@@ -7,7 +7,7 @@ const MAX_EVENTS = 1000;
 const MOCK_CONFIG = JSON.parse(document.getElementById("mock-config").textContent);
 // The UI is served on its own port; sample requests target the route's mock port (or the default
 // mock port) on the host the UI was reached by.
-const mockOrigin = (port) => `${MOCK_CONFIG.mockScheme || 'http'}://${location.hostname}:${port}`;
+const mockOrigin = (port) => `http://${location.hostname}:${port}`;
 const routePort = (route) => route?.port || MOCK_CONFIG.mockPort;
 const themeToggle = document.getElementById('themeToggle');
 const themeToggleLabel = document.getElementById('themeToggleLabel');
