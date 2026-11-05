@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bytes"
@@ -206,8 +206,8 @@ func TestParseConfigAndVersion(t *testing.T) {
 
 	var out bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if err := run(context.Background(), []string{"-version"}, strings.NewReader(""), &out, io.Discard, logger); err != nil {
-		t.Fatalf("run(-version) error = %v", err)
+	if err := Run(context.Background(), []string{"-version"}, strings.NewReader(""), &out, io.Discard, logger); err != nil {
+		t.Fatalf("Run(-version) error = %v", err)
 	}
 	if !strings.Contains(out.String(), "dev") {
 		t.Fatalf("version output = %q, want dev", out.String())

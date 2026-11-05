@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bytes"
@@ -25,9 +25,9 @@ func TestRunPrintsParseErrorsDirectly(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	err := run(context.Background(), []string{path}, strings.NewReader(""), io.Discard, io.Discard, logger)
+	err := Run(context.Background(), []string{path}, strings.NewReader(""), io.Discard, io.Discard, logger)
 	if err == nil {
-		t.Fatal("run() error = nil, want parse error")
+		t.Fatal("Run() error = nil, want parse error")
 	}
 	msg := err.Error()
 	if strings.Contains(msg, "level=ERROR") || strings.Contains(msg, "msg=") {
@@ -50,8 +50,8 @@ func TestRunPrintsStartupBannersBeforeMethods(t *testing.T) {
 	var out bytes.Buffer
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	if err := run(cancelledContext(), []string{"-p", "0", "-a", "0", "-b", "127.0.0.1", path}, strings.NewReader(""), &out, io.Discard, logger); err != nil {
-		t.Fatalf("run() error = %v", err)
+	if err := Run(cancelledContext(), []string{"-p", "0", "-a", "0", "-b", "127.0.0.1", path}, strings.NewReader(""), &out, io.Discard, logger); err != nil {
+		t.Fatalf("Run() error = %v", err)
 	}
 
 	got := out.String()
@@ -145,8 +145,8 @@ func TestRunNoAdminOmitsAdminUI(t *testing.T) {
 	}
 	var out, errOut bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if err := run(cancelledContext(), []string{"-x", "-p", "0", "-b", "0.0.0.0", path}, strings.NewReader(""), &out, &errOut, logger); err != nil {
-		t.Fatalf("run() error = %v", err)
+	if err := Run(cancelledContext(), []string{"-x", "-p", "0", "-b", "0.0.0.0", path}, strings.NewReader(""), &out, &errOut, logger); err != nil {
+		t.Fatalf("Run() error = %v", err)
 	}
 	if !strings.Contains(out.String(), "starting mock HTTP server on") {
 		t.Fatalf("stdout = %q, want mock banner", out.String())
@@ -165,8 +165,8 @@ func TestRunWarnsWhenBoundToAllInterfaces(t *testing.T) {
 
 	var out, errOut bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if err := run(cancelledContext(), []string{"-p", "0", "-a", "0", "-b", "0.0.0.0", path}, strings.NewReader(""), &out, &errOut, logger); err != nil {
-		t.Fatalf("run() error = %v", err)
+	if err := Run(cancelledContext(), []string{"-p", "0", "-a", "0", "-b", "0.0.0.0", path}, strings.NewReader(""), &out, &errOut, logger); err != nil {
+		t.Fatalf("Run() error = %v", err)
 	}
 	warning := errOut.String()
 	for _, want := range []string{"warning: bound to all interfaces", "unauthenticated", "Authorization"} {

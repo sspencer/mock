@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"io"
@@ -116,4 +116,12 @@ func TestResolveWatchPathsIncludesDependencies(t *testing.T) {
 	if len(paths) < 3 {
 		t.Fatalf("paths = %#v, want http file plus dependencies", paths)
 	}
+}
+
+func absPath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	return abs
 }
