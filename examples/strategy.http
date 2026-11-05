@@ -1,7 +1,5 @@
-@host = http://localhost:8080
-
 ### Duplicate response rotation
-GET {{host}}/rotation
+GET /rotation
 Content-Type: application/json
 
 {
@@ -9,19 +7,19 @@ Content-Type: application/json
 }
 
 ### Default Strategy 1
-GET {{host}}/default
+GET /default
 Content-Type: application/json
 
 { "n":  1 }
 
 ### Default Strategy 2
-GET {{host}}/default
+GET /default
 Content-Type: application/json
 
 { "n":  2 }
 
 ### [202] Status variant
-GET {{host}}/status-variant
+GET /status-variant
 Content-Type: application/json
 
 { "accepted": true }

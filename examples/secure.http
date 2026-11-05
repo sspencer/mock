@@ -1,8 +1,6 @@
-@host = http://localhost:8080
-
 ### Requires bearer token
 @header.Authorization = Bearer secret
-GET {{host}}/secure
+GET /secure
 Content-Type: application/json
 
 {
@@ -11,7 +9,7 @@ Content-Type: application/json
 }
 
 ### Missing or wrong token falls through (no match)
-GET {{host}}/public
+GET /public
 Content-Type: application/json
 
 {"ok":true,"public":true}

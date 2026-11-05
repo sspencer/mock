@@ -1,7 +1,5 @@
-@host = http://localhost:8080
-
-### Get with full url
-GET {{host}}/user/:id
+### Get a user
+GET /user/:id
 Content-Type: application/json
 AB-RAY: 123abc456def789-LAX
 X-Request-ID: request-{{$id}}
@@ -16,7 +14,7 @@ X-Request-ID: request-{{$id}}
 }
 
 ### [201] Create user
-POST {{host}}/user
+POST /user
 Content-Type: application/json
 
 {

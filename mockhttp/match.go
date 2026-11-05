@@ -2,6 +2,7 @@ package mockhttp
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -28,10 +29,11 @@ func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]str
 		return nil, nil, MatchInfo{Revision: s.config.Revision, Candidates: closestRoutes(methods, r)}, false
 	}
 	requestHeaders := requestEventHeaders(r)
+	localPort := requestLocalPort(r)
 	var matches []routeMatch
 	for i := range methods {
 		method := &methods[i]
-		if method.Method != r.Method {
+		if method.Method != r.Method || !portMatches(method.Port, localPort) {
 			continue
 		}
 		pattern := (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath()
@@ -56,6 +58,22 @@ func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]str
 	selected := s.nextMatch(matches)
 	route := describeRoute(*matches[selected].method, matches[selected].index, s.config.Revision)
 	return matches[selected].method, matches[selected].values, MatchInfo{Route: &route, Position: selected + 1, Total: len(matches), Revision: s.config.Revision}, true
+}
+
+// requestLocalPort returns the port of the listener that accepted r, or 0 when
+// it is unknown (as for requests built in tests without a connection).
+func requestLocalPort(r *http.Request) int {
+	if addr, ok := r.Context().Value(http.LocalAddrContextKey).(*net.TCPAddr); ok {
+		return addr.Port
+	}
+	return 0
+}
+
+// portMatches reports whether a route declared for port serves a request that
+// arrived on localPort. A route without a port, or a request whose listener
+// is unknown, matches any port.
+func portMatches(port, localPort int) bool {
+	return port == 0 || localPort == 0 || port == localPort
 }
 
 func (s *Server) nextMatch(matches []routeMatch) int {

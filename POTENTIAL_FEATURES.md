@@ -23,7 +23,7 @@ separately below so they do not remain in the backlog.
   environment files and request variables, and explicit request-to-response
   conversion warnings. Named `###` sections, `@header.*` matchers,
   `@name = value` variables, and `{{host}}` or full URLs in the request target
-  are supported; warnings already flag likely request headers used as response
+  (whose port selects the listener) are supported; warnings already flag likely request headers used as response
   headers.
 - **Richer matching:** JSON/body fields, regular expressions, absent-header
   predicates, explicit priorities, and fallback routes. Current matching covers
@@ -56,6 +56,10 @@ separately below so they do not remain in the backlog.
 - **Graphical fixture editing and proxy/recording:** lower-priority ideas.
 
 ## Implemented from the original ideas
+
+- **Multiple ports:** routes are served on the port of a full-URL request
+  target, or the `@port` variable, else the default `-p` port. Every port is
+  bound at startup; reloads cannot open new ports.
 
 - **Separate admin port:** the request console listens on its own port (`-a`,
   `MOCK_UI_PORT`, default `8081`) so any path can be mocked, and `-x` skips it.

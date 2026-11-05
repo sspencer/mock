@@ -19,6 +19,7 @@ type RouteInfo struct {
 	Method        string            `json:"method"`
 	Path          string            `json:"path"`
 	Query         string            `json:"query,omitempty"`
+	Port          int               `json:"port,omitempty"`
 	Source        string            `json:"source"`
 	Line          int               `json:"line"`
 	Status        int               `json:"status"`
@@ -43,6 +44,7 @@ type RouteMismatch struct {
 	Name    string   `json:"name"`
 	Method  string   `json:"method"`
 	Path    string   `json:"path"`
+	Port    int      `json:"port,omitempty"`
 	Source  string   `json:"source"`
 	Line    int      `json:"line"`
 	Reasons []string `json:"reasons"`
@@ -65,7 +67,7 @@ func describeRoute(method restclient.Method, index int, revision uint64) RouteIn
 		body = body[:maxLoggedBodyBytes]
 	}
 	return RouteInfo{ID: fmt.Sprintf("%d:%d", revision, index), Revision: revision, Name: method.Name, Method: method.Method,
-		Path: (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath(), Query: method.Query.Encode(), Source: method.Source, Line: method.Line, Status: method.Status,
+		Path: (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath(), Query: method.Query.Encode(), Port: method.Port, Source: method.Source, Line: method.Line, Status: method.Status,
 		Delay: method.Delay.String(), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
 		Variables: cloneVariables(method.Variables), Body: body, BodyTruncated: truncated}
 }
@@ -123,7 +125,11 @@ func (s *Server) ServeReset(w http.ResponseWriter, r *http.Request) {
 
 func mismatch(method restclient.Method, r *http.Request, actual url.Values, queryErr error, headers http.Header) RouteMismatch {
 	pattern := (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath()
-	result := RouteMismatch{Name: method.Name, Method: method.Method, Path: pattern, Source: method.Source, Line: method.Line}
+	result := RouteMismatch{Name: method.Name, Method: method.Method, Path: pattern, Port: method.Port, Source: method.Source, Line: method.Line}
+	if localPort := requestLocalPort(r); !portMatches(method.Port, localPort) {
+		result.Reasons = append(result.Reasons, fmt.Sprintf("Served on port %d; request arrived on port %d", method.Port, localPort))
+		result.score += 3
+	}
 	if _, ok := matchPath(pattern, r.URL.EscapedPath()); !ok {
 		result.Reasons = append(result.Reasons, fmt.Sprintf("Path %q does not match %q", r.URL.EscapedPath(), pattern))
 		result.score += 10

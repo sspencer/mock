@@ -5,8 +5,10 @@ import { PendingTraffic, streamLabel } from './traffic.mjs';
 
 const MAX_EVENTS = 1000;
 const MOCK_CONFIG = JSON.parse(document.getElementById("mock-config").textContent);
-// The UI is served on its own port; sample requests target the mock port on the host the UI was reached by.
-const mockOrigin = () => `${MOCK_CONFIG.mockScheme || 'http'}://${location.hostname}:${MOCK_CONFIG.mockPort}`;
+// The UI is served on its own port; sample requests target the route's mock port (or the default
+// mock port) on the host the UI was reached by.
+const mockOrigin = (port) => `${MOCK_CONFIG.mockScheme || 'http'}://${location.hostname}:${port}`;
+const routePort = (route) => route?.port || MOCK_CONFIG.mockPort;
 const themeToggle = document.getElementById('themeToggle');
 const themeToggleLabel = document.getElementById('themeToggleLabel');
 const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
@@ -542,7 +544,8 @@ function resetInspector() {
 }
 
 function routeCurl(route) {
-    return MOCK_CONFIG.mockPort ? buildRouteCurl(route, mockOrigin()) : '';
+    const port = routePort(route);
+    return port ? buildRouteCurl(route, mockOrigin(port)) : '';
 }
 
 function renderInspector() {
@@ -554,7 +557,7 @@ function renderInspector() {
         matchSummary.textContent = `Configured route · revision ${selectedRoute.revision} · ${selectedRoute.source}:${selectedRoute.line}`;
         routeDetails.textContent = formatRoute(selectedRoute, routeCurl(selectedRoute));
         mismatchPanel.hidden = true;
-        copyCurlButton.disabled = !MOCK_CONFIG.mockPort;
+        copyCurlButton.disabled = !routePort(selectedRoute);
         return;
     }
     if (!event) { resetInspector(); return; }
@@ -571,7 +574,7 @@ function renderInspector() {
         if (!candidates.length) mismatchDetails.textContent = 'No routes are configured for this request.';
         for (const candidate of candidates) {
             const heading = document.createElement('p');
-            heading.textContent = `${candidate.method} ${candidate.path} — ${candidate.name} (${candidate.source}:${candidate.line})`;
+            heading.textContent = `${candidate.method} ${candidate.port ? `:${candidate.port}` : ''}${candidate.path} — ${candidate.name} (${candidate.source}:${candidate.line})`;
             const reasons = document.createElement('ul');
             for (const reason of candidate.reasons) {
                 const item = document.createElement('li'); item.textContent = reason; reasons.append(item);
@@ -669,6 +672,8 @@ async function loadRoutes() {
             routesList.appendChild(li);
             return;
         }
+        // Label routes with their port only when they are served on more than one.
+        const multiPort = new Set(routes.map(route => route.port)).size > 1;
         for (const route of routes) {
             const li = document.createElement('li');
             const method = document.createElement('span');
@@ -676,7 +681,7 @@ async function loadRoutes() {
             method.textContent = route.method;
             const path = document.createElement('span');
             path.className = 'route-path';
-            const routePath = `${route.path}${route.query ? '?' + route.query : ''}`;
+            const routePath = `${multiPort && route.port ? `:${route.port}` : ''}${route.path}${route.query ? '?' + route.query : ''}`;
             path.textContent = routePath;
             path.title = routePath;
             const name = document.createElement('span');

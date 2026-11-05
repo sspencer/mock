@@ -1,7 +1,5 @@
-@host = http://localhost:8080
-
 ### Return a user without delay
-GET {{host}}/users/0
+GET /users/0
 Content-Type: application/json
 
 {
@@ -11,7 +9,7 @@ Content-Type: application/json
 
 ### Return a user immediately or
 @delay = 0s
-GET {{host}}/users/1
+GET /users/1
 Content-Type: application/json
 
 {
@@ -22,7 +20,7 @@ Content-Type: application/json
 
 ### return a user after 1 second delay
 @delay = 1000ms
-GET {{host}}/users/1
+GET /users/1
 Content-Type: application/json
 
 {
@@ -33,7 +31,7 @@ Content-Type: application/json
 
 ### Return a user after 2 second delay
 @delay = 2s
-GET {{host}}/users/2
+GET /users/2
 Content-Type: application/json
 
 {

@@ -512,7 +512,7 @@ ok
 	server := mockhttp.New(nil, logger)
 
 	var output bytes.Buffer
-	reloadMockFiles(server, []string{path}, logger, &output, io.Discard)
+	reloadMockFiles(server, []string{path}, nil, logger, &output, io.Discard)
 
 	response := httptest.NewRecorder()
 	server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/users", nil))
@@ -551,7 +551,7 @@ ok
 
 	var output bytes.Buffer
 	var errOut bytes.Buffer
-	reloadMockFiles(server, []string{path}, logger, &output, &errOut)
+	reloadMockFiles(server, []string{path}, nil, logger, &output, &errOut)
 	if output.Len() != 0 {
 		t.Fatalf("output = %q, want empty on failed reload", output.String())
 	}
@@ -686,7 +686,7 @@ func TestEndToEndReloadServesNewRoutes(t *testing.T) {
 
 	changed := make(chan struct{}, 1)
 	closer, err := watchFiles([]string{path}, func() {
-		reloadMockFiles(server, []string{path}, logger, io.Discard, io.Discard)
+		reloadMockFiles(server, []string{path}, nil, logger, io.Discard, io.Discard)
 		select {
 		case changed <- struct{}{}:
 		default:

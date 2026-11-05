@@ -40,7 +40,7 @@ func TestReloadErrorsReachDashboardState(t *testing.T) {
 	if err := os.WriteFile(path, []byte("### invalid\nNOT-A-METHOD /x"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	reloadMockFiles(server, []string{path}, slog.Default(), io.Discard, io.Discard)
+	reloadMockFiles(server, []string{path}, nil, slog.Default(), io.Discard, io.Discard)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest("GET", "/state", nil))
 	var state mockhttp.ConfigState
@@ -53,7 +53,7 @@ func TestReloadErrorsReachDashboardState(t *testing.T) {
 	if err := os.WriteFile(path, []byte("### fixed\nGET /x\n\ntwo"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	reloadMockFiles(server, []string{path}, slog.Default(), io.Discard, io.Discard)
+	reloadMockFiles(server, []string{path}, nil, slog.Default(), io.Discard, io.Discard)
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest("GET", "/state", nil))
 	state = mockhttp.ConfigState{}

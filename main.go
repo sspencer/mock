@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -83,7 +84,7 @@ func parseConfig(args []string) (config, error) {
 	if err != nil {
 		return config{}, err
 	}
-	flagSet.IntVar(&cfg.Port, "p", portDefault, "HTTP port")
+	flagSet.IntVar(&cfg.Port, "p", portDefault, "default HTTP port, for routes whose request target or @port gives no port")
 	flagSet.IntVar(&cfg.AdminPort, "a", adminDefault, "admin UI port; 0 picks a random port (random if -p or MOCK_PORT is set; MOCK_UI_PORT sets the default)")
 	flagSet.BoolVar(&cfg.NoAdmin, "x", false, "do not start the admin UI")
 	flagSet.StringVar(&cfg.Bind, "b", "127.0.0.1", "bind address; use 0.0.0.0 for all interfaces")
@@ -171,6 +172,16 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 	var staticFS fs.FS
 	var mockServer *mockhttp.Server
 	var watchCloser io.Closer
+	var mockListeners []net.Listener
+	var plan *portPlan
+	closeAll := func() {
+		if watchCloser != nil {
+			_ = watchCloser.Close()
+		}
+		for _, ln := range mockListeners {
+			_ = ln.Close()
+		}
+	}
 	closeWatcher := func() {
 		if watchCloser != nil {
 			_ = watchCloser.Close()
@@ -178,6 +189,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 	}
 	if input.StaticDir != "" {
 		handler = newStaticFileHandler(input.StaticDir)
+		ln, err := net.Listen("tcp", listenAddress(cfg.Bind, cfg.Port))
+		if err != nil {
+			return runError("server failed: %v", err)
+		}
+		mockListeners = []net.Listener{ln}
 	} else {
 		if err := validateMethods(input.Methods, cfg.Args); err != nil {
 			return runError("%v", err)
@@ -186,6 +202,16 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 		if err != nil {
 			return runError("failed to load static files: %v", err)
 		}
+		mockListeners, plan, err = listenMock(cfg, input.Methods)
+		if err != nil {
+			return runError("%v", err)
+		}
+		methods, err := plan.resolve(input.Methods)
+		if err != nil {
+			closeAll()
+			return runError("%v", err)
+		}
+		input.Methods = methods
 		mockServer = mockhttp.New(input.Methods, logger)
 		handler = mockServer
 		if files := input.WatchFiles; len(files) > 0 {
@@ -193,7 +219,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 			ready := make(chan struct{})
 			reload := func() {
 				<-ready
-				reloadMockFiles(mockServer, files, logger, stdout, stderr)
+				reloadMockFiles(mockServer, files, plan, logger, stdout, stderr)
 				if err := watcher.Reconcile(resolveWatchPaths(files, mockServer.Methods())); err != nil {
 					logger.Error("failed to update dependency watches", "error", err)
 				}
@@ -204,6 +230,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 				watchCloser = watcher
 			}
 			if err != nil {
+				closeAll()
 				return runError("failed to watch request files: %v", err)
 			}
 		}
@@ -212,24 +239,22 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 		handler = withCORS(handler, cfg.CORS)
 	}
 
-	mockListener, err := net.Listen("tcp", listenAddress(cfg.Bind, cfg.Port))
-	if err != nil {
-		closeWatcher()
-		return runError("server failed: %v", err)
+	var servers []*http.Server
+	listeners := append([]net.Listener(nil), mockListeners...)
+	for range mockListeners {
+		servers = append(servers, newHTTPServer(handler))
 	}
-	servers := []*http.Server{newHTTPServer(handler)}
-	listeners := []net.Listener{mockListener}
+	var adminListener net.Listener
 	if mockServer != nil && !cfg.NoAdmin {
-		// Built after the mock listener binds so the UI knows the real mock port.
+		// Built after the mock listeners bind so the UI knows the real mock port.
 		adminHandler = newAdminHandler(mockServer, staticFS, uiConfig{
 			Version:    currentVersion(),
 			MockScheme: listenScheme(cfg.CertFile, cfg.KeyFile),
-			MockPort:   mockListener.Addr().(*net.TCPAddr).Port,
+			MockPort:   plan.uiPort(),
 		})
-		adminListener, err := net.Listen("tcp", listenAddress(cfg.Bind, cfg.AdminPort))
+		adminListener, err = net.Listen("tcp", listenAddress(cfg.Bind, cfg.AdminPort))
 		if err != nil {
-			_ = mockListener.Close()
-			closeWatcher()
+			closeAll()
 			return runError("admin server failed: %v", err)
 		}
 		servers = append(servers, newHTTPServer(adminHandler))
@@ -237,11 +262,13 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.
 	}
 
 	if mockServer == nil {
-		logger.Info("starting static HTTP server", "addr", boundAddress(cfg.Bind, mockListener), "dir", input.StaticDir)
+		logger.Info("starting static HTTP server", "addr", boundAddress(cfg.Bind, mockListeners[0]), "dir", input.StaticDir)
 	} else {
-		fmt.Fprintf(stdout, "starting mock HTTP server on %s\n", boundAddress(cfg.Bind, mockListener))
+		for _, ln := range mockListeners {
+			fmt.Fprintf(stdout, "starting mock HTTP server on %s\n", boundAddress(cfg.Bind, ln))
+		}
 		if adminHandler != nil {
-			fmt.Fprintf(stdout, "admin UI at %s://%s/\n", listenScheme(cfg.CertFile, cfg.KeyFile), boundAddress(cfg.Bind, listeners[1]))
+			fmt.Fprintf(stdout, "admin UI at %s://%s/\n", listenScheme(cfg.CertFile, cfg.KeyFile), boundAddress(cfg.Bind, adminListener))
 		}
 		if adminHandler != nil && bindsAllInterfaces(cfg.Bind) {
 			fmt.Fprintln(stderr, "warning: bound to all interfaces; admin UI is unauthenticated and request logs may include Authorization headers and bodies")
@@ -460,7 +487,7 @@ func withCORS(next http.Handler, origin string) http.Handler {
 	})
 }
 
-func reloadMockFiles(mockServer *mockhttp.Server, files []string, logger *slog.Logger, out, errOut io.Writer) {
+func reloadMockFiles(mockServer *mockhttp.Server, files []string, plan *portPlan, logger *slog.Logger, out, errOut io.Writer) {
 	mockServer.BeginReload()
 	load := func() ([]restclient.Method, error) {
 		if len(files) == 0 {
@@ -483,13 +510,40 @@ func reloadMockFiles(mockServer *mockhttp.Server, files []string, logger *slog.L
 		mockServer.ReloadFailed(err)
 		return
 	}
+	if methods, err = plan.resolve(methods); err != nil {
+		fmt.Fprintln(errOut, err.Error())
+		mockServer.ReloadFailed(err)
+		return
+	}
 	mockServer.SetMethods(methods)
 	logger.Info("reloaded request files", "files", files, "methods", len(methods))
 	printMethods(out, methods)
 }
 
+// printMethods lists the routes, grouped by port when they are served on
+// more than one.
 func printMethods(w io.Writer, methods []restclient.Method) {
-	fmt.Fprintln(w, "Available mock methods:")
+	var ports []int
+	byPort := make(map[int][]restclient.Method)
+	for _, method := range methods {
+		if _, ok := byPort[method.Port]; !ok {
+			ports = append(ports, method.Port)
+		}
+		byPort[method.Port] = append(byPort[method.Port], method)
+	}
+	slices.Sort(ports)
+	if len(ports) <= 1 {
+		fmt.Fprintln(w, "Available mock methods:")
+		printMethodList(w, methods)
+		return
+	}
+	for _, port := range ports {
+		fmt.Fprintf(w, "Available mock methods on port %d:\n", port)
+		printMethodList(w, byPort[port])
+	}
+}
+
+func printMethodList(w io.Writer, methods []restclient.Method) {
 	for _, method := range methods {
 		target := method.Path
 		if query := method.Query.Encode(); query != "" {

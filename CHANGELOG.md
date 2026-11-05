@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+Serve several mock services, each on its own port, from one set of request files. This release has breaking changes; see below.
+
+- **Breaking:** the port of a full-URL request target now picks the port the route is served on. `GET http://localhost:9090/token` listens on `9090` even when `-p` is set; `-p` (or `MOCK_PORT`) is now the default port for routes that do not declare one. The scheme and host name are still ignored.
+- Add the `@port` control variable to put a section, or a whole file, on a port without writing a URL. A URL port that disagrees with `@port` is a load error.
+- Bind every port the request files use before serving, and exit naming the file and section when a port is in use or is the admin UI port. The default port is only opened when a route uses it.
+- Match each route only on its own port. Unmatched-request diagnostics explain when a route is served on another port.
+- Reject a hot reload that needs a port `mock` is not listening on, keeping the previous routes, and ask for a restart.
+- Print one startup line per listener and group the route list by port when there is more than one. The admin UI labels routes with their port, and sample `curl` commands target each route's port.
+- **Breaking:** convert `examples/user.http`, `small.http`, `delay.http`, `strategy.http`, and `secure.http` to path-only targets so `-p` still moves them. `examples/restclient.http` keeps its `{{host}}` URLs. Add `examples/services.http`, a multi-port example.
+
 ## v0.2.1 - 2026-10-29
 
 Help flag fix and documentation corrections after v0.2.0.

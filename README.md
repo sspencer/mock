@@ -181,7 +181,7 @@ Flags:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-p` | `8080`, or `MOCK_PORT` | HTTP port |
+| `-p` | `8080`, or `MOCK_PORT` | Default HTTP port, for routes that do not declare a port (see [Multiple ports](#multiple-ports)) |
 | `-x` | (off) | Do not start the admin UI. Cannot be combined with `-a` |
 | `-b` | `127.0.0.1` | Bind address. Use `0.0.0.0` to listen on all interfaces |
 | `-a` | `MOCK_UI_PORT`, else `8081`, or random if `-p` / `MOCK_PORT` is set | Admin UI port. `0` picks a random free port |
@@ -196,8 +196,8 @@ The admin UI listens on its own port so it never shadows mock routes. Without
 `-a`, it uses the `MOCK_UI_PORT` environment variable when set; otherwise `8081`
 when the mock port is the default, and a random free port when you set `-p` (or
 `MOCK_PORT`). An explicit `-a` always wins. The startup banner prints the actual
-admin address. If the two ports resolve to the same number, `mock` exits with an
-error. Pass `-x` to skip the admin UI and its port entirely. With a directory
+admin address. If the admin port is the same as the mock port, or as a port a
+route declares, `mock` exits with an error. Pass `-x` to skip the admin UI and its port entirely. With a directory
 argument (static file server) there is no admin UI.
 
 You can pass one or more `.http` files. When no files are passed, `mock` reads
@@ -268,9 +268,10 @@ DELETE /users/:id
 ```
 
 The request target may be a path or a full URL, and may use variables such as
-`GET {{host}}/users`. Variables are expanded first, then everything before the
-path (scheme and host) is dropped; only the path and query string are used for
-matching. This lets one file serve both a REST client and `mock`, as in
+`GET {{host}}/users`. Variables are expanded first. The path and query string
+are used for matching, and a port in the URL picks the listener the route is
+served on (see [Multiple ports](#multiple-ports)). The scheme and host name are
+ignored. This lets one file serve both a REST client and `mock`, as in
 [`examples/restclient.http`](examples/restclient.http). Headers and bodies are
 still read as the mock's response, so a REST client's request headers there
 trigger a warning.
@@ -384,6 +385,7 @@ that points to the `@name = value` form.
 Variable names with a special meaning, which `mock` consumes itself:
 
 - `@delay`: response delay parsed with Go duration syntax, such as `250ms` or `2s`. Negative or invalid durations are load errors. Set at file scope, it is the default for every section.
+- `@port`: serve the section on this port instead of the default port (`-p`). Set at file scope, it applies to every section. See [Multiple ports](#multiple-ports).
 - `@header.Name`: require the incoming request to include that header. Use `*` as the value to accept any non-empty header. Set at file scope, it applies to every section; a method-scoped header of the same name replaces it.
 
 Every other variable is only used through `{{name}}` references. `mock` warns
@@ -450,10 +452,77 @@ produce a load-time warning. Other REST Client dynamic variables, such as
 `{{$processEnv}}`, `{{$dotenv}}` and `{{$aadToken}}`, are not supported and are
 treated as unknown placeholders.
 
+## Multiple ports
+
+One set of request files can mock several services, each on its own port.
+`mock` reads every file before it starts, then listens on each port that has
+routes:
+
+```http
+@users = http://localhost:8080
+@auth = http://localhost:9090
+
+### List users
+GET {{users}}/users
+
+[{"id": 42}]
+
+### Issue a token
+POST {{auth}}/token
+
+{"token": "abc123"}
+
+### Metrics
+@port = 9100
+GET /metrics
+
+requests_total 0
+```
+
+```text
+$ mock examples/services.http
+starting mock HTTP server on 127.0.0.1:8080
+starting mock HTTP server on 127.0.0.1:9090
+starting mock HTTP server on 127.0.0.1:9100
+...
+$ curl http://localhost:8080/users
+$ curl -X POST http://localhost:9090/token
+```
+
+A route's port comes from, in order:
+
+1. The port of a full-URL request target, such as `GET http://localhost:3030/user`
+   or `GET {{auth}}/token`.
+2. The `@port` variable, set on the section or at file scope.
+3. The default port, `-p` (or `MOCK_PORT`), when neither is given. This covers
+   path-only targets like `GET /users` and URLs without a port.
+
+A URL port and an `@port` that disagree are a load error. Only the port of a
+URL is used; its host name and scheme are ignored. `-b` still chooses the
+interface every listener binds to, and `-cert`/`-key` enable TLS on all of them.
+
+Each route only matches requests that arrive on its port, so the same path can
+return different responses on different ports. A request sent to the wrong port
+gets `404`, and the admin UI's match diagnostics say which port the route is
+served on.
+
+The default port is only opened when some route uses it. A route can declare
+the default port explicitly; it is served by the same listener. `mock` binds
+every port before it serves anything, and exits naming the file and section if
+a port is already in use or is the admin UI port.
+
+Hot reload can add, change, or remove routes on the ports that are already open,
+but cannot open new ones: a reload that needs a new port is rejected, the
+previous routes stay active, and the error asks you to restart `mock`. Ports
+that no longer have routes keep listening and return `404`.
+
+In Docker, publish every port the request files use, such as
+`-p 8080:8080 -p 9090:9090 -p 9100:9100`.
+
 ## Matching
 
-Routes match on HTTP method, path, any query parameters declared in the
-`.http` file, and any `@header.*` matchers.
+Routes match on the listener port, HTTP method, path, any query parameters
+declared in the `.http` file, and any `@header.*` matchers.
 
 ```http
 ### Cat names

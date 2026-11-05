@@ -75,6 +75,7 @@ export function formatRoute(route, sampleCurl = '') {
         `${route.method} ${route.path}${route.query ? '?' + route.query : ''}`,
         sampleCurl ? `Sample request\n${sampleCurl}` : '',
         `Source: ${route.source || '(unknown)'}:${route.line || '?'} · revision ${route.revision}`,
+        route.port ? `Port: ${route.port}` : '',
         `Response: ${route.status} · delay ${route.delay || '0s'}`,
         `Request header requirements\n${matchHeaders || '(none)'}`,
         `Response headers\n${responseHeaders || '(automatic)'}`,

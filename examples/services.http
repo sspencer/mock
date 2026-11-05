@@ -1,0 +1,31 @@
+@users = http://localhost:8080
+@auth = http://localhost:9090
+
+### List users
+GET {{users}}/users
+Content-Type: application/json
+
+[{"id": 42, "name": "Rusty"}]
+
+### Health (users)
+GET {{users}}/health
+
+users ok
+
+### Issue a token
+POST {{auth}}/token
+Content-Type: application/json
+
+{"token": "{{$uuid}}", "expiresIn": 3600}
+
+### Health (auth)
+GET {{auth}}/health
+
+auth ok
+
+### Metrics on a third port
+@port = 9100
+GET /metrics
+Content-Type: text/plain
+
+requests_total 0

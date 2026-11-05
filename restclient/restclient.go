@@ -24,7 +24,11 @@ import (
 //
 // Target is the request target as written, with any {{name}} references
 // unexpanded. It may be a full URL such as "{{host}}/users", so the same file
-// can drive a REST client; only the path and query are kept in Path and Query.
+// can drive a REST client; the path and query are kept in Path and Query.
+//
+// Port is the listener port the method is served on: the port of a full URL
+// target, else the @port variable. It is 0 when neither is given, meaning the
+// server's default port. The scheme and host name of a URL are ignored.
 //
 // File is the external response body path, as written after "< " at the start
 // of the body; Body is empty then. Use ResolveFile to locate it on disk.
@@ -51,6 +55,7 @@ type Method struct {
 	Line          int
 	Status        int
 	Delay         time.Duration
+	Port          int
 }
 
 // legacyVariablePattern matches the removed "# $name=value" comment variables.
@@ -426,6 +431,19 @@ func parseSection(pending pendingSection, fileDefs []definition, source string) 
 			`section %q has an invalid request target %s (path is required, example: "/users")`,
 			method.Name, quoteSnippet(rawTarget))
 	}
+	if fullURL && target.Port() != "" {
+		port, err := parsePort(target.Port())
+		if err != nil {
+			return method, parseErrorf(source, lineAt(i),
+				"section %q has an invalid port in request target %s: %v", method.Name, quoteSnippet(rawTarget), err)
+		}
+		if method.Port != 0 && method.Port != port {
+			return method, parseErrorf(source, lineAt(i),
+				"section %q: request target port %d conflicts with @port = %d (line %d); remove one or make them match",
+				method.Name, port, method.Port, method.VariableLines["port"])
+		}
+		method.Port = port
+	}
 	method.Path = target.Path
 	method.EscapedPath = target.EscapedPath()
 	if method.Path == "" {
@@ -487,7 +505,7 @@ func parseSection(pending pendingSection, fileDefs []definition, source string) 
 const fileVariableRemoved = `$file and @file are no longer supported; start the response body with "< path" instead (example: "< ./users.json")`
 
 // applyControlVariable interprets the variables the mock server itself
-// consumes: @delay and @header.Name. Other variables are only
+// consumes: @delay, @port and @header.Name. Other variables are only
 // referenced as {{name}} placeholders.
 func applyControlVariable(method *Method, def definition, source string) error {
 	value := Expand(def.value, method.Variables, nil)
@@ -514,8 +532,23 @@ func applyControlVariable(method *Method, def definition, source string) error {
 			return parseErrorf(source, def.line, "@delay must be a non-negative duration")
 		}
 		method.Delay = delay
+	case "port":
+		port, err := parsePort(value)
+		if err != nil {
+			return parseErrorf(source, def.line, "section %q: @port %v", method.Name, err)
+		}
+		method.Port = port
 	}
 	return nil
+}
+
+// parsePort parses a listener port between 1 and 65535.
+func parsePort(raw string) (int, error) {
+	port, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || port < 1 || port > 65535 {
+		return 0, fmt.Errorf("must be a port number between 1 and 65535, got %q", raw)
+	}
+	return port, nil
 }
 
 func parseErrorf(source string, line int, format string, args ...any) error {
@@ -561,6 +594,7 @@ func trimTrailingBlankLines(lines []string) []string {
 // controlVariables are consumed by the mock server itself (not only as {{name}} references).
 var controlVariables = map[string]struct{}{
 	"delay": {},
+	"port":  {},
 }
 
 // PlaceholderPattern matches {{name}}, {{%name}} and {{$name args}} placeholders
@@ -640,7 +674,7 @@ type UnusedVariable struct {
 }
 
 // UnusedVariables returns the @name definitions that are not control variables
-// (@delay) and are never referenced as {{name}} in the request target, body, or
+// (@delay, @port) and are never referenced as {{name}} in the request target, body, or
 // response headers of a method they apply to, or in another variable's value.
 // A file variable is used if any method it applies to references it. Callers
 // should warn; these are not errors.

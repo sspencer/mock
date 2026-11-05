@@ -343,20 +343,23 @@ GET {{host}}
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	want := []struct{ method, path, page string }{
-		{"GET", "/users", "2"},
-		{"POST", "/ignored/users", ""},
-		{"GET", "/users/42", ""},
-		{"GET", "/", ""},
+	want := []struct {
+		method, path, page string
+		port               int
+	}{
+		{"GET", "/users", "2", 0},
+		{"POST", "/ignored/users", "", 9000},
+		{"GET", "/users/42", "", 0},
+		{"GET", "/", "", 0},
 	}
 	if len(methods) != len(want) {
 		t.Fatalf("got %d methods, want %d", len(methods), len(want))
 	}
 	for i, w := range want {
 		m := methods[i]
-		if m.Method != w.method || m.Path != w.path || m.Query.Get("page") != w.page {
-			t.Errorf("methods[%d] = %s %s ?page=%q, want %s %s ?page=%q",
-				i, m.Method, m.Path, m.Query.Get("page"), w.method, w.path, w.page)
+		if m.Method != w.method || m.Path != w.path || m.Query.Get("page") != w.page || m.Port != w.port {
+			t.Errorf("methods[%d] = %s %s ?page=%q port %d, want %s %s ?page=%q port %d",
+				i, m.Method, m.Path, m.Query.Get("page"), m.Port, w.method, w.path, w.page, w.port)
 		}
 	}
 	if methods[0].Target != "{{host}}/users?page=2" {
@@ -472,6 +475,100 @@ func TestExpand(t *testing.T) {
 		if got := Expand(input, vars, dollar); got != want {
 			t.Errorf("Expand(%q) = %q, want %q", input, got, want)
 		}
+	}
+}
+
+func TestParsePorts(t *testing.T) {
+	methods, err := Parse("test.http", strings.NewReader(`@users = http://localhost:8080
+@auth = http://127.0.0.1:9090
+
+### Users
+GET {{users}}/users
+
+### Token
+POST {{auth}}/token
+
+### Inline port
+GET http://localhost:3030/user
+
+### Port only
+GET http://:4040/ping
+
+### IPv6 loopback
+GET http://[::1]:5050/v6
+
+### Directive
+@port = 6060
+GET /directive
+
+### Directive agrees with URL
+@port = 9090
+GET {{auth}}/same
+
+### Default
+GET /default
+
+### URL without a port
+GET https://api.example.com/remote
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	want := []int{8080, 9090, 3030, 4040, 5050, 6060, 9090, 0, 0}
+	if len(methods) != len(want) {
+		t.Fatalf("got %d methods, want %d", len(methods), len(want))
+	}
+	for i, port := range want {
+		if methods[i].Port != port {
+			t.Errorf("%s: Port = %d, want %d", methods[i].Name, methods[i].Port, port)
+		}
+	}
+	if got := UnusedVariables(methods); len(got) != 0 {
+		t.Errorf("UnusedVariables() = %#v, want none (@port is a control variable)", got)
+	}
+}
+
+func TestParseFilePortDirective(t *testing.T) {
+	methods, err := Parse("test.http", strings.NewReader(`@port = 7070
+
+### A
+GET /a
+
+### B
+@port = 7071
+GET /b
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if methods[0].Port != 7070 || methods[1].Port != 7071 {
+		t.Fatalf("ports = %d, %d; want 7070, 7071", methods[0].Port, methods[1].Port)
+	}
+}
+
+func TestParsePortErrors(t *testing.T) {
+	tests := []struct {
+		name, input string
+		want        []string
+	}{
+		{"directive not a number", "### A\n@port = http\nGET /a\n", []string{"test.http:2:", "@port must be a port number"}},
+		{"directive out of range", "### A\n@port = 70000\nGET /a\n", []string{"test.http:2:", "between 1 and 65535"}},
+		{"directive zero", "### A\n@port = 0\nGET /a\n", []string{"test.http:2:", "between 1 and 65535"}},
+		{"URL port zero", "### A\nGET http://localhost:0/a\n", []string{"test.http:2:", "invalid port", "between 1 and 65535"}},
+		{"conflict", "### A\n@port = 8080\nGET http://localhost:9090/a\n", []string{"test.http:3:", "port 9090 conflicts with @port = 8080 (line 2)"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Parse("test.http", strings.NewReader(tt.input))
+			if err == nil {
+				t.Fatal("Parse() error = nil")
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error = %q, want it to contain %q", err, want)
+				}
+			}
+		})
 	}
 }
 
