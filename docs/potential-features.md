@@ -35,7 +35,8 @@ separately below so they do not remain in the backlog.
   so catch-alls go last; shadowed routes get a load warning.
 - **Response modes and scenarios:** named stateful scenarios (for example,
   "second call fails") to replace the removed response rotation for retry
-  tests.
+  tests. Deferred; a full plan (`@times`, then `@scenario`/`@state`) is in
+  [stateful-scenarios.md](stateful-scenarios.md).
 - **Reproducible generated data:** seeded faker values and
   `{{$randomInt}}`, and configurable reuse of one generated placeholder within a
   response. Generated values are currently random on every render.
