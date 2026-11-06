@@ -58,6 +58,39 @@ export function sampleParam(name) {
 // a placeholder may not satisfy a regexp.
 const isSampleExact = value => value !== '*' && value !== '!' && !value.startsWith('~');
 
+// Builds a sample JSON body from @json matchers. Exact values are used as
+// written (JSON literals such as 42 or true stay unquoted); "*" and regexp
+// values become "example"; "!" fields are left out. Numeric path segments
+// make arrays. Returns '' when there is nothing to send or paths conflict.
+export function sampleJSONBody(matchJson) {
+    const entries = Object.entries(matchJson || {}).filter(([, value]) => value !== '!');
+    if (!entries.length) return '';
+    const literal = value => {
+        if (!isSampleExact(value)) return 'example';
+        try { return JSON.parse(value); } catch { return value; }
+    };
+    const isIndex = segment => /^(0|[1-9][0-9]*)$/.test(segment);
+    let root;
+    try {
+        for (const [path, value] of entries) {
+            const segments = path.split('.');
+            if (root === undefined) root = isIndex(segments[0]) ? [] : {};
+            let node = root;
+            segments.forEach((segment, i) => {
+                const last = i === segments.length - 1;
+                if (Array.isArray(node) !== isIndex(segment)) throw new Error('conflict');
+                if (last) { node[segment] = literal(value); return; }
+                const child = node[segment] ?? (isIndex(segments[i + 1]) ? [] : {});
+                if (typeof child !== 'object' || child === null) throw new Error('conflict');
+                node[segment] = child;
+                node = child;
+            });
+        }
+    } catch { return ''; }
+    // Sparse arrays from indexes like roles.1 serialize their holes as null.
+    return JSON.stringify(root);
+}
+
 export function buildRouteCurl(route, origin) {
     const matchPath = route.matchPath || {};
     const path = String(route.path).replace(/(^|\/):([^/]+)/g, (_, slash, name) =>
@@ -80,6 +113,12 @@ export function buildRouteCurl(route, origin) {
             if (value !== '!') parts.push('--header', shellQuote(`${name}: ${isSampleExact(value) ? value : 'example'}`));
         }
     }
+    const json = sampleJSONBody(route.matchJson);
+    const body = json || (route.matchBody && isSampleExact(route.matchBody) ? route.matchBody : '');
+    if (json && !Object.keys(route.matchHeaders || {}).some(name => name.toLowerCase() === 'content-type')) {
+        parts.push('--header', shellQuote('Content-Type: application/json'));
+    }
+    if (body) parts.push('--data-raw', shellQuote(body));
     parts.push(shellQuote(url));
     return parts.join(' ');
 }
@@ -90,6 +129,10 @@ export function formatRoute(route, sampleCurl = '') {
     const matchHeaders = Object.entries(route.matchHeaders || {}).flatMap(([name, values]) => values.map(value => `${name}: ${describe(value)}`)).join('\n');
     const matchQuery = Object.entries(route.matchQuery || {}).flatMap(([name, values]) => values.map(value => `${name}: ${describe(value)}`)).join('\n');
     const matchPath = Object.entries(route.matchPath || {}).map(([name, value]) => `:${name}: ${describe(value)}`).join('\n');
+    const matchBody = [
+        route.matchBody ? `body: ${describe(route.matchBody)}` : '',
+        ...Object.entries(route.matchJson || {}).map(([path, value]) => `json ${path}: ${describe(value)}`),
+    ].filter(Boolean).join('\n');
     const variables = Object.entries(route.variables || {}).map(([key, value]) => `@${key} = ${value}`).join('\n');
     return [
         `${route.method} ${route.path}${route.query ? '?' + route.query : ''}`,
@@ -100,6 +143,7 @@ export function formatRoute(route, sampleCurl = '') {
         `Request header requirements\n${matchHeaders || '(none)'}`,
         matchQuery ? `Query requirements\n${matchQuery}` : '',
         matchPath ? `Path parameter requirements\n${matchPath}` : '',
+        matchBody ? `Body requirements\n${matchBody}` : '',
         `Response headers\n${responseHeaders || '(automatic)'}`,
         `Variables\n${variables || '(none)'}`,
         route.file ? `Body file: ${route.file}` : 'Inline response body',

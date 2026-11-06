@@ -3,9 +3,11 @@ package mockhttp
 import (
 	"context"
 	"crypto/rand"
+	"fmt"
 	"log/slog"
 	"maps"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,7 +20,6 @@ import (
 type Server struct {
 	methods        []restclient.Method
 	logger         *slog.Logger
-	counters       map[string]int
 	events         []RequestEvent
 	subscribers    map[chan RequestEvent]struct{}
 	nextEventID    atomic.Uint64
@@ -33,7 +34,6 @@ func New(methods []restclient.Method, logger *slog.Logger) *Server {
 		methods:     cloneMethods(methods),
 		session:     rand.Text(),
 		logger:      logger,
-		counters:    make(map[string]int),
 		subscribers: make(map[chan RequestEvent]struct{}),
 	}
 	s.config = ConfigState{Revision: 1, RouteCount: len(methods), LastSuccess: time.Now().UTC().Format(time.RFC3339Nano)}
@@ -42,7 +42,6 @@ func New(methods []restclient.Method, logger *slog.Logger) *Server {
 }
 
 // SetMethods replaces the mock routes served by this server.
-// Rotation counters are reset so duplicate routes start from the first match again.
 func (s *Server) SetMethods(methods []restclient.Method) {
 	compiled := cloneMethods(methods)
 	warnMethodConfig(s.logger, compiled)
@@ -54,7 +53,6 @@ func (s *Server) SetMethods(methods []restclient.Method) {
 	s.config.LastSuccess = time.Now().UTC().Format(time.RFC3339Nano)
 	s.config.Loading = false
 	s.config.Error = ""
-	s.counters = make(map[string]int)
 }
 
 // Methods returns a snapshot of the currently configured mock routes.
@@ -72,21 +70,14 @@ func (s *Server) ClearEvents() {
 	s.clearLocked()
 }
 
-// ResetCounters resets duplicate-route rotation counters.
-func (s *Server) ResetCounters() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.counters = make(map[string]int)
-}
-
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	arrivedAt := time.Now()
 	controller := http.NewResponseController(w)
 	_ = controller.SetWriteDeadline(time.Time{}) // Configured delays do not spend the write budget.
-	requestBody := readRequestBody(r)
+	requestBody, matchBody := readRequestBody(r)
 	capture := newResponseCapture(w)
 
-	method, values, match, ok := s.findMethod(r)
+	method, values, match, ok := s.findMethod(r, matchBody)
 	capture.match = match
 	status := http.StatusNotFound
 	if !ok {
@@ -184,6 +175,7 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 		checkedMethods = append(checkedMethods, checked)
 		warnIncomingHeadersUsedAsResponse(logger, method)
 	}
+	warnShadowedRoutes(logger, methods)
 	for _, unused := range restclient.UnusedVariables(checkedMethods) {
 		logger.Warn("unused variable (not referenced as {{"+unused.Name+"}} in a body or response header)",
 			"variable", "@"+unused.Name,
@@ -191,6 +183,67 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 			"line", unused.Line,
 		)
 	}
+}
+
+// warnShadowedRoutes warns about routes that can never be selected because an
+// earlier route accepts every request they would. The first matching route
+// wins, so such a route is dead configuration, often left over from files
+// written for the removed response rotation.
+func warnShadowedRoutes(logger *slog.Logger, methods []restclient.Method) {
+	for j := range methods {
+		for i := range j {
+			if !shadows(methods[i], methods[j]) {
+				continue
+			}
+			logger.Warn(fmt.Sprintf("route can never match: earlier route %q (%s:%d) matches every request it would; put more specific routes first", methods[i].Name, methods[i].Source, methods[i].Line),
+				"method", methods[j].Name,
+				"source", methods[j].Source,
+				"line", methods[j].Line,
+			)
+			break
+		}
+	}
+}
+
+// shadows reports whether route a matches every request route b matches:
+// they share method, port and path pattern, and each of a's constraints is
+// also one of b's. It errs towards false; routes it misses still work.
+func shadows(a, b restclient.Method) bool {
+	if a.Method != b.Method || (a.Port != 0 && a.Port != b.Port) || routePattern(a) != routePattern(b) {
+		return false
+	}
+	if a.MatchBody != "" && a.MatchBody != b.MatchBody {
+		return false
+	}
+	for key, values := range a.Query {
+		if len(b.Query[key]) < len(values) || !slices.Equal(values, b.Query[key][:len(values)]) {
+			return false
+		}
+	}
+	for key, values := range a.MatchHeaders {
+		for _, value := range values {
+			if !slices.Contains(b.MatchHeaders.Values(key), value) {
+				return false
+			}
+		}
+	}
+	for key, values := range a.MatchQuery {
+		for _, value := range values {
+			if !slices.Contains(b.MatchQuery[key], value) {
+				return false
+			}
+		}
+	}
+	return subsetMap(a.MatchPath, b.MatchPath) && subsetMap(a.MatchJSON, b.MatchJSON)
+}
+
+func subsetMap(a, b map[string]string) bool {
+	for key, value := range a {
+		if other, ok := b[key]; !ok || other != value {
+			return false
+		}
+	}
+	return true
 }
 
 // wellKnownIncomingHeaders are typical request headers. After the request line
@@ -262,6 +315,7 @@ func cloneMethods(methods []restclient.Method) []restclient.Method {
 		out[i].MatchHeaders = methods[i].MatchHeaders.Clone()
 		out[i].MatchQuery = cloneValues(methods[i].MatchQuery)
 		out[i].MatchPath = maps.Clone(methods[i].MatchPath)
+		out[i].MatchJSON = maps.Clone(methods[i].MatchJSON)
 		out[i].Comments = append([]string(nil), methods[i].Comments...)
 		out[i].Variables = make(map[string]string, len(methods[i].Variables))
 		for k, v := range methods[i].Variables {

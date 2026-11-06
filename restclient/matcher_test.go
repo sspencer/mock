@@ -93,3 +93,36 @@ ok
 		t.Fatalf("matchers reported as unused variables: %v", unused)
 	}
 }
+
+func TestParseBodyMatcherDotMatchesNewline(t *testing.T) {
+	m, err := ParseBodyMatcher("~.*hello.*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Raw != "~.*hello.*" || !m.Match([]string{"a\nhello\nb"}) {
+		t.Fatalf("body matcher = %+v", m)
+	}
+	if MustMatcher("~.*hello.*").Match([]string{"a\nhello\nb"}) {
+		t.Fatal("header matcher should not let . match newlines")
+	}
+}
+
+func TestParseBodyAndJSONMatchers(t *testing.T) {
+	methods, err := Parse("test.http", strings.NewReader(`### Login
+@body = ~.*alice.*
+@json.user.roles.0 = admin
+POST /login
+
+ok
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := methods[0]
+	if m.MatchBody != "~.*alice.*" || m.MatchJSON["user.roles.0"] != "admin" {
+		t.Fatalf("MatchBody = %q, MatchJSON = %v", m.MatchBody, m.MatchJSON)
+	}
+	if _, ok := m.Variables["body"]; ok {
+		t.Fatal("@body stored as a variable")
+	}
+}

@@ -29,7 +29,6 @@ func NewHandler(mockServer *mockhttp.Server, assets fs.FS, cfg Config) http.Hand
 	mux.HandleFunc("/clear", mockServer.ServeClear)
 	mux.HandleFunc("/routes", mockServer.ServeRoutes)
 	mux.HandleFunc("/state", mockServer.ServeState)
-	mux.HandleFunc("/reset", mockServer.ServeReset)
 	mux.Handle("/", fileServer(assets, cfg))
 	return mux
 }

@@ -14,6 +14,7 @@ GET /users
 < users.json
 
 ### [201] Create random user
+@json.email = ~[^@\s]+@[^@\s]+
 POST /users
 Content-Type: application/json
 
@@ -24,13 +25,13 @@ Content-Type: application/json
     "event": "{{$uuid}}"
 }
 
-### [400] Create user failure
+### [400] Create user failure (no valid email)
 POST /users
 Content-Type: application/json
 
 {
     "success": false,
-    "id":0
+    "error": "a valid email is required"
 }
 
 ### Idempotent user creation

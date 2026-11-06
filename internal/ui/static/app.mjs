@@ -50,7 +50,6 @@ const copyCurlButton = document.getElementById('copyCurlButton');
 const mismatchPanel = document.getElementById('mismatchPanel');
 const mismatchDetails = document.getElementById('mismatchDetails');
 const backToList = document.getElementById('backToList');
-const resetResponsesButton = document.getElementById('resetResponsesButton');
 const configBanner = document.getElementById('configBanner');
 const reloadErrorPanel = document.getElementById('reloadErrorPanel');
 const reloadError = document.getElementById('reloadError');
@@ -585,7 +584,7 @@ function renderInspector() {
     const match = event.match;
     const route = match?.route;
     matchSummary.textContent = route
-        ? `${route.name} · ${route.source}:${route.line} · response ${match.position} of ${match.total} · revision ${match.revision} · ${event.response.time}`
+        ? `${route.name} · ${route.source}:${route.line} · revision ${match.revision} · ${event.response.time}`
         : `No matching route · revision ${match?.revision ?? '?'} · ${event.response.time}`;
     mismatchPanel.hidden = !!route;
     mismatchDetails.replaceChildren();
@@ -644,20 +643,6 @@ copyCurlButton.addEventListener('click', () => {
 copyRouteCurlButton.addEventListener('click', () => {
     const command = selectedRoute && routeCurl(selectedRoute);
     if (command) copyText(command);
-});
-
-resetResponsesButton.addEventListener('click', async () => {
-    resetResponsesButton.disabled = true;
-    hideClearError();
-    try {
-        const response = await fetch('reset', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, signal: AbortSignal.timeout(5000) });
-        if (!response.ok) throw new Error(`Server returned ${response.status}`);
-        clearError.hidden = false;
-        clearError.textContent = 'Response sequences reset. Traffic was kept.';
-    } catch (error) {
-        clearError.hidden = false;
-        clearError.textContent = `Could not reset responses: ${error.message}`;
-    } finally { resetResponsesButton.disabled = false; }
 });
 
 function renderEmptyState(message) {

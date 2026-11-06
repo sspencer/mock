@@ -21,8 +21,9 @@ import (
 //
 // Headers on the Method are response headers. Use MatchHeaders (from
 // @header.Name = value variables) to require request headers when matching.
-// MatchQuery (@query.name) and MatchPath (@path.name) add further request
-// matchers. Matcher values are kept as written; see ParseMatcher.
+// MatchQuery (@query.name), MatchPath (@path.name), MatchBody (@body) and
+// MatchJSON (@json.field.path) add further request matchers. Matcher values
+// are kept as written; see ParseMatcher and ParseBodyMatcher.
 //
 // Target is the request target as written, with any {{name}} references
 // unexpanded. It may be a full URL such as "{{host}}/users", so the same file
@@ -52,6 +53,8 @@ type Method struct {
 	MatchHeaders  http.Header
 	MatchQuery    url.Values
 	MatchPath     map[string]string
+	MatchBody     string
+	MatchJSON     map[string]string
 	Headers       http.Header
 	Body          string
 	File          string
@@ -173,6 +176,7 @@ func Parse(source string, r io.Reader) ([]Method, error) {
 				MatchHeaders:  make(http.Header),
 				MatchQuery:    make(url.Values),
 				MatchPath:     make(map[string]string),
+				MatchJSON:     make(map[string]string),
 				Headers:       make(http.Header),
 				Source:        source,
 				Line:          lineNumber,
@@ -514,9 +518,13 @@ func parseSection(pending pendingSection, fileDefs []definition, source string) 
 const fileVariableRemoved = `$file and @file are no longer supported; start the response body with "< path" instead (example: "< ./users.json")`
 
 // isMatcherName reports whether a variable name is a request matcher
-// (@header.Name, @query.name or @path.name) rather than a {{name}} variable.
+// (@header.Name, @query.name, @path.name, @body or @json.path) rather than a
+// {{name}} variable.
 func isMatcherName(name string) bool {
-	for _, prefix := range []string{"header.", "query.", "path."} {
+	if name == "body" {
+		return true
+	}
+	for _, prefix := range []string{"header.", "query.", "path.", "json."} {
 		if strings.HasPrefix(name, prefix) {
 			return true
 		}
@@ -584,6 +592,28 @@ func applyControlVariable(method *Method, def definition, source string) error {
 			return err
 		}
 		method.MatchQuery.Set(name, value)
+		return nil
+	}
+	if def.name == "body" {
+		if value == "" {
+			return parseErrorf(source, def.line,
+				`section %q: @body needs a value (use "!" to require an empty body, "*" for any body, or "~regex")`, method.Name)
+		}
+		if _, err := ParseBodyMatcher(value); err != nil {
+			return parseErrorf(source, def.line, "section %q: @body: %v", method.Name, err)
+		}
+		method.MatchBody = value
+		return nil
+	}
+	if path, ok := strings.CutPrefix(def.name, "json."); ok {
+		if path == "" || slices.Contains(strings.Split(path, "."), "") {
+			return parseErrorf(source, def.line,
+				`section %q: @%s needs a dot-separated JSON field path (example: "@json.user.name = alice")`, method.Name, def.name)
+		}
+		if err := parseMatcherValue(method, def, value, source); err != nil {
+			return err
+		}
+		method.MatchJSON[path] = value
 		return nil
 	}
 	if name, ok := strings.CutPrefix(def.name, "path."); ok {

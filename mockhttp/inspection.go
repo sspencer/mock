@@ -30,6 +30,8 @@ type RouteInfo struct {
 	MatchHeaders  http.Header       `json:"matchHeaders"`
 	MatchQuery    url.Values        `json:"matchQuery,omitempty"`
 	MatchPath     map[string]string `json:"matchPath,omitempty"`
+	MatchBody     string            `json:"matchBody,omitempty"`
+	MatchJSON     map[string]string `json:"matchJson,omitempty"`
 	Variables     map[string]string `json:"variables"`
 	Body          string            `json:"body"`
 	BodyTruncated bool              `json:"bodyTruncated"`
@@ -37,8 +39,6 @@ type RouteInfo struct {
 
 type MatchInfo struct {
 	Route      *RouteInfo      `json:"route,omitempty"`
-	Position   int             `json:"position,omitempty"`
-	Total      int             `json:"total,omitempty"`
 	Revision   uint64          `json:"revision"`
 	Candidates []RouteMismatch `json:"candidates,omitempty"`
 }
@@ -72,7 +72,8 @@ func describeRoute(method restclient.Method, index int, revision uint64) RouteIn
 	return RouteInfo{ID: fmt.Sprintf("%d:%d", revision, index), Revision: revision, Name: method.Name, Method: method.Method,
 		Path: (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath(), Query: method.Query.Encode(), Port: method.Port, Source: method.Source, Line: method.Line, Status: method.Status,
 		Delay: method.Delay.String(), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
-		MatchQuery: cloneValues(method.MatchQuery), MatchPath: cloneVariables(method.MatchPath),
+		MatchQuery: cloneValues(method.MatchQuery), MatchPath: cloneOptional(method.MatchPath),
+		MatchBody: method.MatchBody, MatchJSON: cloneOptional(method.MatchJSON),
 		Variables: cloneVariables(method.Variables), Body: body, BodyTruncated: truncated}
 }
 
@@ -85,6 +86,15 @@ func cloneValues(values url.Values) url.Values {
 		out[key] = append([]string(nil), list...)
 	}
 	return out
+}
+
+// cloneOptional copies a matcher map, returning nil when it is empty so JSON
+// omits it.
+func cloneOptional(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	return maps.Clone(values)
 }
 
 func cloneVariables(values map[string]string) map[string]string {
@@ -123,25 +133,11 @@ func (s *Server) ServeState(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(state)
 }
 
-// Resetting fixture sequences is independent of clearing diagnostic history.
-func (s *Server) ServeReset(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.Header().Set("Allow", "POST")
-		http.Error(w, "method not allowed", 405)
-		return
-	}
-	if !clearRequestAllowed(r) {
-		http.Error(w, "forbidden", 403)
-		return
-	}
-	s.ResetCounters()
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func mismatch(method restclient.Method, r *http.Request, actual url.Values, queryErr error, headers http.Header) RouteMismatch {
-	pattern := (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath()
+func mismatch(method restclient.Method, facts *requestFacts) RouteMismatch {
+	r, actual, queryErr, headers := facts.r, facts.query, facts.queryErr, facts.headers
+	pattern := routePattern(method)
 	result := RouteMismatch{Name: method.Name, Method: method.Method, Path: pattern, Port: method.Port, Source: method.Source, Line: method.Line}
-	if localPort := requestLocalPort(r); !portMatches(method.Port, localPort) {
+	if localPort := facts.localPort; !portMatches(method.Port, localPort) {
 		result.Reasons = append(result.Reasons, fmt.Sprintf("Served on port %d; request arrived on port %d", method.Port, localPort))
 		result.score += 3
 	}
@@ -198,6 +194,31 @@ func mismatch(method restclient.Method, r *http.Request, actual url.Values, quer
 			result.score++
 		}
 	}
+	if method.MatchBody != "" && !facts.bodyMatches(method.MatchBody) {
+		reason := "Body: "
+		if facts.body.unavailable {
+			reason += errBodyUnavailable.Error()
+		} else {
+			// The body may be large; describe the requirement, not the body.
+			reason += matcherReason(restclient.MustBodyMatcher(method.MatchBody), facts.bodyValues(), false)
+		}
+		result.Reasons = append(result.Reasons, reason)
+		result.score++
+	}
+	for _, path := range slices.Sorted(maps.Keys(method.MatchJSON)) {
+		if facts.jsonMatches(path, method.MatchJSON[path]) {
+			continue
+		}
+		values, err := facts.jsonValues(path)
+		reason := "JSON " + path + ": "
+		if err != nil {
+			reason += err.Error()
+		} else {
+			reason += matcherReason(restclient.MustMatcher(method.MatchJSON[path]), values, true)
+		}
+		result.Reasons = append(result.Reasons, reason)
+		result.score++
+	}
 	return result
 }
 
@@ -238,12 +259,10 @@ func abs(value int) int {
 	return value
 }
 
-func closestRoutes(methods []restclient.Method, r *http.Request) []RouteMismatch {
-	query, err := url.ParseQuery(r.URL.RawQuery)
-	headers := requestEventHeaders(r)
+func closestRoutes(methods []restclient.Method, facts *requestFacts) []RouteMismatch {
 	candidates := make([]RouteMismatch, 0, len(methods))
 	for _, method := range methods {
-		candidates = append(candidates, mismatch(method, r, query, err, headers))
+		candidates = append(candidates, mismatch(method, facts))
 	}
 	slices.SortStableFunc(candidates, func(a, b RouteMismatch) int { return a.score - b.score })
 	if len(candidates) > 5 {

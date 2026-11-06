@@ -27,7 +27,6 @@ GET /users/:id
 user {{$id}}
 
 ### Bad user id
-@path.id = ~.*[^0-9].*
 GET /users/:id
 
 bad id
@@ -78,7 +77,7 @@ func TestAbsentAndRegexpMatchers(t *testing.T) {
 		{"/me", nil, 200, "anonymous"},
 		{"/me", map[string]string{"Authorization": "Basic xyz"}, 404, ""},
 		{"/users/42", nil, 200, "user 42"},
-		{"/users/42", nil, 200, "user 42"}, // disjoint patterns: no rotation
+		{"/users/42", nil, 200, "user 42"}, // the earlier, more specific route wins every time
 		{"/users/abc", nil, 200, "bad id"},
 		{"/search?q=cats", nil, 200, "results"},
 		{"/search", nil, 200, "form"},
@@ -95,22 +94,17 @@ func TestAbsentAndRegexpMatchers(t *testing.T) {
 	}
 }
 
-func TestOverlappingRegexpRoutesStillRotate(t *testing.T) {
-	// A request accepted by several routes rotates among them; matchers do
-	// not imply a priority.
-	input := "### Numeric\n@path.id = ~[0-9]+\nGET /users/:id\n\nnumeric\n\n### Any\nGET /users/:id\n\nany\n"
+func TestFirstDeclaredRouteWins(t *testing.T) {
+	input := "### Any\nGET /users/:id\n\nany\n\n### Numeric\n@path.id = ~[0-9]+\nGET /users/:id\n\nnumeric\n"
 	methods, err := restclient.Parse("matchers.http", strings.NewReader(input))
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := New(methods, nil)
-	var got []string
 	for _, target := range []string{"/users/1", "/users/1", "/users/abc"} {
-		_, body := serveMatcher(t, s, "GET", target, nil)
-		got = append(got, body)
-	}
-	if strings.Join(got, ",") != "numeric,any,any" {
-		t.Fatalf("bodies = %v, want numeric,any,any", got)
+		if _, body := serveMatcher(t, s, "GET", target, nil); body != "any" {
+			t.Fatalf("%s = %q, want the earlier catch-all", target, body)
+		}
 	}
 }
 

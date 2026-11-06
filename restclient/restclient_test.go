@@ -680,6 +680,38 @@ GET /users
 			want: []string{"test.http:2:", "@path.id has no matching :id parameter"},
 		},
 		{
+			name: "empty body matcher",
+			input: `### User
+@body =
+POST /users
+`,
+			want: []string{"test.http:2:", "@body needs a value"},
+		},
+		{
+			name: "invalid body regexp",
+			input: `### User
+@body = ~(
+POST /users
+`,
+			want: []string{"test.http:2:", "@body", "invalid regular expression"},
+		},
+		{
+			name: "empty json path",
+			input: `### User
+@json. = x
+POST /users
+`,
+			want: []string{"test.http:2:", "dot-separated JSON field path"},
+		},
+		{
+			name: "json path with empty segment",
+			input: `### User
+@json.user..name = x
+POST /users
+`,
+			want: []string{"test.http:2:", "@json.user..name"},
+		},
+		{
 			name: "absent path matcher",
 			input: `### User
 @path.id = !

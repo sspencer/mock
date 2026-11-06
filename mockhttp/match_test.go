@@ -100,10 +100,10 @@ func headerSize(headers map[string][]string) int {
 	return size
 }
 
-func TestEncodedPathAndIndependentRotation(t *testing.T) {
+func TestEncodedPathAndFirstMatchingRoute(t *testing.T) {
 	input := "### encoded\nGET /x/:id\n\n{{$id}}\n"
 	for _, name := range []string{"a1", "a2", "b1", "b2"} {
-		input += "### " + name + "\n@header.X-Tenant = " + name[:1] + "\nGET /rotate\n\n" + name + "\n"
+		input += "### " + name + "\n@header.X-Tenant = " + name[:1] + "\nGET /tenant\n\n" + name + "\n"
 	}
 	methods, err := restclient.Parse("test.http", strings.NewReader(input))
 	if err != nil {
@@ -112,8 +112,8 @@ func TestEncodedPathAndIndependentRotation(t *testing.T) {
 	s := New(methods, nil)
 	for _, tc := range []struct{ url, tenant, want string }{
 		{"/x/100%25", "", "100%"}, {"/x/a%252Fb", "", "a%2Fb"}, {"/x/a%2Fb", "", "a/b"},
-		{"/x/path?id=query", "", "path"}, {"/rotate", "a", "a1"}, {"/rotate", "b", "b1"},
-		{"/rotate", "a", "a2"}, {"/rotate", "b", "b2"},
+		{"/x/path?id=query", "", "path"}, {"/tenant", "a", "a1"}, {"/tenant", "b", "b1"},
+		{"/tenant", "a", "a1"}, {"/tenant", "b", "b1"},
 	} {
 		r := httptest.NewRequest("GET", tc.url, nil)
 		r.Header.Set("X-Tenant", tc.tenant)

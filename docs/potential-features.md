@@ -10,7 +10,8 @@ separately below so they do not remain in the backlog.
    placeholders and invalid generator arguments) has no direct test in
    `mockhttp`; the bad-argument warning is only exercised through the
    `mock validate` tests. Add direct tests there.
-2. **Richer matching.** The most common reason to outgrow the tool today.
+2. **Form-field matching.** `@form.field` for URL-encoded bodies, the main
+   gap left after body and JSON matchers.
 3. **Seeded generated data.**
 4. **Named scenarios.**
 5. **Aggregate validation diagnostics.** `mock validate` stops at the first load
@@ -25,15 +26,15 @@ separately below so they do not remain in the backlog.
   `@name = value` variables, and `{{host}}` or full URLs in the request target
   (whose port selects the listener) are supported; warnings already flag likely request headers used as response
   headers.
-- **Richer matching:** JSON/body fields, explicit priorities, and fallback
-  routes. Current matching covers methods, encoded paths and path parameters,
-  declared query values, and exact, present (`*`), absent (`!`) and regex
-  (`~regex`) matchers on headers, query parameters and path parameters.
-  Overlapping routes still rotate, so a catch-all must exclude what more
-  specific routes match; priorities would remove that workaround.
-- **Response modes and scenarios:** explicit selection modes and named stateful
-  scenarios beyond the existing rotation through matching responses and manual
-  sequence reset.
+- **Richer matching:** form fields, explicit priorities, and JSON paths with
+  dotted keys or wildcards. Current matching covers methods, encoded paths and
+  path parameters, declared query values, and exact, present (`*`), absent
+  (`!`) and regex (`~regex`) matchers on headers, query and path parameters,
+  the raw body and JSON fields. The first matching route in load order wins,
+  so catch-alls go last; shadowed routes get a load warning.
+- **Response modes and scenarios:** named stateful scenarios (for example,
+  "second call fails") to replace the removed response rotation for retry
+  tests.
 - **Reproducible generated data:** seeded faker values and
   `{{$randomInt}}`, and configurable reuse of one generated placeholder within a
   response. Generated values are currently random on every render.
@@ -59,6 +60,10 @@ separately below so they do not remain in the backlog.
 
 ## Implemented from the original ideas
 
+- **Body matchers and route order:** `@body` and `@json.field.path` matchers.
+  Response rotation, `POST /reset` and the Reset responses button were
+  removed; the first matching route answers, and routes an earlier route
+  always beats are warned about.
 - **Absent and regex matchers:** `@header.Name = !` matches a missing or blank
   header, and `~regex` values match in full. `@query.name` and `@path.name`
   use the same value syntax.
@@ -94,20 +99,20 @@ separately below so they do not remain in the backlog.
   of a replay command. Clipboard errors remain visible; routine copy-success
   notices have been removed.
 - **Route inspection and match diagnostics:** clickable route configuration,
-  source file/line, configuration revision, selected response position, and up
+  source file/line, configuration revision, and up
   to five nearby candidates explaining unmatched requests. Route previews show
   inline templates or file references; they do not load response-file contents.
 - **Reload diagnostics:** `/state` exposes the active revision, route count,
   last successful reload, and reload error. Failed reloads keep working routes
   and show a dashboard error banner; the routine configuration banner is hidden.
-- **Independent clear and reset:** `POST /clear` clears diagnostic history;
-  `POST /reset` restarts response sequences. Both have separate UI controls.
+- **Clear log:** `POST /clear` clears diagnostic history across connected
+  tabs.
 - **Resizable inspector:** traffic/inspector, traffic/routes, and request/response
   dividers, with remembered sizes, keyboard controls, and double-click reset.
 - **Mobile navigation:** traffic and route selections open the detail view with
   a back button to return to the lists.
 
-Admin paths above (`/events`, `/clear`, `/reset`, `/state`, `/routes`) are served on the admin port.
+Admin paths above (`/events`, `/clear`, `/state`, `/routes`) are served on the admin port.
 
 ## Related improvements already available
 
@@ -117,7 +122,7 @@ Admin paths above (`/events`, `/clear`, `/reset`, `/state`, `/routes`) are serve
 - Captures include byte counts, truncation metadata, and base64 for binary data.
   HAR export preserves those details, with a 64 KiB capture limit per body.
 - Reloads are serialized and dependency watches follow the active source files.
-  Matching and response rotation stay within a single configuration revision.
+  Each request is matched against a single configuration revision.
 - The traffic list omits the duration beneath each request; elapsed time remains
   available in the inspector.
 

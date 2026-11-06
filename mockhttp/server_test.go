@@ -168,8 +168,9 @@ created
 	}
 }
 
-func TestServerAlternatesDuplicateMethodAndURL(t *testing.T) {
+func TestServerFirstMatchingRouteWins(t *testing.T) {
 	methods, err := restclient.Parse("test.http", strings.NewReader(`### [201] Create User
+@json.name = *
 POST /users
 Content-Type: application/json
 
@@ -187,16 +188,20 @@ Content-Type: application/json
 
 	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	wants := []struct {
-		status int
+		target string
 		body   string
+		status int
+		want   string
 	}{
-		{status: http.StatusCreated, body: `"success":true`},
-		{status: http.StatusBadRequest, body: `"success":false`},
-		{status: http.StatusCreated, body: `"success":true`},
+		{"/users", `{"name":"miso"}`, http.StatusCreated, `"success":true`},
+		{"/users", `{"name":"miso"}`, http.StatusCreated, `"success":true`}, // no rotation
+		{"/users?extra=1", `{"name":"taco"}`, http.StatusCreated, `"success":true`},
+		{"/users", `{}`, http.StatusBadRequest, `"success":false`},
+		{"/users", ``, http.StatusBadRequest, `"success":false`},
 	}
 
 	for i, want := range wants {
-		request := httptest.NewRequest(http.MethodPost, "/users", nil)
+		request := httptest.NewRequest(http.MethodPost, want.target, strings.NewReader(want.body))
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -204,8 +209,8 @@ Content-Type: application/json
 		if response.Code != want.status {
 			t.Fatalf("request %d status = %d, want %d", i+1, response.Code, want.status)
 		}
-		if body := response.Body.String(); !strings.Contains(body, want.body) {
-			t.Fatalf("request %d body = %q, want to contain %q", i+1, body, want.body)
+		if body := response.Body.String(); !strings.Contains(body, want.want) {
+			t.Fatalf("request %d body = %q, want to contain %q", i+1, body, want.want)
 		}
 	}
 }
@@ -604,7 +609,7 @@ b
 	<-done
 }
 
-func TestServerSetMethodsReplacesRoutesAndResetsRotation(t *testing.T) {
+func TestServerSetMethodsReplacesRoutes(t *testing.T) {
 	initial, err := restclient.Parse("test.http", strings.NewReader(`### Old
 GET /old
 
@@ -642,13 +647,12 @@ two
 		t.Fatalf("old route status = %d, want %d", response.Code, http.StatusNotFound)
 	}
 
-	// Rotation counters reset: first matching response should be returned again.
+	// The first matching route always wins; the shadowed second route never answers.
 	for i, want := range []struct {
 		status int
 		body   string
 	}{
 		{http.StatusCreated, "one"},
-		{http.StatusBadRequest, "two"},
 		{http.StatusCreated, "one"},
 	} {
 		response = httptest.NewRecorder()
@@ -678,7 +682,7 @@ func BenchmarkServerRouteLookup(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, _, _, ok := server.findMethod(request); !ok {
+		if _, _, _, ok := server.findMethod(request, requestBody{}); !ok {
 			b.Fatal("findMethod() did not match route")
 		}
 	}
@@ -798,47 +802,6 @@ func TestClearWhileSubscriberReads(t *testing.T) {
 	close(stop)
 	<-done
 	s.unsubscribe(ch)
-}
-
-func TestServerRotationIgnoresUnusedQueryParams(t *testing.T) {
-	methods, err := restclient.Parse("test.http", strings.NewReader(`### [201] Create User
-POST /users
-Content-Type: application/json
-
-{"success":true}
-
-### [400] Create User Failure
-POST /users
-Content-Type: application/json
-
-{"success":false}
-`))
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
-	}
-
-	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	targets := []string{"/users", "/users?extra=1", "/users?foo=bar"}
-	wants := []struct {
-		status int
-		body   string
-	}{
-		{status: http.StatusCreated, body: `"success":true`},
-		{status: http.StatusBadRequest, body: `"success":false`},
-		{status: http.StatusCreated, body: `"success":true`},
-	}
-
-	for i, want := range wants {
-		request := httptest.NewRequest(http.MethodPost, targets[i], nil)
-		response := httptest.NewRecorder()
-		server.ServeHTTP(response, request)
-		if response.Code != want.status {
-			t.Fatalf("request %d %s status = %d, want %d", i+1, targets[i], response.Code, want.status)
-		}
-		if body := response.Body.String(); !strings.Contains(body, want.body) {
-			t.Fatalf("request %d body = %q, want to contain %q", i+1, body, want.body)
-		}
-	}
 }
 
 func TestWarnIncomingHeadersUsedAsResponse(t *testing.T) {

@@ -49,6 +49,29 @@ func ParseMatcher(raw string) (Matcher, error) {
 	return Matcher{Raw: raw, Kind: MatchExact}, nil
 }
 
+// ParseBodyMatcher parses an @body matcher. It is ParseMatcher, except that "."
+// in a regular expression also matches newlines, so ~.*alice.* finds alice
+// anywhere in a multi-line body.
+func ParseBodyMatcher(raw string) (Matcher, error) {
+	m, err := ParseMatcher(bodyMatcherSource(raw))
+	m.Raw = raw
+	return m, err
+}
+
+// MustBodyMatcher is MustMatcher for @body values.
+func MustBodyMatcher(raw string) Matcher {
+	m := MustMatcher(bodyMatcherSource(raw))
+	m.Raw = raw
+	return m
+}
+
+func bodyMatcherSource(raw string) string {
+	if pattern, ok := strings.CutPrefix(raw, "~"); ok && pattern != "" {
+		return "~(?s)" + pattern
+	}
+	return raw
+}
+
 // MustMatcher parses raw, treating an invalid regular expression as a matcher
 // that never matches. Load-time validation reports such patterns; this keeps
 // hand-built routes from panicking at request time.

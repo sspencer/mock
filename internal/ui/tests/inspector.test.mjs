@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCurl, buildRouteCurl, formatMessage, formatRoute, bodyNotice, sampleParam } from '../static/inspector.mjs';
+import { sampleJSONBody, buildCurl, buildRouteCurl, formatMessage, formatRoute, bodyNotice, sampleParam } from '../static/inspector.mjs';
 import { attachSplitter, clampPercent, alignedTrafficHeight } from '../static/layout.mjs';
 
 const message = {
@@ -115,4 +115,16 @@ test('Splitter computes its default when initial is a function', () => {
     assert.equal(styles['--h'], '85%');
     attachSplitter(handle, container, { axis: 'y', property: '--h', key: 'h', initial: () => 62 }, { get: () => '40', set() {} });
     assert.equal(styles['--h'], '40%');
+});
+
+test('Route cURL sends a sample body for body and JSON matchers', () => {
+    const origin = 'http://localhost:8080';
+    assert.equal(buildRouteCurl({ method: 'POST', path: '/login', matchJson: { 'user.name': 'alice', 'user.age': '42', 'user.id': '!', 'tags.0': '~a+', active: 'true' } }, origin),
+        `curl --request POST --header 'Content-Type: application/json' --data-raw '{"user":{"name":"alice","age":42},"tags":["example"],"active":true}' 'http://localhost:8080/login'`);
+    assert.equal(buildRouteCurl({ method: 'POST', path: '/echo', matchBody: 'ping' }, origin), "curl --request POST --data-raw 'ping' 'http://localhost:8080/echo'");
+    assert.equal(buildRouteCurl({ method: 'POST', path: '/echo', matchBody: '~.*x.*' }, origin), "curl --request POST 'http://localhost:8080/echo'");
+    assert.equal(sampleJSONBody({ a: '1', 'a.b': '2' }), '');
+    assert.equal(sampleJSONBody({ x: '!' }), '');
+    const text = formatRoute({ method: 'POST', path: '/login', source: 't.http', line: 1, revision: 1, status: 200, matchBody: '~.*x.*', matchJson: { 'user.name': 'alice' } });
+    assert.ok(text.includes('Body requirements\nbody: ~.*x.* (regular expression)\njson user.name: alice'), text);
 });

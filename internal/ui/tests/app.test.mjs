@@ -75,11 +75,11 @@ test('inspector toggles Pretty/Raw, shows match metadata, and copies original bo
  const sample=event(1003,'two');
  sample.request={...sample.request,scheme:'https',host:'example.test',httpVersion:'HTTP/1.1',headers:{},body:{text:'{"name":"Alex"}',size:15,capturedSize:15,truncated:false}};
  sample.response={...sample.response,httpVersion:'HTTP/1.1',headers:{},body:{text:'{"ok":true}',size:11,capturedSize:11,truncated:false}};
- sample.match={revision:2,position:2,total:3,route:{name:'User detail',source:'users.http',line:12}};
+ sample.match={revision:2,route:{name:'User detail',source:'users.http',line:12}};
  source.onmessage({data:JSON.stringify(sample)});flush();
  const row=element('requestTableBody').children[0];
  const key=new Event('keydown');Object.defineProperty(key,'target',{value:row});Object.defineProperty(key,'key',{value:'Enter'});element('requestTableBody').dispatchEvent(key);
- assert.match(element('matchSummary').textContent,/users.http:12.*response 2 of 3/);
+ assert.match(element('matchSummary').textContent,/users.http:12 · revision 2/);
  assert.ok(element('requestDetails').textContent.includes('\n  "name": "Alex"'));
  click('requestRaw');assert.ok(element('requestDetails').textContent.endsWith('{"name":"Alex"}'));
  let copied='';Object.defineProperty(globalThis,'navigator',{configurable:true,value:{clipboard:{writeText:async text=>{copied=text;}}}});
@@ -88,7 +88,7 @@ test('inspector toggles Pretty/Raw, shows match metadata, and copies original bo
  click('backToList');assert.equal(element('workspace').classList.contains('show-inspector'),false);
 });
 
-test('routes open their configuration and reset posts without removing traffic', async () => {
+test('routes open their configuration and copy a sample request', async () => {
  routesData=[{id:'2:0',revision:2,name:'Create user',method:'POST',path:'/users',port:8080,source:'users.http',line:1,status:201,delay:'1s',headers:{},matchHeaders:{},variables:{},body:'{"ok":true}'}];
  click('refreshRoutesButton');await new Promise(resolve=>setImmediate(resolve));
  const button=element('routesList').querySelector('button');button.dispatchEvent(new Event('click'));
@@ -98,10 +98,6 @@ test('routes open their configuration and reset posts without removing traffic',
  assert.match(element('routeSummary').textContent,/users.http:1/);
  let copied='';Object.defineProperty(globalThis,'navigator',{configurable:true,value:{clipboard:{writeText:async text=>{copied=text;}}}});
  click('copyRouteCurlButton');await Promise.resolve();assert.equal(copied,"curl --request POST 'http://localhost:8080/users'");
- const count=element('requestTableBody').children.length;
- click('resetResponsesButton');await new Promise(resolve=>setImmediate(resolve));
- assert.ok(posted.includes('reset'));assert.equal(element('requestTableBody').children.length,count);
- assert.match(element('clearError').textContent,/Traffic was kept/);
 });
 
 test('request column hides the host on a single-port server',()=>{

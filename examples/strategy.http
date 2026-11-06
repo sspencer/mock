@@ -1,22 +1,32 @@
-### Duplicate response rotation
-GET /rotation
+### Admin login
+# The first route that matches a request answers it, so put specific routes
+# before general ones.
+@json.username = admin
+POST /login
 Content-Type: application/json
 
-{
-  "behavior": "duplicate method and URL responses rotate in file order"
-}
+{ "role": "admin" }
 
-### Default Strategy 1
-GET /default
+### Login with a password
+@json.username = *
+@json.password = *
+POST /login
 Content-Type: application/json
 
-{ "n":  1 }
+{ "role": "user" }
 
-### Default Strategy 2
-GET /default
+### [400] Anything else
+POST /login
 Content-Type: application/json
 
-{ "n":  2 }
+{ "error": "username and password are required" }
+
+### Plain-text body pattern
+@body = ~.*\bping\b.*
+POST /echo
+Content-Type: text/plain
+
+pong
 
 ### [202] Status variant
 GET /status-variant
