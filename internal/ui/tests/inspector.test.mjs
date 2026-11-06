@@ -34,6 +34,12 @@ test('Route view includes source, requirements, file and template', () => {
     for (const value of ['test.http:3', 'Authorization: *', '201', '1s', 'body.json', '{"x":1}']) assert.ok(text.includes(value));
 });
 
+test('Route view shows delay ranges, streaming and faults', () => {
+    const text = formatRoute({ method: 'GET', path: '/x', status: 200, delay: '100ms..800ms', stream: '50ms', fault: 'reset 25%' });
+    assert.ok(text.includes('Response: 200 · delay 100ms..800ms · stream 50ms · fault reset 25%'));
+    assert.ok(!formatRoute({ method: 'GET', path: '/x', status: 200, delay: '0s' }).includes('stream'));
+});
+
 test('Route cURL targets the mock origin with sample path parameters', () => {
     const origin = 'http://localhost:8080';
     assert.equal(buildRouteCurl({ method: 'GET', path: '/users/:id' }, origin), "curl 'http://localhost:8080/users/1'");

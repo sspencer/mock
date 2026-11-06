@@ -35,7 +35,15 @@ import (
 // server's default port. The scheme and host name of a URL are ignored.
 //
 // File is the external response body path, as written after "< " at the start
-// of the body; Body is empty then. Use ResolveFile to locate it on disk.
+// of the body; Body is empty then. Use ResolveFile to locate it on disk. It may
+// hold placeholders, such as "./users/{{$id}}.json", which are expanded per
+// request (see FileIsTemplate).
+//
+// Delay is the @delay before responding; with DelayMax it is the low end of
+// a random range ("@delay = 100ms..800ms"). Stream is the @stream pause
+// between body lines or SSE events. Fault is the @fault ("reset" or
+// "truncate") injected on FaultRate of responses (1 means every response).
+// Template is the @template body mode: "" (auto), "on" or "off".
 //
 // Variables holds the raw values of every @name = value variable in scope for
 // the method: file-scoped definitions overridden by method-scoped ones.
@@ -64,6 +72,11 @@ type Method struct {
 	Line          int
 	Status        int
 	Delay         time.Duration
+	DelayMax      time.Duration
+	Stream        time.Duration
+	Fault         string
+	FaultRate     float64
+	Template      string
 	Port          int
 }
 
@@ -93,6 +106,7 @@ type directives struct {
 type pendingSection struct {
 	method        Method
 	lines         []string
+	endings       []string
 	directives    directives
 	bodyStartLine int
 	nameLine      int
@@ -122,11 +136,22 @@ func Load(paths []string) ([]Method, error) {
 func Parse(source string, r io.Reader) ([]Method, error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	// ending is the terminator of the line just scanned ("\n", "\r\n" or ""
+	// at the end of the input), so "@trim = off" bodies can be kept exactly.
+	var ending string
+	scanner.Split(func(data []byte, atEOF bool) (int, []byte, error) {
+		advance, token, err := bufio.ScanLines(data, atEOF)
+		if token != nil {
+			ending = string(data[len(token):advance])
+		}
+		return advance, token, err
+	})
 
 	var sections []pendingSection
 	var fileDefs []definition
 	var current *Method
 	var section []string
+	var sectionEndings []string
 	// bodyStartLine is the 1-based file line number of section[0], when section is non-empty.
 	// When the section is empty, it is the line after the ### line.
 	var bodyStartLine int
@@ -138,6 +163,7 @@ func Parse(source string, r io.Reader) ([]Method, error) {
 			return nil
 		}
 		lines := append([]string(nil), section...)
+		endings := append([]string(nil), sectionEndings...)
 		lineAt := func(index int) int { return bodyStartLine + index }
 		found, err := scanDirectives(lines, lineAt, source, current.Name)
 		if err != nil {
@@ -152,6 +178,7 @@ func Parse(source string, r io.Reader) ([]Method, error) {
 		sections = append(sections, pendingSection{
 			method:        *current,
 			lines:         lines,
+			endings:       endings,
 			directives:    found,
 			bodyStartLine: bodyStartLine,
 			nameLine:      sectionNameLine,
@@ -185,6 +212,7 @@ func Parse(source string, r io.Reader) ([]Method, error) {
 				Line:          lineNumber,
 			}
 			section = section[:0]
+			sectionEndings = sectionEndings[:0]
 			sectionNameLine = lineNumber
 			bodyStartLine = lineNumber + 1
 			continue
@@ -209,6 +237,7 @@ func Parse(source string, r io.Reader) ([]Method, error) {
 			bodyStartLine = lineNumber
 		}
 		section = append(section, line)
+		sectionEndings = append(sectionEndings, ending)
 	}
 	if err := scanner.Err(); err != nil {
 		// Scanner errors (e.g. token too long) are not always line-precise.
@@ -499,6 +528,7 @@ func parseSection(pending pendingSection, fileDefs []definition, source string) 
 		i++
 	}
 
+	bodyStart := i
 	bodyLines := trimTrailingBlankLines(lines[i:])
 	if len(bodyLines) > 0 && strings.HasPrefix(bodyLines[0], "< ") {
 		// The path is everything after "< ", whitespace included.
@@ -515,6 +545,15 @@ func parseSection(pending pendingSection, fileDefs []definition, source string) 
 				method.Name, quoteSnippet(bodyLines[0]))
 		}
 		method.File = path
+		return method, nil
+	}
+	if raw, ok := method.Variable("trim"); ok && strings.TrimSpace(raw) == "off" {
+		var body strings.Builder
+		for j := bodyStart; j < len(lines); j++ {
+			body.WriteString(lines[j])
+			body.WriteString(pending.endings[j])
+		}
+		method.Body = body.String()
 		return method, nil
 	}
 	method.Body = strings.Join(bodyLines, "\n")
@@ -688,11 +727,40 @@ func applyControlVariable(method *Method, def definition, source string) error {
 	case "file":
 		return parseErrorf(source, def.line, "section %q: %s", method.Name, fileVariableRemoved)
 	case "delay":
-		delay, err := time.ParseDuration(value)
-		if err != nil || delay < 0 {
-			return parseErrorf(source, def.line, "@delay must be a non-negative duration")
+		low, high, err := ParseDelay(value)
+		if err != nil {
+			return parseErrorf(source, def.line, "section %q: @delay %v", method.Name, err)
 		}
-		method.Delay = delay
+		method.Delay, method.DelayMax = low, high
+	case "stream":
+		pause, err := time.ParseDuration(strings.TrimSpace(value))
+		if err != nil || pause < 0 {
+			return parseErrorf(source, def.line, `section %q: @stream must be a non-negative duration, such as "50ms"`, method.Name)
+		}
+		method.Stream = pause
+	case "fault":
+		fault, rate, err := ParseFault(value)
+		if err != nil {
+			return parseErrorf(source, def.line, "section %q: @fault %v", method.Name, err)
+		}
+		method.Fault, method.FaultRate = fault, rate
+	case "template":
+		switch mode := strings.ToLower(strings.TrimSpace(value)); mode {
+		case "auto":
+			method.Template = ""
+		case "on", "off":
+			method.Template = mode
+		default:
+			return parseErrorf(source, def.line, `section %q: @template must be auto, on or off`, method.Name)
+		}
+	case "trim":
+		if mode := strings.TrimSpace(value); mode != "on" && mode != "off" {
+			return parseErrorf(source, def.line, `section %q: @trim must be on or off`, method.Name)
+		}
+	case "seed":
+		if strings.TrimSpace(value) == "" {
+			return parseErrorf(source, def.line, `section %q: @seed needs a value, such as "@seed = 42"`, method.Name)
+		}
 	case "port":
 		port, err := parsePort(value)
 		if err != nil {
@@ -701,6 +769,49 @@ func applyControlVariable(method *Method, def definition, source string) error {
 		method.Port = port
 	}
 	return nil
+}
+
+// ParseDelay parses an @delay value: a duration such as "250ms", or a range
+// "100ms..800ms" from which each response picks a random delay. high is 0 for
+// a fixed delay.
+func ParseDelay(raw string) (low, high time.Duration, err error) {
+	first, second, isRange := strings.Cut(strings.TrimSpace(raw), "..")
+	low, err = time.ParseDuration(strings.TrimSpace(first))
+	if err != nil || low < 0 {
+		return 0, 0, fmt.Errorf(`must be a non-negative duration such as "250ms", or a range such as "100ms..800ms"`)
+	}
+	if !isRange {
+		return low, 0, nil
+	}
+	high, err = time.ParseDuration(strings.TrimSpace(second))
+	if err != nil || high < low {
+		return 0, 0, fmt.Errorf(`range must be "min..max" with max at least min, such as "100ms..800ms"`)
+	}
+	return low, high, nil
+}
+
+// ParseFault parses an @fault value: "reset" or "truncate", optionally
+// followed by the share of responses it applies to, such as "reset 25%".
+// rate is between 0 and 1.
+func ParseFault(raw string) (fault string, rate float64, err error) {
+	fields := strings.Fields(strings.ToLower(raw))
+	if len(fields) == 0 || len(fields) > 2 || fields[0] != "reset" && fields[0] != "truncate" {
+		return "", 0, fmt.Errorf(`must be "reset" or "truncate", optionally followed by a percentage such as "reset 25%%"`)
+	}
+	if len(fields) == 1 {
+		return fields[0], 1, nil
+	}
+	percent, err := strconv.ParseFloat(strings.TrimSuffix(fields[1], "%"), 64)
+	if err != nil || !strings.HasSuffix(fields[1], "%") || percent < 0 || percent > 100 {
+		return "", 0, fmt.Errorf("percentage %q must be between 0%% and 100%%, such as 25%%", fields[1])
+	}
+	return fields[0], percent / 100, nil
+}
+
+// FileIsTemplate reports whether an external body path holds placeholders
+// and so names a different file per request.
+func FileIsTemplate(raw string) bool {
+	return PlaceholderPattern.MatchString(raw)
 }
 
 // parsePort parses a listener port between 1 and 65535.
@@ -754,8 +865,13 @@ func trimTrailingBlankLines(lines []string) []string {
 
 // controlVariables are consumed by the mock server itself (not only as {{name}} references).
 var controlVariables = map[string]struct{}{
-	"delay": {},
-	"port":  {},
+	"delay":    {},
+	"port":     {},
+	"stream":   {},
+	"fault":    {},
+	"seed":     {},
+	"template": {},
+	"trim":     {},
 }
 
 // PlaceholderPattern matches {{name}}, {{%name}} and {{$name args}} placeholders
@@ -815,7 +931,9 @@ func FileDependencies(methods []Method) []string {
 	var deps []string
 	for _, method := range methods {
 		raw := method.File
-		if raw == "" {
+		if raw == "" || FileIsTemplate(raw) {
+			// A templated path names a different file per request; it is read
+			// on every request, so there is nothing fixed to watch.
 			continue
 		}
 		if _, ok := seen[raw]; ok {
@@ -835,7 +953,7 @@ type UnusedVariable struct {
 }
 
 // UnusedVariables returns the @name definitions that are not control variables
-// (@delay, @port) and are never referenced as {{name}} in the request target, body, or
+// (@delay, @port, @stream, @fault, @seed, @template, @trim) and are never referenced as {{name}} in the request target, body, or
 // response headers of a method they apply to, or in another variable's value.
 // A file variable is used if any method it applies to references it. Callers
 // should warn; these are not errors.
@@ -887,6 +1005,7 @@ func placeholderNames(method Method) map[string]bool {
 	used := make(map[string]bool)
 	collectPlaceholders(method.Target, used)
 	collectPlaceholders(method.Body, used)
+	collectPlaceholders(method.File, used)
 	for _, values := range method.Headers {
 		for _, value := range values {
 			collectPlaceholders(value, used)

@@ -157,7 +157,7 @@ export function formatRoute(route, sampleCurl = '') {
         sampleCurl ? `Sample request\n${sampleCurl}` : '',
         `Source: ${route.source || '(unknown)'}:${route.line || '?'} · revision ${route.revision}`,
         route.port ? `Port: ${route.port}` : '',
-        `Response: ${route.status} · delay ${route.delay || '0s'}`,
+        `Response: ${route.status} · delay ${route.delay || '0s'}${route.stream ? ` · stream ${route.stream}` : ''}${route.fault ? ` · fault ${route.fault}` : ''}`,
         `Request header requirements\n${matchHeaders || '(none)'}`,
         matchQuery ? `Query requirements\n${matchQuery}` : '',
         matchPath ? `Path parameter requirements\n${matchPath}` : '',

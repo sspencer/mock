@@ -29,6 +29,8 @@ type responseCapture struct {
 	body          strings.Builder
 	bodyBytes     int
 	bodyTruncated bool
+	// fault is the @fault injected into this response, if any.
+	fault string
 }
 
 func newResponseCapture(w http.ResponseWriter) *responseCapture {
@@ -158,6 +160,9 @@ func (s *Server) logRequest(r *http.Request, requestBody loggedBody, response *r
 		"mock", methodName,
 		"duration", elapsed.String(),
 	}
+	if response.fault != "" {
+		attrs = append(attrs, "fault", response.fault)
+	}
 	if upstream := response.match.Upstream; upstream != "" {
 		attrs = append(attrs, "upstream", upstream)
 	}
@@ -196,6 +201,9 @@ func requestDetails(r *http.Request, body loggedBody) string {
 
 func responseDetails(r *http.Request, response *responseCapture, status int) string {
 	var details strings.Builder
+	if response.fault == "reset" {
+		return "Connection reset by @fault = reset (no response was sent)"
+	}
 	fmt.Fprintf(&details, "%s %d %s\n", r.Proto, status, statusText(status))
 
 	body := response.loggedBody()
@@ -214,6 +222,17 @@ func writeSortedHeaders(details *strings.Builder, headers http.Header) {
 			fmt.Fprintf(details, "%s: %s\n", name, value)
 		}
 	}
+}
+
+// eventStatusText is the status text shown for an event, noting any @fault.
+func eventStatusText(status int, fault string) string {
+	switch fault {
+	case "reset":
+		return "Connection reset (@fault)"
+	case "truncate":
+		return statusText(status) + " (truncated by @fault)"
+	}
+	return statusText(status)
 }
 
 func statusText(status int) string {

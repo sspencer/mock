@@ -324,13 +324,16 @@ only digits, such as `### [beta] Users`, stay part of the name. The old
 | Request line `METHOD /path` | Full multi-step scripts |
 | Response headers after the request line | Separate request vs response documents |
 | `@header.Name`, `@query.name`, `@path.name`, `@body`, `@json.path`, `@form.name` request matchers (exact, `*`, `!`, `~regex`) | Multipart and XML body matchers |
-| `{{name}}`, `{{%name}}` and `{{$placeholder}}` in bodies and response headers | Request variables (`{{login.response.body.token}}`) |
+| `{{name}}`, `{{%name}}` and `{{$placeholder}}` in bodies, response headers and `< path` file paths, with [filters](#filters) and [`{{#repeat}}` blocks](#generated-lists) | Request variables (`{{login.response.body.token}}`) |
 | `< path` external body files | Mixing inline text and `< path` in one body; imports of other `.http` files |
 
-Inline bodies normalize line endings to LF and discard trailing blank lines.
-A line beginning `###` is always a section boundary, including within a body.
-Use an external body file (`< path`) for content that must preserve line endings, trailing
-whitespace, or literal section delimiters. Individual inline lines are limited
+Inline bodies normalize line endings to LF and discard leading and trailing
+blank lines. With `@trim = off` a section's inline body is kept exactly as
+written instead: every line after the blank line that ends the headers,
+including its original line endings (LF or CRLF) and any blank lines at the
+end, up to the next `###` line. A line beginning `###` is always a section
+boundary, including within a body. Use an external body file (`< path`) for
+content that must hold literal section delimiters. Individual inline lines are limited
 to 1 MiB. Malformed queries, invalid headers, and invalid directives
 produce source-and-line errors; a failed reload retains the working routes.
 
@@ -367,10 +370,38 @@ supported and are a load error.
 The file is read on every request, so edits show up immediately, and `mock`
 watches it for reloads. A missing file returns a 500 for that route. If no
 explicit `Content-Type` header is set, it is inferred from the file extension
-when possible. Placeholders (`{{name}}`, `{{$name}}`) are expanded when the
+when possible.
+
+Placeholders (`{{name}}`, `{{$name}}`) in the file are expanded when the
 content type is text, JSON, XML or JavaScript (explicit or inferred) and the
 file is valid UTF-8 without binary control bytes. Other files are served as raw
-bytes.
+bytes. Set `@template` in the section to choose instead:
+
+- `@template = auto` (the default) decides as above.
+- `@template = on` always expands placeholders, whatever the content type.
+- `@template = off` never expands them. This also applies to the inline body
+  and response headers, so `{{...}}` text is served exactly as written.
+
+### Placeholders in file paths
+
+The path can hold placeholders, so one route serves a different file per
+request:
+
+```http
+### User by id
+GET /users/:id
+Content-Type: application/json
+
+< ./users/{{$id}}.json
+```
+
+The path is expanded for each request with the same values as a body (see
+[Placeholders](#placeholders)), then checked like a fixed path: if the expanded
+path is absolute, has a `..` segment, still holds a placeholder, or names no
+file, the request gets a `404`. A request for `/users/..%2Fsecret` therefore
+cannot read outside the fixture directories. Templated paths are not watched
+for reloads, because they name no fixed file; each request reads the file
+afresh anyway.
 
 ## Variables
 
@@ -414,7 +445,12 @@ that points to the `@name = value` form.
 
 Variable names with a special meaning, which `mock` consumes itself:
 
-- `@delay`: response delay parsed with Go duration syntax, such as `250ms` or `2s`. Negative or invalid durations are load errors. Set at file scope, it is the default for every section.
+- `@delay`: response delay parsed with Go duration syntax, such as `250ms` or `2s`, or a random range such as `100ms..800ms` (both ends inclusive, picked afresh per request). Negative or invalid durations are load errors. Set at file scope, it is the default for every section. See [Delays, streaming and faults](#delays-streaming-and-faults).
+- `@stream`: send the body in pieces with this pause between them, such as `50ms`. See [Delays, streaming and faults](#delays-streaming-and-faults).
+- `@fault`: break the response on purpose: `reset` or `truncate`, optionally followed by the share of requests, such as `reset 25%`. See [Delays, streaming and faults](#delays-streaming-and-faults).
+- `@seed`: make generated values reproducible. See [Reproducible data](#reproducible-data).
+- `@template`: `auto`, `on` or `off`, whether placeholders are expanded. See [External response bodies](#external-response-bodies).
+- `@trim`: `on` (the default) or `off`. With `off` the inline body keeps its exact text and line endings. See [Supported dialect](#supported-dialect).
 - `@port`: serve the section on this port instead of the default port (`-p`). Set at file scope, it applies to every section. See [Multiple ports](#multiple-ports).
 - `@header.Name`: require the incoming request header to match the value: exact text, `*` (any non-empty value), `!` (absent), or `~regex`. Set at file scope, it applies to every section; a method-scoped header of the same name replaces it. See [Header matching](#header-matching).
 - `@query.name`: require the query parameter to match the value, with the same value forms as `@header.*`. See [Query and path parameter matching](#query-and-path-parameter-matching).
@@ -443,7 +479,15 @@ Response bodies **and response headers** can contain placeholders:
   - Built-in generated values.
 
 Earlier sources in that list win when names collide: path parameters beat
-regex groups, which beat query parameters. A missing body field leaves the
+regex groups, which beat query parameters. To name the source explicitly, use
+a namespace:
+
+- `{{$path.id}}` reads only the `:id` path parameter.
+- `{{$query.id}}` reads only the `id` query parameter (its first value).
+- `{{$header.X-Request-Id}}` reads a request header (case-insensitive).
+
+A namespaced value that the request lacks leaves the placeholder literal.
+`{{$path.name}}` warns at load time when the route has no `:name` parameter. A missing body field leaves the
 placeholder literal. A JSON string field is inserted as its text, and other
 JSON values as compact JSON, so `"name":"{{$json.name}}"` copies a string and
 `"profile":{{$json.profile}}` copies a whole object.
@@ -495,6 +539,140 @@ Unknown placeholders are left as written (for example `{{$nope}}`) and
 produce a load-time warning. Other REST Client dynamic variables, such as
 `{{$processEnv}}`, `{{$dotenv}}` and `{{$aadToken}}`, are not supported and are
 treated as unknown placeholders.
+
+### Filters
+
+A placeholder can pipe its value through filters, applied left to right:
+
+```text
+{{$name | upper}}                 ADA LOVELACE
+{{$query.q | trim | urlencode}}   cats%20and%20dogs
+{{$id | add 1}}                   43
+{{$query.page | default 1}}       1 when the request has no ?page=
+{{$header.Authorization | base64}}
+{{$json.note | json}}             "a \"quoted\" note", as a JSON string
+```
+
+| Filter | Effect |
+|--------|--------|
+| `upper`, `lower` | Change case. |
+| `trim` | Remove leading and trailing whitespace. |
+| `urlencode` | Percent-encode (a space becomes `%20`). |
+| `base64` | Standard base64 encoding. |
+| `json` | Encode as a quoted JSON string; use it outside quotes. |
+| `add n` | Add the integer `n` (negative to subtract). A non-integer value is unchanged. |
+| `default value` | Use `value` when nothing resolves the placeholder. Later filters still apply. A placeholder with a default never warns at load time. |
+| `keep [name]` | Reuse the first generated value, see below. |
+
+Quote a filter argument that holds spaces or `|`: `{{$q | default "no query"}}`.
+An unknown filter, or one with the wrong arguments, leaves the placeholder
+literal and logs a load-time warning.
+
+Generated values such as `{{$uuid}}` are fresh at each use. Add `| keep` to
+reuse one value: every `{{$uuid | keep}}` in the response, its headers and its
+`< path` gets the same UUID. `keep` with a name, such as `| keep owner`, keeps
+a separate value per name, so a response can hold two stable UUIDs. Inside a
+`{{#repeat}}` block each copy keeps its own values, unless the value was
+already kept before the block.
+
+```http
+### Create order
+POST /orders
+Location: /orders/{{$uuid | keep}}
+Content-Type: application/json
+
+{"id": "{{$uuid | keep}}", "customer": "{{$uuid | keep customer}}"}
+```
+
+## Generated lists
+
+`{{#repeat n}} ... {{/repeat}}` renders its contents `n` times, and
+`{{#repeat min max}}` a random number of times from `min` to `max`
+(inclusive). Counts run from 0 to 1000; blocks can nest. Generated values are
+fresh in each copy, and `{{$index}}` is the copy's position, from 0 (the
+innermost block's, when nested).
+
+```http
+### List users
+GET /users
+Content-Type: application/json
+
+[
+  {{#repeat 20}}
+  {"id": {{$index | add 1}}, "name": "{{$name}}", "email": "{{$email}}"}
+  {{/repeat}}
+]
+```
+
+In a JSON response (by `Content-Type` or file extension), copies outside a
+JSON string are separated by commas, so the example is a valid array of 20
+objects. Other responses join copies with nothing in between. A `{{#repeat}}`
+or `{{/repeat}}` tag alone on its line takes the line with it, so it leaves no
+blank line in the output. A tag without its partner, or with a bad count, is
+left literal and logs a load-time warning. A rendered body over 16 MiB returns
+a 500.
+
+## Reproducible data
+
+Generated values are random by default. Set `@seed` to any text to make them
+reproducible: the same request (method, URL and body) then gets the same
+names, UUIDs, `{{$randomInt}}` numbers and `{{#repeat min max}}` counts every
+time, while different requests still differ. Generated timestamps
+(`{{$timestamp}}` and `{{$isoTimestamp}}` without arguments) are fixed to
+2025-01-01 under a seed; `{{$datetime ...}}` and other clock functions with
+arguments still use the current time.
+
+```http
+@seed = demo
+
+### User
+GET /users/:id
+Content-Type: application/json
+
+{"id": "{{$path.id}}", "name": "{{$name}}", "token": "{{$uuid}}"}
+```
+
+Changing the seed changes every value. The data may change between `mock`
+releases.
+
+## Delays, streaming and faults
+
+`@delay` waits before responding: `@delay = 250ms`, or `@delay = 100ms..800ms`
+for a random wait in that range on each request.
+
+`@stream` sends the body in pieces with a pause between them, which is useful
+for testing progress indicators and server-sent events:
+
+```http
+### Events
+@stream = 500ms
+GET /events
+Content-Type: text/event-stream
+
+data: {"step": 1}
+
+data: {"step": 2}
+
+data: {"step": 3}
+```
+
+A `text/event-stream` body is sent one event (up to a blank line) at a time;
+any other body one line at a time. Streamed responses have no
+`Content-Length`. The pause comes before every piece but the first, after any
+`@delay`.
+
+`@fault` breaks the response, to test client error handling:
+
+- `@fault = reset` drops the connection without a response; on TCP the client
+  sees a connection reset.
+- `@fault = truncate` sends the headers with the full `Content-Length` and
+  then only half the body before closing the connection. It does nothing for
+  responses without a body.
+- A percentage, such as `@fault = reset 10%`, applies the fault to that share
+  of requests at random; the rest are answered normally.
+
+Faulted requests appear in the admin UI with the fault noted (`RST` in the
+status column for a reset).
 
 ## Multiple ports
 

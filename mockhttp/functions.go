@@ -33,10 +33,11 @@ func isFunction(name string) bool {
 //
 // An offset is an integer, possibly negative, followed by an option: y, Q, M,
 // w, d, h, m, s, or ms. Names that are not functions return errNotFunction.
-func callFunction(name string, args []string, now time.Time) (string, error) {
+// rng is the response's random source; nil uses the global one.
+func callFunction(name string, args []string, now time.Time, rng *rand.Rand) (string, error) {
 	switch name {
 	case "randomInt":
-		return randomInt(args)
+		return randomInt(args, rng)
 	case "timestamp":
 		t, err := offsetTime(now.UTC(), args)
 		if err != nil {
@@ -52,7 +53,7 @@ func callFunction(name string, args []string, now time.Time) (string, error) {
 	}
 }
 
-func randomInt(args []string) (string, error) {
+func randomInt(args []string, rng *rand.Rand) (string, error) {
 	if len(args) != 2 {
 		return "", errors.New("expected min and max, such as {{$randomInt 1 100}}")
 	}
@@ -64,7 +65,10 @@ func randomInt(args []string) (string, error) {
 	if high <= low || high-low <= 0 {
 		return "", errors.New("max must be greater than min")
 	}
-	return strconv.Itoa(low + rand.IntN(high-low)), nil
+	if rng == nil {
+		return strconv.Itoa(low + rand.IntN(high-low)), nil
+	}
+	return strconv.Itoa(low + rng.IntN(high-low)), nil
 }
 
 func formatDatetime(t time.Time, args []string, rfc1123, iso8601 string) (string, error) {

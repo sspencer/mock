@@ -61,7 +61,8 @@ func (s *Server) findMethod(r *http.Request, body requestBody) (*restclient.Meth
 			method := &methods[i]
 			if values, ok := facts.match(method); ok {
 				route := describeRoute(*method, i, revision)
-				return method, templateValues{values: values, facts: facts}, MatchInfo{Route: &route, Revision: revision}, true
+				path, _ := matchPath(routePattern(*method), r.URL.EscapedPath())
+				return method, templateValues{values: values, path: path, facts: facts}, MatchInfo{Route: &route, Revision: revision}, true
 			}
 		}
 	}
@@ -183,16 +184,25 @@ func (f *requestFacts) formValues(name string) ([]string, error) {
 }
 
 // lookup resolves a {{$name}} placeholder: path, capture and query values
-// first, then $json.field.path and $form.name from the request body.
+// first, then the explicit namespaces $path.name, $query.name and
+// $header.Name, then $json.field.path and $form.name from the request body.
 func (v templateValues) lookup(key string) (string, bool) {
 	if value, ok := v.values[key]; ok {
 		return value, true
+	}
+	if name, ok := strings.CutPrefix(key, "path."); ok && name != "" {
+		value, found := v.path[name]
+		return value, found
 	}
 	if v.facts == nil {
 		return "", false
 	}
 	var values []string
-	if path, ok := strings.CutPrefix(key, "json."); ok && path != "" {
+	if name, ok := strings.CutPrefix(key, "query."); ok && name != "" {
+		values = v.facts.query[name]
+	} else if name, ok := strings.CutPrefix(key, "header."); ok && name != "" {
+		values = v.facts.headers.Values(name)
+	} else if path, ok := strings.CutPrefix(key, "json."); ok && path != "" {
 		values, _ = v.facts.jsonValues(path)
 	} else if name, ok := strings.CutPrefix(key, "form."); ok && name != "" {
 		values, _ = v.facts.formValues(name)
@@ -206,7 +216,9 @@ func (v templateValues) lookup(key string) (string, bool) {
 // templateValues are the request values a response template can reference.
 type templateValues struct {
 	values map[string]string
-	facts  *requestFacts
+	// path holds only the path parameters, for $path.name.
+	path  map[string]string
+	facts *requestFacts
 }
 
 func routePattern(method restclient.Method) string {

@@ -11,6 +11,21 @@ import (
 	"github.com/sspencer/mock/restclient"
 )
 
+// renderResponse renders method's body and headers as ServeHTTP does.
+func renderResponse(method restclient.Method, values templateValues) ([]byte, http.Header, error) {
+	r := newRenderer(&method, values)
+	file, hasFile, err := r.file()
+	if err != nil {
+		return nil, nil, err
+	}
+	body, err := r.body(file, hasFile)
+	if err != nil {
+		return nil, nil, err
+	}
+	headers, err := r.headers(file)
+	return body, headers, err
+}
+
 func TestGeneratedValueSupportsDocumentedKeys(t *testing.T) {
 	keys := []string{
 		"name",
@@ -37,7 +52,7 @@ func TestGeneratedValueSupportsDocumentedKeys(t *testing.T) {
 
 	for _, key := range keys {
 		t.Run(key, func(t *testing.T) {
-			if got := generatedValue(key); got == "" {
+			if got := newRenderer(&restclient.Method{}, templateValues{}).generatedValue(key); got == "" {
 				t.Fatalf("generatedValue(%q) = empty string, want value", key)
 			}
 		})
@@ -54,7 +69,7 @@ func TestStatusAllowsBody(t *testing.T) {
 }
 
 func TestGeneratedValueReturnsEmptyForUnknownKey(t *testing.T) {
-	if got := generatedValue("missing"); got != "" {
+	if got := newRenderer(&restclient.Method{}, templateValues{}).generatedValue("missing"); got != "" {
 		t.Fatalf("generatedValue(missing) = %q, want empty string", got)
 	}
 }
@@ -67,14 +82,14 @@ func TestTextClassificationChecksEntireBody(t *testing.T) {
 }
 func TestPlaceholderGrammarAndUnknownPreservation(t *testing.T) {
 	method := restclient.Method{Variables: map[string]string{"user-name": "Alice", "user.name": "Bob"}}
-	if got := expandPlaceholders("{{user-name}} {{user.name}} {{typo}} {{$typo}}", method, templateValues{}); got != "Alice Bob {{typo}} {{$typo}}" {
+	if got, _ := newRenderer(&method, templateValues{}).text("{{user-name}} {{user.name}} {{typo}} {{$typo}}", false); got != "Alice Bob {{typo}} {{$typo}}" {
 		t.Fatal(got)
 	}
 }
 
 func TestJSONInterpolationEscapesUntrustedValues(t *testing.T) {
 	method := restclient.Method{Headers: http.Header{"Content-Type": []string{"application/json"}}, Body: `{"value":"{{$id}}","number":{{$number}}}`}
-	body, err := renderBody(method, templateValues{values: map[string]string{"id": "quote\"\n\\slash", "number": "42"}}, "", false)
+	body, _, err := renderResponse(method, templateValues{values: map[string]string{"id": "quote\"\n\\slash", "number": "42"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,11 +110,7 @@ func TestResponseFileCannotEscapeThroughSymlink(t *testing.T) {
 	}
 	t.Chdir(filepath.Join(dir, "fixtures", ".."))
 	method := restclient.Method{Source: filepath.Join(dir, "fixtures", "test.http"), File: "link"}
-	path, ok := resolveFilePath(&method)
-	if !ok {
-		t.Fatal("expected lexical path to resolve")
-	}
-	if _, err := renderBody(method, templateValues{}, path, true); err == nil {
+	if _, _, err := renderResponse(method, templateValues{}); err == nil {
 		t.Fatal("served file outside fixture root")
 	}
 }
@@ -110,7 +121,7 @@ func TestBinaryMIMEPreventsTextLikeFileExpansion(t *testing.T) {
 	want := "printable binary {{$name}}"
 	os.WriteFile(path, []byte(want), 0600)
 	method := restclient.Method{Source: filepath.Join(dir, "test.http"), File: "body.bin"}
-	body, err := renderBody(method, templateValues{}, path, true)
+	body, _, err := renderResponse(method, templateValues{})
 	if err != nil || string(body) != want {
 		t.Fatalf("binary changed: %q, %v", body, err)
 	}

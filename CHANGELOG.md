@@ -4,6 +4,18 @@
 
 - Add `-u` / `--upstream URL` to pass requests that no route matches to a real API and return its response, so you can mock a few endpoints and use the real service for the rest. The upstream may be HTTP or HTTPS and may include a base path; the request path and query are appended to it. Forwarded requests keep their method, headers and body, and get the upstream's `Host` plus `X-Forwarded-*` and `Via` headers. An unreachable upstream answers `502`, and a request that loops back to `mock` answers `508`. The admin UI marks forwarded requests as **proxied**, and request events carry `match.upstream`. `--upstream` cannot be combined with a directory argument.
 
+- Add placeholders in body file paths: `< ./users/{{$id}}.json` serves a different file per request. The expanded path gets the same containment checks as a fixed path, and a path that names no usable file (missing, absolute, or with a `..` segment) answers `404`.
+- Add `{{#repeat n}} ... {{/repeat}}` and `{{#repeat min max}}` blocks for generated lists, with fresh generated values in each copy and `{{$index}}` for the copy's position. Copies in JSON responses are separated by commas.
+- Add placeholder filters: `upper`, `lower`, `trim`, `urlencode`, `base64`, `json`, `add n`, `default value` and `keep [name]`, as in `{{$query.page | default 1}}`. `keep` reuses one generated value across a response, its headers and its file path.
+- Add explicit placeholder namespaces `{{$path.name}}`, `{{$query.name}}` and `{{$header.Name}}`.
+- Add `@seed` to make generated values (faker data, `$uuid`, `$randomInt`, repeat counts, timestamps) reproducible per request.
+- Add random delays: `@delay = 100ms..800ms` picks a new delay in the range for each request.
+- Add `@stream = 50ms` to send a body one line, or one server-sent event, at a time.
+- Add `@fault = reset` and `@fault = truncate`, optionally applied to a share of requests (`@fault = reset 25%`). Request events carry `response.fault`, and the admin UI shows a reset as `RST`. Routes report `stream` and `fault`, and a delay range as `"100ms..800ms"`.
+- Add `@template = auto|on|off` to choose whether placeholders are expanded in a body file, or to serve a body and headers exactly as written.
+- Add `@trim = off` to keep an inline body exactly as written, including its line endings and trailing blank lines.
+- **Breaking:** `@stream`, `@fault`, `@seed`, `@template` and `@trim` are now control variables, not `{{name}}` variables, and invalid values are load errors. A `|` inside a `{{$...}}` placeholder now starts a filter, and `{{#repeat` and `{{/repeat}}` are now block tags. A `< path` containing `{{...}}` is now a templated path rather than a literal file name.
+
 ## v0.4.0 - 2026-11-06
 
 Choose responses from the request itself: new header, query, path, body, JSON and form matchers, regex captures and request-body placeholders, wildcard paths, and a simple rule for which route answers. This release has breaking changes; see below.
