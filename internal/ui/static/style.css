@@ -579,6 +579,14 @@ td.request-cell {
 }
 
 .request-host { color: var(--muted); }
+.proxied-badge {
+    margin-left: 0.5em;
+    padding: 0 0.4em;
+    border: 1px solid var(--muted);
+    border-radius: 0.6em;
+    color: var(--muted);
+    font-size: 0.8em;
+}
 
 tbody tr[data-id] {
     cursor: pointer;

@@ -419,6 +419,7 @@ function eventMatchesFilter(http) {
         `${requestHost(http.request, multiPort)}${http.request.url}`,
         String(http.response.status),
         http.response.statusText || '',
+        http.match?.upstream ? 'proxied' : '',
     ].join(' ').toLowerCase();
     return hay.includes(filterText);
 }
@@ -494,6 +495,14 @@ function renderTable() {
         urlSpan.title = target;
         row.title = `${http.request.method} ${target} · ${http.response.time}`;
         c2.appendChild(urlSpan);
+        if (http.match?.upstream) {
+            const proxiedSpan = document.createElement('span');
+            proxiedSpan.className = 'proxied-badge';
+            proxiedSpan.textContent = 'proxied';
+            proxiedSpan.title = `Forwarded to ${http.match.upstream}`;
+            c2.appendChild(proxiedSpan);
+            row.title += ` · proxied to ${http.match.upstream}`;
+        }
     }
 
     const focusTarget = syncRowTabindex();
@@ -560,7 +569,7 @@ function renderInspector() {
     const route = match?.route;
     matchSummary.textContent = route
         ? `${route.name} · ${route.source}:${route.line} · revision ${match.revision} · ${event.response.time}`
-        : `No matching route · revision ${match?.revision ?? '?'} · ${event.response.time}`;
+        : `${match?.upstream ? `Proxied to ${match.upstream} · no` : 'No'} matching route · revision ${match?.revision ?? '?'} · ${event.response.time}`;
     mismatchPanel.hidden = !!route;
     mismatchDetails.replaceChildren();
     if (!route) {

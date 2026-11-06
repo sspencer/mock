@@ -42,6 +42,8 @@ type MatchInfo struct {
 	Route      *RouteInfo      `json:"route,omitempty"`
 	Revision   uint64          `json:"revision"`
 	Candidates []RouteMismatch `json:"candidates,omitempty"`
+	// Upstream is the base URL an unmatched request was forwarded to (--upstream).
+	Upstream string `json:"upstream,omitempty"`
 }
 
 type RouteMismatch struct {

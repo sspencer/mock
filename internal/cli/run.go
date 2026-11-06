@@ -38,7 +38,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	if len(cfg.Args) == 0 {
 		if f, ok := stdin.(*os.File); ok && stdinIsTerminal(f) {
-			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
+			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-u url] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
 		}
 	}
 	input, err := loadInput(cfg.Args, stdin)
@@ -63,6 +63,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		if watchCloser != nil {
 			_ = watchCloser.Close()
 		}
+	}
+	if input.StaticDir != "" && cfg.Upstream != nil {
+		return usageError("-u (--upstream) needs request files; a directory argument serves static files only")
 	}
 	if input.StaticDir != "" {
 		handler = newStaticFileHandler(input.StaticDir)
@@ -90,6 +93,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		input.Methods = methods
 		mockServer = mockhttp.New(input.Methods, logger)
+		mockServer.SetUpstream(cfg.Upstream)
 		handler = mockServer
 		if files := input.WatchFiles; len(files) > 0 {
 			var watcher *fileWatcher
@@ -145,6 +149,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		if adminHandler != nil && bindsAllInterfaces(cfg.Bind) {
 			fmt.Fprintln(stderr, "warning: bound to all interfaces; admin UI is unauthenticated and request logs may include Authorization headers and bodies")
+		}
+		if cfg.Upstream != nil {
+			fmt.Fprintf(stdout, "forwarding unmatched requests to %s\n", cfg.Upstream)
 		}
 		if watchCloser != nil {
 			fmt.Fprintln(stdout, "watching request files for changes")
