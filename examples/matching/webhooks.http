@@ -1,0 +1,74 @@
+### [401] Payment webhook without a valid signature
+# Combining matchers: check the signature header first, then route on the event type.
+# Run: curl -d '{"type":"payment.succeeded"}' localhost:8080/hooks/payments
+@header.X-Signature = !
+POST /hooks/payments
+Content-Type: application/json
+
+{"error": "missing signature"}
+
+### Payment succeeded
+# Run: curl -H "X-Signature: sha256=$(printf '%064d' 0)" -d '{"type":"payment.succeeded","data":{"id":"pay_1"}}' localhost:8080/hooks/payments
+@header.X-Signature = ~sha256=[0-9a-f]{64}
+@json.type = payment.succeeded
+POST /hooks/payments
+Content-Type: application/json
+
+{"received": "{{$json.data.id}}", "action": "fulfil order"}
+
+### Payment failed
+# A regex can accept several event types at once.
+# Run: curl -H "X-Signature: sha256=$(printf '%064d' 0)" -d '{"type":"payment.failed","data":{"id":"pay_2","reason":"card declined"}}' localhost:8080/hooks/payments
+@header.X-Signature = ~sha256=[0-9a-f]{64}
+@json.type = ~payment\.(failed|canceled)
+POST /hooks/payments
+Content-Type: application/json
+
+{"received": "{{$json.data.id}}", "action": "email customer", "reason": "{{$json.data.reason}}"}
+
+### Other signed payment events
+# Run: curl -H "X-Signature: sha256=$(printf '%064d' 0)" -d '{"type":"payout.created"}' localhost:8080/hooks/payments
+@header.X-Signature = ~sha256=[0-9a-f]{64}
+POST /hooks/payments
+Content-Type: application/json
+
+{"received": true, "action": "ignored"}
+
+### [400] Payment webhook with a malformed signature
+# Run: curl -H 'X-Signature: md5=abc' -d '{"type":"payment.succeeded"}' localhost:8080/hooks/payments
+POST /hooks/payments
+Content-Type: application/json
+
+{"error": "X-Signature must be sha256= followed by 64 hex digits"}
+
+### Plain-text ping
+# @body matches the whole raw body. In a @body regex "." also matches newlines,
+# so .* can span lines.
+# Run: curl --data-binary $'hello\nPING\nbye' localhost:8080/hooks/text
+@body = ~.*\bPING\b.*
+POST /hooks/text
+Content-Type: text/plain
+
+PONG
+
+### XML status report
+# @body works for any format; here a regex picks a value out of XML.
+# Run: curl -d '<report><status>healthy</status></report>' localhost:8080/hooks/text
+@body = ~.*<status>(?P<status>[a-z]+)</status>.*
+POST /hooks/text
+Content-Type: application/xml
+
+<ack status="{{$status}}"/>
+
+### [204] Empty keep-alive
+# "!" matches an empty or blank body.
+# Run: curl -i -X POST localhost:8080/hooks/text
+@body = !
+POST /hooks/text
+
+### [422] Unrecognized text
+# Run: curl -d 'ping' localhost:8080/hooks/text
+POST /hooks/text
+Content-Type: text/plain
+
+Send PING, an XML <status> report, or an empty body.

@@ -42,19 +42,22 @@ ok "build"
 [[ $("$work/mock" -version) == *smoke* ]] || fail "-version"
 ok "-version"
 
-"$work/mock" validate examples/*.http > "$work/validate.log" 2>&1 || fail "validate examples"
+"$work/mock" validate examples/*.http examples/matching/*.http > "$work/validate.log" 2>&1 || fail "validate examples"
 ok "validate examples"
 
-# --- single port: examples/user.http -------------------------------------
-"$work/mock" -p 18080 -a 18081 examples/user.http > "$work/user.log" 2>&1 &
+# --- single port: examples/user.http + static.http ------------------------
+"$work/mock" -p 18080 -a 18081 examples/user.http examples/static.http > "$work/user.log" 2>&1 &
 pids+=($!)
 wait_up http://127.0.0.1:18081/state
 
 check "GET /users (external file)"   200 '"Pasta Dough"' http://127.0.0.1:18080/users
 check "GET / (html)"                  200 '<'             http://127.0.0.1:18080/
-check "POST /users with email"        201 '"success": true' -X POST -d '{"email":"a@b.test"}' http://127.0.0.1:18080/users
+check "GET /users?role=admin (query)"  200 '"role": "admin"' 'http://127.0.0.1:18080/users?role=admin'
+check "POST /users echoes JSON"       201 '"name": "Ann"'  -X POST -d '{"name":"Ann","email":"a@b.test"}' http://127.0.0.1:18080/users
+check "POST /users taken email"       409 '"success": false' -X POST -d '{"name":"x","email":"pasta@dough.com"}' http://127.0.0.1:18080/users
 check "POST /users without email"     400 '"success": false' -X POST -d '{"name":"x"}' http://127.0.0.1:18080/users
-check "GET /users/:id"                200 ''              http://127.0.0.1:18080/users/7
+check "GET /users/:id"                200 '"id": 7'       http://127.0.0.1:18080/users/7
+check "GET /users/:id non-numeric"    400 ''              http://127.0.0.1:18080/users/me
 check "unmatched route"               404 ''              http://127.0.0.1:18080/nope
 check "admin UI page"                 200 'id="mock-config"' http://127.0.0.1:18081/
 check "admin /state"                  200 '"revision":1'  http://127.0.0.1:18081/state

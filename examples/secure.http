@@ -1,4 +1,5 @@
 ### Requires bearer token
+# Run: curl -H 'Authorization: Bearer secret' localhost:8080/secure
 @header.Authorization = Bearer secret
 GET /secure
 Content-Type: application/json
@@ -9,6 +10,7 @@ Content-Type: application/json
 }
 
 ### [401] No token at all
+# Run: curl localhost:8080/secure
 @header.Authorization = !
 GET /secure
 Content-Type: application/json
@@ -16,6 +18,9 @@ Content-Type: application/json
 {"ok":false,"error":"missing bearer token"}
 
 ### Wrong token falls through (no match)
+# Run: curl localhost:8080/public
+# A wrong token matches no /secure route and gets a 404:
+# Run: curl -i -H 'Authorization: Bearer wrong' localhost:8080/secure
 GET /public
 Content-Type: application/json
 

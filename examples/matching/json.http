@@ -1,0 +1,91 @@
+### [201] Express order
+# JSON field matching: dot-separated paths reach into nested objects.
+# Run: curl -d '{"customer":{"name":"Avery"},"shipping":{"method":"express"},"items":[{"sku":"TEA-001","qty":2}]}' localhost:8080/orders
+@json.shipping.method = express
+@json.items.0.sku = *
+POST /orders
+Content-Type: application/json
+
+{
+  "id": "{{$uuid}}",
+  "status": "rushed",
+  "customer": "{{$json.customer.name}}",
+  "eta": "{{$datetime iso8601 1 d}}"
+}
+
+### [201] VIP order
+# true, false and numbers compare as their JSON text, so "= true" matches the boolean.
+# Run: curl -d '{"customer":{"vip":true},"items":[{"sku":"TEA-002","qty":1}]}' localhost:8080/orders
+@json.customer.vip = true
+@json.items.0.sku = *
+POST /orders
+Content-Type: application/json
+
+{"id": "{{$uuid}}", "status": "priority", "discount": 0.1}
+
+### [201] Gift card order
+# A regex on an array element (numeric segments index arrays) with a named group.
+# Run: curl -d '{"items":[{"sku":"GIFT-50","qty":1}]}' localhost:8080/orders
+@json.items.0.sku = ~GIFT-(?P<amount>[0-9]+)
+POST /orders
+Content-Type: application/json
+
+{"id": "{{$uuid}}", "status": "emailed", "giftCardValue": {{$amount}}}
+
+### [201] Standard order
+# {{$json.items}} copies the whole array from the request into the response.
+# Run: curl -d '{"items":[{"sku":"TEA-003","qty":3}]}' localhost:8080/orders
+@json.items.0.sku = *
+POST /orders
+Content-Type: application/json
+
+{"id": "{{$uuid}}", "status": "received", "items": {{$json.items}}}
+
+### [422] Order without items
+# "!" matches a missing field, a null, or a blank body, but not invalid JSON.
+# Run: curl -d '{"customer":{"name":"Avery"}}' localhost:8080/orders
+@json.items = !
+POST /orders
+Content-Type: application/json
+
+{"error": "items are required"}
+
+### [400] Order that is not valid JSON
+# Invalid JSON matches no @json matcher, so it falls through to this catch-all.
+# Run: curl -d 'items=TEA-001' localhost:8080/orders
+POST /orders
+Content-Type: application/json
+
+{"error": "request body must be a JSON object"}
+
+### Order status by numeric id
+# @path.id restricts a path parameter; non-numeric ids fall through.
+# Run: curl localhost:8080/orders/1001
+@path.id = ~[0-9]+
+GET /orders/:id
+Content-Type: application/json
+
+{"id": {{$id}}, "status": "shipped"}
+
+### [404] Order status for anything else
+# Run: curl localhost:8080/orders/latest
+GET /orders/:id
+Content-Type: application/json
+
+{"error": "order ids are numeric"}
+
+### Update quantity, with a numeric check
+# Regexes see numbers as text: 3 and "3" both match, 3.5 does not.
+# Run: curl -X PATCH -d '{"qty":3}' localhost:8080/orders/1001
+@json.qty = ~[1-9][0-9]*
+PATCH /orders/:id
+Content-Type: application/json
+
+{"id": "{{$id}}", "qty": {{$json.qty}}}
+
+### [422] Update with a bad quantity
+# Run: curl -X PATCH -d '{"qty":3.5}' localhost:8080/orders/1001
+PATCH /orders/:id
+Content-Type: application/json
+
+{"error": "qty must be a positive whole number"}

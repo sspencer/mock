@@ -1,6 +1,7 @@
 @host = http://localhost:8080
 
 ### Get all users
+# Run: curl localhost:8080/users
 GET {{host}}/users
 Content-Type: application/json
 
@@ -18,6 +19,7 @@ Content-Type: application/json
 ]
 
 ### Get one user
+# Run: curl localhost:8080/users/42
 GET {{host}}/users/42
 Content-Type: application/json
 
@@ -28,6 +30,7 @@ Content-Type: application/json
 }
 
 ### Create a user
+# Run: curl -d '{"name":"Penny","email":"penny@example.com"}' localhost:8080/users
 POST {{host}}/users
 Content-Type: application/json
 
@@ -38,6 +41,7 @@ Content-Type: application/json
 }
 
 ### Generated values
+# Run: curl localhost:8080/generated
 GET {{host}}/generated
 Content-Type: application/json
 

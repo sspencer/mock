@@ -42,9 +42,10 @@ starting mock HTTP server on 127.0.0.1:8080
 admin UI at http://127.0.0.1:8081/
 watching request files for changes
 Available mock methods:
-  GET     /                              Return home page external html file
-  POST    /users                         Create random user
-  GET     /users/:id                     Return any user
+  GET     /users                         List admins
+  GET     /users                         List users
+  GET     /users/:id                     Get user 0
+  GET     /users/:id                     Get a user
   ...
 ```
 
@@ -55,10 +56,15 @@ and logs the error.
 
 ```sh
 curl http://localhost:8080/users/42
-curl -X POST -d '{"email":"a@example.test"}' http://localhost:8080/users  # 201
-curl -X POST -d '{}' http://localhost:8080/users                         # 400
-curl 'http://localhost:8080/names?type=cat'
+curl 'http://localhost:8080/users?role=admin'
+curl -X POST -d '{"name":"Ann","email":"ann@example.test"}' http://localhost:8080/users  # 201
+curl -X POST -d '{"name":"Ann"}' http://localhost:8080/users                            # 400
+curl -X PATCH -d '{"role":"editor"}' http://localhost:8080/users/42
 ```
+
+`examples/user.http` is a small users API: list, filter by role, get, create,
+replace, update, delete, and a password reset. `examples/static.http` serves
+HTML and text pages, from external files and inline.
 
 Open the request console at [http://localhost:8081/](http://localhost:8081/).
 The responsive UI shows each request and response with raw HTTP-style details,
@@ -73,11 +79,22 @@ To populate the console during UI development, start the server with
 ./examples/send-requests.sh -p 9000  # overrides MOCK_PORT
 ```
 
-It sends 15 requests across the example routes, including JSON request bodies,
-`201`/`400` responses chosen by body matching, and a `204` deletion. The `/delay` request
-is commented out in the script; uncomment it to try the delayed route.
+It sends 16 requests that walk through the users API: listing and filtering,
+fetching, creating (`201`, `409` and `400` chosen by body matching), replacing,
+updating, a password reset, and a `204` deletion.
 It prints status/timing summaries and leaves response bodies for inspection in
 the console. Rerun it whenever you need more traffic.
+
+To see request matching in action, serve the files in `examples/matching/`.
+Each one shows one area: `headers.http`, `json.http`, `forms.http`,
+`paths-and-queries.http` and `webhooks.http` (raw bodies plus combined
+matchers). Then run their request script, which prints the status and body
+each scenario gets:
+
+```sh
+mock examples/matching/*.http
+./examples/matching/requests.sh      # -p PORT or MOCK_PORT, like send-requests.sh
+```
 
 ![Web Interface](./docs/web.png)
 
@@ -551,7 +568,8 @@ In Docker, publish every port the request files use, such as
 Routes match on the listener port, HTTP method, path, any query parameters
 declared in the `.http` file, and any `@header.*`, `@query.*`, `@path.*`,
 `@body`, `@json.*` and `@form.*` matchers. The first route that matches, in load order,
-answers the request; see [Route order](#route-order).
+answers the request; see [Route order](#route-order). For worked examples of
+every matcher, see [`examples/matching/`](examples/matching/).
 
 ```http
 ### Cat names
@@ -883,7 +901,7 @@ This repository is intentionally small:
 - `restclient/` parses `.http` files.
 - `mockhttp/` matches requests, renders responses, and streams request-log events.
 - `internal/ui/` contains the request log UI (`static/`, embedded at build time), its admin handler, and its Node tests.
-- `examples/` contains request files you can run locally.
+- `examples/` contains request files you can run locally; `examples/matching/` shows off request matching.
 - `docs/recommendations.md` tracks improvement history.
 
 Before sending a change around:

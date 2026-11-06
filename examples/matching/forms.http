@@ -1,0 +1,79 @@
+### Token for client credentials
+# Form field matching: fields of an application/x-www-form-urlencoded body, in any order.
+# Run: curl -d 'grant_type=client_credentials&client_id=acme-web&scope=read' localhost:8080/auth/token
+@form.grant_type = client_credentials
+@form.client_id = ~(?P<client>[a-z]+)-[a-z]+
+POST /auth/token
+Content-Type: application/json
+Cache-Control: no-store
+
+{
+  "access_token": "{{$client}}.{{$uuid}}",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "{{$form.scope}}"
+}
+
+### Token for a password grant
+# Run: curl -d 'grant_type=password&username=avery&password=hunter2' localhost:8080/auth/token
+@form.grant_type = password
+@form.username = *
+@form.password = *
+POST /auth/token
+Content-Type: application/json
+Cache-Control: no-store
+
+{"access_token": "{{$uuid}}", "token_type": "Bearer", "user": "{{$form.username}}"}
+
+### Token refresh
+# Run: curl -d 'grant_type=refresh_token&refresh_token=rt_9f8e7d6c5b' localhost:8080/auth/token
+@form.grant_type = refresh_token
+@form.refresh_token = ~rt_[A-Za-z0-9]{8,}
+POST /auth/token
+Content-Type: application/json
+Cache-Control: no-store
+
+{"access_token": "{{$uuid}}", "token_type": "Bearer", "expires_in": 3600}
+
+### [400] Token request without a grant type
+# Run: curl -d 'client_id=acme-web' localhost:8080/auth/token
+@form.grant_type = !
+POST /auth/token
+Content-Type: application/json
+
+{"error": "invalid_request", "error_description": "grant_type is required"}
+
+### [400] Token request with an unsupported grant
+# Run: curl -d 'grant_type=device_code' localhost:8080/auth/token
+POST /auth/token
+Content-Type: application/json
+
+{"error": "unsupported_grant_type"}
+
+### [303] Contact form from a person
+# The hidden "website" field is a honeypot: people leave it empty, bots fill it in.
+# Run: curl -i -d 'name=Avery&email=avery@example.test&message=Hello&website=' localhost:8080/auth/contact
+@form.website = !
+@form.email = ~[^@\s]+@[^@\s]+
+@form.message = *
+POST /auth/contact
+Location: /thanks
+Content-Type: text/plain
+
+Thanks, {{$form.name}}! We will reply to {{$form.email}}.
+
+### [200] Contact form from a bot
+# Bots get a cheerful 200 so they do not retry; nothing is "sent".
+# Run: curl -d 'name=Bot&email=bot@spam.test&message=Buy&website=spam.test' localhost:8080/auth/contact
+@form.website = *
+POST /auth/contact
+Content-Type: text/plain
+
+Thanks!
+
+### [422] Contact form with missing fields
+# Run: curl -d 'name=Avery&message=Hello' localhost:8080/auth/contact
+POST /auth/contact
+Content-Type: text/plain
+
+Please fill in your email address and a message.

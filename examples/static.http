@@ -1,0 +1,76 @@
+### Home page from an external HTML file
+# Run: curl localhost:8080/
+GET /
+
+< index.html
+
+### Home page by its file name
+# Run: curl localhost:8080/index.html
+GET /index.html
+
+< index.html
+
+### Embedded HTML page
+# Run: curl localhost:8080/index2.html
+GET /index2.html
+Content-Type: text/html; charset=utf-8
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mock Docs 2</title>
+</head>
+<body>
+    <h1>Welcome to Mock Docs 2</h1>
+    <p>Hello, World 2!</p>
+</body>
+</html>
+
+### Text from an external file
+# Run: curl localhost:8080/chords
+GET /chords
+
+< chords.txt
+
+### Embedded plain text
+# Run: curl localhost:8080/chords2
+GET /chords2
+Content-Type: text/plain; charset=utf-8
+
+          --- Chord Tones ---
+
+Chord       Major       Minor       7th
+-------     -------     -------     ----
+C           C,E,G       C,Eb,G      Bb
+D           D,F#,A      D,F,A       C
+E           E,G#,B      E,G,B       D
+F           F,A,C       F,Ab,C      Eb
+G           G,B,D       G,Bb,D      F
+A           A,C#,E      A,C,E       G
+B           B,D#,F#     B,D,F#      A
+
+Major chord - made up of the 1,3, and 5 note in that key's scale
+Minor chord - flat the 3rd note of the scale
+Augmented chord - sharp the 5th note of the scale
+7th - flat the 7th note of the scale
+
+### Status page
+# Run: curl localhost:8080/status
+GET /status
+Content-Type: application/json
+
+{
+    "status": "ok",
+    "uptime": "13:34  up 8 days, 33 mins"
+}
+
+### Page after a delay
+# Run: curl -w '\n%{time_total}s\n' localhost:8080/delay
+@delay = 1500ms
+GET /delay
+Content-Type: application/json
+
+{
+  "status": "ok",
+  "message": "A bit delayed, right?"
+}

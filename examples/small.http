@@ -1,4 +1,5 @@
 ### Get a user
+# Run: curl -i 'localhost:8080/user/7?delay=2s'
 GET /user/:id
 Content-Type: application/json
 AB-RAY: 123abc456def789-LAX
@@ -14,6 +15,7 @@ X-Request-ID: request-{{$id}}
 }
 
 ### [201] Create user
+# Run: curl -X POST 'localhost:8080/user?delay=2s'
 POST /user
 Content-Type: application/json
 
