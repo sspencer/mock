@@ -1,8 +1,9 @@
 # Potential features
 
-Planning notes checked against the current codebase on 2026-10-29. These are
-ideas for future work, not committed release plans. Implemented items are kept
-separately below so they do not remain in the backlog.
+Ideas for future work, last checked against the codebase on 2026-11-06 (after
+v0.4.0). They are not committed release plans. Implemented items are kept
+separately below so they do not remain in the backlog; release history is in
+[CHANGELOG.md](../CHANGELOG.md).
 
 ## Suggested order
 
@@ -58,6 +59,10 @@ separately below so they do not remain in the backlog.
   every route but stops at the first load error, so fixing a file can reveal the
   next error. Collecting several parse errors per run would need the parser to
   recover after an error.
+- **Browser-level UI tests:** the admin UI's logic is unit tested in Node
+  (`internal/ui/tests/`), but layout, theming and real browser interaction
+  (splitters, keyboard navigation, mobile views) have never been checked in a
+  real browser. Headless browser tests or screenshot checks would cover that.
 - **Graphical fixture editing and proxy/recording:** lower-priority ideas.
 
 ## Implemented from the original ideas
@@ -131,5 +136,5 @@ Admin paths above (`/events`, `/clear`, `/state`, `/routes`) are served on the a
 - The traffic list omits the duration beneath each request; elapsed time remains
   available in the inspector.
 
-See [README.md](README.md) for supported behavior and controls, and
-[docs/recommendations.md](docs/recommendations.md) for improvement history.
+See [README.md](../README.md) for supported behavior and controls, and
+[CHANGELOG.md](../CHANGELOG.md) for release history.

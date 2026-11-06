@@ -902,7 +902,7 @@ This repository is intentionally small:
 - `mockhttp/` matches requests, renders responses, and streams request-log events.
 - `internal/ui/` contains the request log UI (`static/`, embedded at build time), its admin handler, and its Node tests.
 - `examples/` contains request files you can run locally; `examples/matching/` shows off request matching.
-- `docs/recommendations.md` tracks improvement history.
+- `docs/potential-features.md` collects ideas for future work, and `CHANGELOG.md` records release history.
 
 Before sending a change around:
 
