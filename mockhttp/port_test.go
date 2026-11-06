@@ -73,7 +73,7 @@ func TestMismatchExplainsWrongPort(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	_, _, match, ok := s.findMethod(requestOnPort("POST", "/token", 8080))
+	_, _, match, ok := s.findMethod(requestOnPort("POST", "/token", 8080), requestBody{})
 	if ok {
 		t.Fatal("findMethod() matched a route on another port")
 	}

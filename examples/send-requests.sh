@@ -18,8 +18,8 @@ Custom port:
   examples/send-requests.sh -p 9000
 
 Requires Bash and curl. Response bodies are hidden; inspect them in the UI.
-The two POST requests exercise the rotating 201/400 responses. Their order
-may differ if the server has already handled POST /users requests.
+The two POST requests exercise body matching: the first has an email and
+gets 201, the second has none and gets 400.
 HELP
 }
 
@@ -94,7 +94,6 @@ request POST /users --header 'Content-Type: application/json' --data '{
 }'
 request POST /users --header 'Content-Type: application/json' --data '{
   "name": "Sam Rivera",
-  "email": "sam@example.test",
   "roles": ["viewer"],
   "profile": {"city": "Portland", "notifications": false}
 }'

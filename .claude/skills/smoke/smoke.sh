@@ -52,8 +52,8 @@ wait_up http://127.0.0.1:18081/state
 
 check "GET /users (external file)"   200 '"Pasta Dough"' http://127.0.0.1:18080/users
 check "GET / (html)"                  200 '<'             http://127.0.0.1:18080/
-check "POST /users rotation 1"        201 '"success": true' -X POST http://127.0.0.1:18080/users
-check "POST /users rotation 2"        400 ''              -X POST http://127.0.0.1:18080/users
+check "POST /users with email"        201 '"success": true' -X POST -d '{"email":"a@b.test"}' http://127.0.0.1:18080/users
+check "POST /users without email"     400 '"success": false' -X POST -d '{"name":"x"}' http://127.0.0.1:18080/users
 check "GET /users/:id"                200 ''              http://127.0.0.1:18080/users/7
 check "unmatched route"               404 ''              http://127.0.0.1:18080/nope
 check "admin UI page"                 200 'id="mock-config"' http://127.0.0.1:18081/

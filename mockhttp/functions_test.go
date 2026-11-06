@@ -117,7 +117,7 @@ func TestPlaceholdersWithFunctionArguments(t *testing.T) {
 		Variables: map[string]string{"n": "7"},
 	}
 	// "when" is a request parameter: with no arguments it wins, with arguments the function runs.
-	values := map[string]string{"datetime": "from-request"}
+	values := templateValues{values: map[string]string{"datetime": "from-request"}}
 	got := expandBodyPlaceholders(`{"r":{{$randomInt 3 4}},"t":{{$timestamp 0 s}},"p":"{{$datetime}}","d":"{{$datetime iso8601}}","bad":"{{$randomInt x}}","n":{{n}}}`, method, values)
 	pattern := regexp.MustCompile(`^\{"r":3,"t":\d+,"p":"from-request","d":"\d{4}-\d\d-\d\dT[\d:.]+Z","bad":"\{\{\$randomInt x\}\}","n":7\}$`)
 	if !pattern.MatchString(got) {

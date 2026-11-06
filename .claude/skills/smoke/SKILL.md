@@ -18,7 +18,7 @@ What it does:
 - Serves `examples/user.http` on `18080`, with admin on `18081`. Checks:
   - an external file body
   - HTML
-  - 201/400 rotation
+  - 201/400 by JSON body matching
   - path params
   - a 404 for an unmatched route
   - the admin page (`id="mock-config"`)

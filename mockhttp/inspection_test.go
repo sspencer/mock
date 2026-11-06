@@ -10,16 +10,16 @@ import (
 	"github.com/sspencer/mock/restclient"
 )
 
-func TestInspectionCapturesMatchAndSequence(t *testing.T) {
+func TestInspectionCapturesFirstMatch(t *testing.T) {
 	methods, err := restclient.Parse("fixtures.http", strings.NewReader("### first\nGET /x/:id\n\none\n### second\nGET /x/:id\n\ntwo"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := New(methods, nil)
-	for position := 1; position <= 2; position++ {
+	for range 2 {
 		s.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/x/7", nil))
 		match := s.events[len(s.events)-1].Match
-		if match.Position != position || match.Total != 2 || match.Revision != 1 || match.Route.Source != "fixtures.http" || match.Route.Line < 1 {
+		if match.Route == nil || match.Route.Name != "first" || match.Revision != 1 || match.Route.Source != "fixtures.http" || match.Route.Line < 1 {
 			t.Fatalf("bad match: %+v", match)
 		}
 	}
@@ -48,30 +48,6 @@ func TestUnmatchedRequestExplainsConstraints(t *testing.T) {
 	}
 	if strings.Contains(reasons, "secret") {
 		t.Fatal("credential repeated in diagnostic")
-	}
-}
-
-func TestClearAndResetAreIndependent(t *testing.T) {
-	s := New(nil, nil)
-	s.publishRequest(RequestEvent{})
-	s.counters["sequence"] = 1
-	clear := httptest.NewRequest("POST", "/clear", nil)
-	clear.Header.Set("X-Requested-With", "xhr")
-	s.ServeClear(httptest.NewRecorder(), clear)
-	if len(s.events) != 0 || s.counters["sequence"] != 1 {
-		t.Fatal("clear changed sequence")
-	}
-	s.publishRequest(RequestEvent{})
-	reset := httptest.NewRequest("POST", "/reset", nil)
-	reset.Header.Set("X-Requested-With", "xhr")
-	s.ServeReset(httptest.NewRecorder(), reset)
-	if len(s.events) != 1 || len(s.counters) != 0 {
-		t.Fatal("reset changed traffic")
-	}
-	forbidden := httptest.NewRecorder()
-	s.ServeReset(forbidden, httptest.NewRequest("POST", "/reset", nil))
-	if forbidden.Code != 403 {
-		t.Fatal("reset lacks origin protection")
 	}
 }
 

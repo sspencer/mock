@@ -1,64 +1,295 @@
 package mockhttp
 
 import (
-	"fmt"
+	"bytes"
+	"encoding/json"
+	"errors"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/sspencer/mock/restclient"
 )
 
-type routeMatch struct {
-	method *restclient.Method
-	values map[string]string
-	index  int
+// requestBody is the part of a request body that body matchers see.
+// unavailable is set when the body was larger than maxMatchBodyBytes or could
+// not be read; then no body matcher matches.
+type requestBody struct {
+	data        []byte
+	unavailable bool
 }
 
-func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]string, MatchInfo, bool) {
-	// Keep matching and rotation selection in one configuration revision.
-	// The immutable selected method remains valid after SetMethods replaces
-	// the route slice, and old requests cannot advance a new revision's counters.
-	s.mu.Lock()
-	methods := s.methods
-	defer s.mu.Unlock()
+// requestFacts is what routes are matched against, computed once per request.
+// The JSON body is decoded lazily, on the first @json matcher.
+type requestFacts struct {
+	r         *http.Request
+	query     url.Values
+	queryErr  error
+	headers   http.Header
+	localPort int
+	body      requestBody
 
+	jsonDone bool
+	json     any
+	jsonErr  error
+
+	formDone bool
+	form     url.Values
+	formErr  error
+}
+
+func newRequestFacts(r *http.Request, body requestBody) *requestFacts {
 	query, err := url.ParseQuery(r.URL.RawQuery)
-	if err != nil {
-		return nil, nil, MatchInfo{Revision: s.config.Revision, Candidates: closestRoutes(methods, r)}, false
-	}
-	requestHeaders := requestEventHeaders(r)
-	localPort := requestLocalPort(r)
-	var matches []routeMatch
-	for i := range methods {
-		method := &methods[i]
-		if method.Method != r.Method || !portMatches(method.Port, localPort) {
-			continue
-		}
-		pattern := (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath()
-		values, ok := matchPath(pattern, r.URL.EscapedPath())
-		if !ok || !queryMatches(method.Query, query) {
-			continue
-		}
-		if !headerMatches(method.MatchHeaders, requestHeaders) {
-			continue
-		}
-		for name, queryValues := range query {
-			if _, exists := values[name]; !exists && len(queryValues) > 0 {
-				values[name] = queryValues[0]
+	return &requestFacts{r: r, query: query, queryErr: err, headers: requestEventHeaders(r), localPort: requestLocalPort(r), body: body}
+}
+
+// findMethod returns the first route, in load order, that matches r.
+func (s *Server) findMethod(r *http.Request, body requestBody) (*restclient.Method, templateValues, MatchInfo, bool) {
+	// Routes are immutable once installed; SetMethods swaps the slice, so a
+	// snapshot keeps one request within one configuration revision.
+	s.mu.Lock()
+	methods, revision := s.methods, s.config.Revision
+	s.mu.Unlock()
+
+	facts := newRequestFacts(r, body)
+	if facts.queryErr == nil {
+		for i := range methods {
+			method := &methods[i]
+			if values, ok := facts.match(method); ok {
+				route := describeRoute(*method, i, revision)
+				return method, templateValues{values: values, facts: facts}, MatchInfo{Route: &route, Revision: revision}, true
 			}
 		}
-		matches = append(matches, routeMatch{method: method, values: values, index: i})
 	}
-	if len(matches) == 0 {
-		return nil, nil, MatchInfo{Revision: s.config.Revision, Candidates: closestRoutes(methods, r)}, false
-	}
-
-	selected := s.nextMatch(matches)
-	route := describeRoute(*matches[selected].method, matches[selected].index, s.config.Revision)
-	return matches[selected].method, matches[selected].values, MatchInfo{Route: &route, Position: selected + 1, Total: len(matches), Revision: s.config.Revision}, true
+	return nil, templateValues{}, MatchInfo{Revision: revision, Candidates: closestRoutes(methods, facts)}, false
 }
+
+// match reports whether method accepts the request and returns the path and
+// query values available to its templates.
+func (f *requestFacts) match(method *restclient.Method) (map[string]string, bool) {
+	if method.Method != f.r.Method || !portMatches(method.Port, f.localPort) {
+		return nil, false
+	}
+	values, ok := matchPath(routePattern(*method), f.r.URL.EscapedPath())
+	if !ok || !queryMatches(method.Query, f.query) || !queryMatcherMatches(method.MatchQuery, f.query) {
+		return nil, false
+	}
+	if !pathMatcherMatches(method.MatchPath, values) || !headerMatches(method.MatchHeaders, f.headers) {
+		return nil, false
+	}
+	if method.MatchBody != "" && !f.bodyMatches(method.MatchBody) {
+		return nil, false
+	}
+	for path, expected := range method.MatchJSON {
+		if !f.jsonMatches(path, expected) {
+			return nil, false
+		}
+	}
+	for name, expectedValues := range method.MatchForm {
+		for _, expected := range expectedValues {
+			if !f.formMatches(name, expected) {
+				return nil, false
+			}
+		}
+	}
+	params := make(map[string]bool, len(values))
+	for name := range values {
+		params[name] = true
+	}
+	for name, value := range f.captures(method) {
+		if !params[name] {
+			values[name] = value
+		}
+	}
+	for name, queryValues := range f.query {
+		if _, exists := values[name]; !exists && len(queryValues) > 0 {
+			values[name] = queryValues[0]
+		}
+	}
+	return values, true
+}
+
+// captures collects named regexp groups from a matched route's matchers.
+// Later matchers win when two groups share a name: path, query, headers,
+// body, JSON fields, then form fields, each in name order.
+func (f *requestFacts) captures(method *restclient.Method) map[string]string {
+	out := make(map[string]string)
+	add := func(m restclient.Matcher, values []string) {
+		for name, value := range m.Captures(values) {
+			out[name] = value
+		}
+	}
+	pathValues, _ := matchPath(routePattern(*method), f.r.URL.EscapedPath())
+	for _, name := range slices.Sorted(maps.Keys(method.MatchPath)) {
+		add(restclient.MustMatcher(method.MatchPath[name]), []string{pathValues[name]})
+	}
+	for _, name := range slices.Sorted(maps.Keys(method.MatchQuery)) {
+		for _, raw := range method.MatchQuery[name] {
+			add(restclient.MustMatcher(raw), f.query[name])
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(method.MatchHeaders)) {
+		for _, raw := range method.MatchHeaders[name] {
+			add(restclient.MustMatcher(raw), f.headers.Values(name))
+		}
+	}
+	if method.MatchBody != "" {
+		add(restclient.MustBodyMatcher(method.MatchBody), f.bodyValues())
+	}
+	for _, path := range slices.Sorted(maps.Keys(method.MatchJSON)) {
+		values, _ := f.jsonValues(path)
+		add(restclient.MustMatcher(method.MatchJSON[path]), values)
+	}
+	for _, name := range slices.Sorted(maps.Keys(method.MatchForm)) {
+		values, _ := f.formValues(name)
+		for _, raw := range method.MatchForm[name] {
+			add(restclient.MustMatcher(raw), values)
+		}
+	}
+	return out
+}
+
+func (f *requestFacts) formMatches(name, expected string) bool {
+	values, err := f.formValues(name)
+	return err == nil && restclient.MustMatcher(expected).Match(values)
+}
+
+// formValues returns a field of a URL-encoded body. A blank body has no
+// fields; a body that does not parse is an error, and then no @form matcher
+// matches.
+func (f *requestFacts) formValues(name string) ([]string, error) {
+	if f.body.unavailable {
+		return nil, errBodyUnavailable
+	}
+	if !f.formDone {
+		f.formDone = true
+		f.form, f.formErr = url.Values{}, nil
+		if text := strings.TrimSpace(string(f.body.data)); text != "" {
+			if form, err := url.ParseQuery(text); err != nil {
+				f.formErr = errBodyNotForm
+			} else {
+				f.form = form
+			}
+		}
+	}
+	if f.formErr != nil {
+		return nil, f.formErr
+	}
+	return f.form[name], nil
+}
+
+// lookup resolves a {{$name}} placeholder: path, capture and query values
+// first, then $json.field.path and $form.name from the request body.
+func (v templateValues) lookup(key string) (string, bool) {
+	if value, ok := v.values[key]; ok {
+		return value, true
+	}
+	if v.facts == nil {
+		return "", false
+	}
+	var values []string
+	if path, ok := strings.CutPrefix(key, "json."); ok && path != "" {
+		values, _ = v.facts.jsonValues(path)
+	} else if name, ok := strings.CutPrefix(key, "form."); ok && name != "" {
+		values, _ = v.facts.formValues(name)
+	}
+	if len(values) == 0 {
+		return "", false
+	}
+	return values[0], true
+}
+
+// templateValues are the request values a response template can reference.
+type templateValues struct {
+	values map[string]string
+	facts  *requestFacts
+}
+
+func routePattern(method restclient.Method) string {
+	return (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath()
+}
+
+func (f *requestFacts) bodyMatches(expected string) bool {
+	if f.body.unavailable {
+		return false
+	}
+	return restclient.MustBodyMatcher(expected).Match(f.bodyValues())
+}
+
+// bodyValues is the body as matcher values: none when it is empty.
+func (f *requestFacts) bodyValues() []string {
+	if len(f.body.data) == 0 {
+		return nil
+	}
+	return []string{string(f.body.data)}
+}
+
+func (f *requestFacts) jsonMatches(path, expected string) bool {
+	values, err := f.jsonValues(path)
+	return err == nil && restclient.MustMatcher(expected).Match(values)
+}
+
+// jsonValues looks up a dot-separated field path in the JSON body. Numeric
+// segments index arrays. A missing field or null is no value; strings are
+// their text; other values are compact JSON. A blank body has no fields; any
+// other body that is not JSON is an error, and then no @json matcher matches.
+func (f *requestFacts) jsonValues(path string) ([]string, error) {
+	if f.body.unavailable {
+		return nil, errBodyUnavailable
+	}
+	if !f.jsonDone {
+		f.jsonDone = true
+		if len(bytes.TrimSpace(f.body.data)) > 0 {
+			decoder := json.NewDecoder(bytes.NewReader(f.body.data))
+			decoder.UseNumber()
+			if err := decoder.Decode(&f.json); err != nil {
+				f.jsonErr = errBodyNotJSON
+			} else if decoder.More() {
+				f.jsonErr = errBodyNotJSON
+			}
+		}
+	}
+	if f.jsonErr != nil {
+		return nil, f.jsonErr
+	}
+	value := f.json
+	for _, segment := range strings.Split(path, ".") {
+		switch node := value.(type) {
+		case map[string]any:
+			value = node[segment]
+		case []any:
+			index, err := strconv.Atoi(segment)
+			if err != nil || index < 0 || index >= len(node) {
+				return nil, nil
+			}
+			value = node[index]
+		default:
+			return nil, nil
+		}
+	}
+	switch value := value.(type) {
+	case nil:
+		return nil, nil
+	case string:
+		return []string{value}, nil
+	default:
+		text, err := json.Marshal(value)
+		if err != nil {
+			return nil, nil
+		}
+		return []string{string(text)}, nil
+	}
+}
+
+var (
+	errBodyUnavailable = errors.New("request body is larger than 1 MiB or could not be read")
+	errBodyNotJSON     = errors.New("request body is not valid JSON")
+	errBodyNotForm     = errors.New("request body is not valid URL-encoded form data")
+)
 
 // requestLocalPort returns the port of the listener that accepted r, or 0 when
 // it is unknown (as for requests built in tests without a connection).
@@ -76,36 +307,32 @@ func portMatches(port, localPort int) bool {
 	return port == 0 || localPort == 0 || port == localPort
 }
 
-func (s *Server) nextMatch(matches []routeMatch) int {
-	count := len(matches)
-	if count == 1 {
-		return 0
-	}
-	key := rotationKey(matches)
-	selected := s.counters[key] % count
-	s.counters[key] = (selected + 1) % count
-	return selected
-}
-
-func rotationKey(matches []routeMatch) string {
-	parts := make([]string, 0, len(matches))
-	for _, m := range matches {
-		parts = append(parts, fmt.Sprintf("%p", m.method))
-	}
-	return strings.Join(parts, "|")
-}
-
 func matchPath(pattern string, requestPath string) (map[string]string, bool) {
 	if strings.HasSuffix(pattern, "/") && strings.TrimSuffix(requestPath, "index.html") == pattern {
 		requestPath = pattern
 	}
 	patternParts := splitPath(pattern)
 	requestParts := splitPath(requestPath)
+	values := make(map[string]string)
+	// A trailing * or *name segment matches the rest of the path, including
+	// nothing; *name captures it, unescaped.
+	if last := len(patternParts) - 1; last >= 0 && strings.HasPrefix(patternParts[last], "*") {
+		if len(requestParts) < last {
+			return nil, false
+		}
+		if name := patternParts[last][1:]; name != "" {
+			rest, err := url.PathUnescape(strings.Join(requestParts[last:], "/"))
+			if err != nil {
+				return nil, false
+			}
+			values[name] = rest
+		}
+		patternParts, requestParts = patternParts[:last], requestParts[:last]
+	}
 	if len(patternParts) != len(requestParts) {
 		return nil, false
 	}
 
-	values := make(map[string]string)
 	for i := range patternParts {
 		if key, ok := strings.CutPrefix(patternParts[i], ":"); ok {
 			if key == "" {
@@ -150,22 +377,14 @@ func queryMatches(expected url.Values, actual url.Values) bool {
 	return true
 }
 
-// headerMatches requires every expected header name to be present with a matching
-// value. Expected value "*" matches any non-empty request header value.
+// headerMatches requires every expected header matcher to accept the request's
+// values for that header: an exact value, "*" (present and non-blank), "!"
+// (missing or blank), or "~pattern" (a full-value regular expression).
 func headerMatches(expected http.Header, actual http.Header) bool {
 	for name, expectedValues := range expected {
 		actualValues := actual.Values(name)
-		if len(actualValues) == 0 {
-			return false
-		}
 		for _, expectedValue := range expectedValues {
-			if expectedValue == "*" {
-				if strings.TrimSpace(actualValues[0]) == "" {
-					return false
-				}
-				continue
-			}
-			if !headerValuePresent(actualValues, expectedValue) {
+			if !restclient.MustMatcher(expectedValue).Match(actualValues) {
 				return false
 			}
 		}
@@ -173,11 +392,25 @@ func headerMatches(expected http.Header, actual http.Header) bool {
 	return true
 }
 
-func headerValuePresent(actual []string, want string) bool {
-	for _, value := range actual {
-		if value == want {
-			return true
+// queryMatcherMatches applies @query.name matchers to the request query.
+func queryMatcherMatches(expected url.Values, actual url.Values) bool {
+	for name, expectedValues := range expected {
+		for _, expectedValue := range expectedValues {
+			if !restclient.MustMatcher(expectedValue).Match(actual[name]) {
+				return false
+			}
 		}
 	}
-	return false
+	return true
+}
+
+// pathMatcherMatches applies @path.name matchers to the decoded path parameters.
+func pathMatcherMatches(expected map[string]string, params map[string]string) bool {
+	for name, expectedValue := range expected {
+		value, ok := params[name]
+		if !ok || !restclient.MustMatcher(expectedValue).Match([]string{value}) {
+			return false
+		}
+	}
+	return true
 }

@@ -53,23 +53,104 @@ export function sampleParam(name) {
 
 // Builds a curl command for the mock listener that can be pasted into a shell.
 // `origin` is the scheme, host, and port the mock routes are served from.
+// Matcher values: "*" (present), "!" (absent), "~pattern" (regexp), else exact.
+// A sample request uses exact values as written and a placeholder otherwise;
+// a placeholder may not satisfy a regexp.
+const isSampleExact = value => value !== '*' && value !== '!' && !value.startsWith('~');
+
+// Builds a sample JSON body from @json matchers. Exact values are used as
+// written (JSON literals such as 42 or true stay unquoted); "*" and regexp
+// values become "example"; "!" fields are left out. Numeric path segments
+// make arrays. Returns '' when there is nothing to send or paths conflict.
+export function sampleJSONBody(matchJson) {
+    const entries = Object.entries(matchJson || {}).filter(([, value]) => value !== '!');
+    if (!entries.length) return '';
+    const literal = value => {
+        if (!isSampleExact(value)) return 'example';
+        try { return JSON.parse(value); } catch { return value; }
+    };
+    const isIndex = segment => /^(0|[1-9][0-9]*)$/.test(segment);
+    let root;
+    try {
+        for (const [path, value] of entries) {
+            const segments = path.split('.');
+            if (root === undefined) root = isIndex(segments[0]) ? [] : {};
+            let node = root;
+            segments.forEach((segment, i) => {
+                const last = i === segments.length - 1;
+                if (Array.isArray(node) !== isIndex(segment)) throw new Error('conflict');
+                if (last) { node[segment] = literal(value); return; }
+                const child = node[segment] ?? (isIndex(segments[i + 1]) ? [] : {});
+                if (typeof child !== 'object' || child === null) throw new Error('conflict');
+                node[segment] = child;
+                node = child;
+            });
+        }
+    } catch { return ''; }
+    // Sparse arrays from indexes like roles.1 serialize their holes as null.
+    return JSON.stringify(root);
+}
+
+// Builds a sample URL-encoded body from @form matchers, like the query string.
+export function sampleFormBody(matchForm) {
+    const form = new URLSearchParams();
+    for (const [name, values] of Object.entries(matchForm || {})) {
+        for (const value of values) {
+            if (value !== '!') form.append(name, isSampleExact(value) ? value : 'example');
+        }
+    }
+    return form.toString();
+}
+
 export function buildRouteCurl(route, origin) {
-    const path = String(route.path).replace(/(^|\/):([^/]+)/g, (_, slash, name) => slash + sampleParam(name));
-    const url = `${origin}${path}${route.query ? '?' + route.query : ''}`;
+    const matchPath = route.matchPath || {};
+    const path = String(route.path)
+        .replace(/(^|\/):([^/]+)/g, (_, slash, name) =>
+            slash + (name in matchPath && isSampleExact(matchPath[name]) ? encodeURIComponent(matchPath[name]) : sampleParam(name)))
+        // A trailing * or *name wildcard matches the rest of the path.
+        .replace(/(^|\/)\*([A-Za-z0-9_]*)$/, (_, slash, name) =>
+            slash + (name in matchPath && isSampleExact(matchPath[name]) ? matchPath[name].split('/').map(encodeURIComponent).join('/') : 'example'));
+    // Required @query.* parameters are appended to the declared query as written.
+    const extra = new URLSearchParams();
+    for (const [name, values] of Object.entries(route.matchQuery || {})) {
+        for (const value of values) {
+            if (value !== '!') extra.append(name, isSampleExact(value) ? value : sampleParam(name));
+        }
+    }
+    const queryText = [route.query, extra.toString()].filter(Boolean).join('&');
+    const url = `${origin}${path}${queryText ? '?' + queryText : ''}`;
     const parts = ['curl'];
     if (origin.startsWith('https:')) parts.push('--insecure');
     if (route.method === 'HEAD') parts.push('--head');
     else if (route.method !== 'GET') parts.push('--request', route.method);
     for (const [name, values] of Object.entries(route.matchHeaders || {})) {
-        for (const value of values) parts.push('--header', shellQuote(`${name}: ${value === '*' ? 'example' : value}`));
+        for (const value of values) {
+            if (value !== '!') parts.push('--header', shellQuote(`${name}: ${isSampleExact(value) ? value : 'example'}`));
+        }
     }
+    const json = sampleJSONBody(route.matchJson);
+    const form = sampleFormBody(route.matchForm);
+    const body = json || form || (route.matchBody && isSampleExact(route.matchBody) ? route.matchBody : '');
+    // curl sends --data-raw as application/x-www-form-urlencoded by default.
+    if (json && !Object.keys(route.matchHeaders || {}).some(name => name.toLowerCase() === 'content-type')) {
+        parts.push('--header', shellQuote('Content-Type: application/json'));
+    }
+    if (body) parts.push('--data-raw', shellQuote(body));
     parts.push(shellQuote(url));
     return parts.join(' ');
 }
 
 export function formatRoute(route, sampleCurl = '') {
     const responseHeaders = Object.entries(route.headers || {}).flatMap(([name, values]) => values.map(value => `${name}: ${value}`)).join('\n');
-    const matchHeaders = Object.entries(route.matchHeaders || {}).flatMap(([name, values]) => values.map(value => `${name}: ${value}`)).join('\n');
+    const describe = value => value === '!' ? '! (must be absent)' : value.startsWith('~') ? `${value} (regular expression)` : value;
+    const matchHeaders = Object.entries(route.matchHeaders || {}).flatMap(([name, values]) => values.map(value => `${name}: ${describe(value)}`)).join('\n');
+    const matchQuery = Object.entries(route.matchQuery || {}).flatMap(([name, values]) => values.map(value => `${name}: ${describe(value)}`)).join('\n');
+    const matchPath = Object.entries(route.matchPath || {}).map(([name, value]) => `:${name}: ${describe(value)}`).join('\n');
+    const matchBody = [
+        route.matchBody ? `body: ${describe(route.matchBody)}` : '',
+        ...Object.entries(route.matchJson || {}).map(([path, value]) => `json ${path}: ${describe(value)}`),
+        ...Object.entries(route.matchForm || {}).flatMap(([name, values]) => values.map(value => `form ${name}: ${describe(value)}`)),
+    ].filter(Boolean).join('\n');
     const variables = Object.entries(route.variables || {}).map(([key, value]) => `@${key} = ${value}`).join('\n');
     return [
         `${route.method} ${route.path}${route.query ? '?' + route.query : ''}`,
@@ -78,6 +159,9 @@ export function formatRoute(route, sampleCurl = '') {
         route.port ? `Port: ${route.port}` : '',
         `Response: ${route.status} · delay ${route.delay || '0s'}`,
         `Request header requirements\n${matchHeaders || '(none)'}`,
+        matchQuery ? `Query requirements\n${matchQuery}` : '',
+        matchPath ? `Path parameter requirements\n${matchPath}` : '',
+        matchBody ? `Body requirements\n${matchBody}` : '',
         `Response headers\n${responseHeaders || '(automatic)'}`,
         `Variables\n${variables || '(none)'}`,
         route.file ? `Body file: ${route.file}` : 'Inline response body',

@@ -59,13 +59,6 @@ func TestReloadErrorsReachDashboardState(t *testing.T) {
 	if state.Error != "" || state.Revision != 2 || state.LastSuccess == "" {
 		t.Fatalf("bad successful reload state: %+v", state)
 	}
-	reset := httptest.NewRequest("POST", "/reset", nil)
-	reset.Header.Set("X-Requested-With", "xhr")
-	response = httptest.NewRecorder()
-	handler.ServeHTTP(response, reset)
-	if response.Code != 204 {
-		t.Fatal("reset endpoint not mounted")
-	}
 }
 
 func TestReloadMockFilesUpdatesRoutesAndPrintsSummary(t *testing.T) {

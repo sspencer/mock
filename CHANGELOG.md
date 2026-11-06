@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Add request body placeholders. `{{$json.user.name}}` inserts a field of a JSON request body (objects and arrays as compact JSON) and `{{$form.username}}` a field of a form body, in response bodies and headers.
+- Add regex captures: named groups in any matcher regex, such as `@header.Authorization = ~Bearer (?P<token>.+)`, become `{{$token}}` placeholders. Path parameters win over captures, and captures over query parameters.
+- Add wildcard paths. A trailing `*` segment matches the rest of the path, including nothing, so `GET /api/*` placed last makes a fallback route. `*name` makes the rest available as `{{$name}}`, and `@path.name` can constrain it.
+- Add `@form.name` matchers for URL-encoded form bodies, with the usual matcher values. Unmatched-request diagnostics explain form mismatches, and route sample `curl` commands send a matching form body.
+- **Breaking:** variables named `form.*` are now matchers. A `*` path segment in a request target is now a wildcard; write `%2A` for a literal `*`.
+- Add body matchers. `@body` matches the whole request body (`.` in a `@body` regex also matches newlines), and `@json.field.path` matches a field of a JSON body, with numeric segments indexing arrays. Both take the usual matcher values: exact text, `*`, `!` or `~regex`. Body matchers see the first 1 MiB of a request. Unmatched-request diagnostics explain body and JSON mismatches, and route sample `curl` commands send a matching JSON or text body.
+- **Breaking:** remove response rotation. The first route in load order that matches a request now always answers it, so put specific routes before catch-alls. Use body, header, query or path matchers to return different responses. A route that an earlier route always beats now gets a load warning, and `mock validate -strict` fails on it.
+- **Breaking:** remove the `/reset` admin endpoint and the **Reset responses** button. Request events no longer include a response position (`match.position`, `match.total`).
+- **Breaking:** variables named `body` or `json.*` are now matchers instead of `{{name}}` variables.
+- Update the examples: `user.http` returns `201` or `400` depending on whether the posted JSON has an email, `delay.http` delays `/users/1` only with `?slow`, and `strategy.http` demonstrates route order and body matching.
+- Add absent and regex request matchers. `@header.Name = !` matches only when the header is missing or blank, and a `~regex` value matches a Go regular expression against the whole value. The new `@query.name` and `@path.name` matchers use the same values (`@path.*` allows exact text or `~regex`), so routes can tell numeric from non-numeric ids or a search from an empty search. An invalid regex is a load error. Unmatched-request diagnostics explain which matcher failed, and the admin UI lists query and path requirements.
+- **Breaking:** an `@header.*` value of exactly `!`, or one that starts with `~`, is now a matcher rather than literal text. Variables named `query.*` or `path.*` are now matchers instead of `{{name}}` variables.
 - Reorganize the source tree: `main.go` is now a thin entry point, the command lives in `internal/cli/`, and the admin UI (embedded files, handler, and Node tests) lives in `internal/ui/`. Install paths, flags, and build flags are unchanged.
 
 ## v0.3.1 - 2026-11-04

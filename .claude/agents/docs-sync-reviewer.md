@@ -26,7 +26,7 @@ For each behavior change, check the matching docs:
 | Flags, env vars, defaults, exit codes (`internal/cli/`: `config.go`, `run.go`, `validate.go`, `ports.go`) | README `## CLI` flag table, `### Validating request files`, Quick Start banner text, the `usage`/`validateUsage` strings |
 | Parser and dialect (`restclient/`) | README `## Request File Format`, `### Supported dialect`, `## Variables`, `## External response bodies`, and the load-error messages users will see |
 | Placeholders (`mockhttp/functions.go`, `render.go`) | README `## Placeholders`. Every function must be listed with the right arguments, and nothing removed may still be listed |
-| Matching, rotation, ports (`match.go`, `server.go`, `internal/cli/ports.go`) | README `## Matching`, `## Multiple Responses`, `## Multiple ports` |
+| Matching, route order, ports (`match.go`, `server.go`, `internal/cli/ports.go`) | README `## Matching`, `## Route order`, `## Multiple ports` |
 | Admin endpoints and UI (`inspection.go`, `details.go`, `events.go`, `internal/ui/`) | README `## Admin UI And API` endpoint table, `## Clients and safety` |
 | Reload (`internal/cli/watch.go`, `reload.go`) | README statements about hot reload and reload errors |
 | Dockerfile, Makefile, `.goreleaser.yaml` | README `## Install`, `## Building From Source`, `## Docker`, CONTRIBUTING |

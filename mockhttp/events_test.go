@@ -183,7 +183,6 @@ ok
 	}
 	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	server.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/users", nil))
-	server.counters["GET /users"] = 3
 
 	clear := httptest.NewRecorder()
 	server.ServeClear(clear, httptest.NewRequest(http.MethodPost, "/clear", strings.NewReader("")))
@@ -192,9 +191,6 @@ ok
 	}
 	if len(server.events) != 1 {
 		t.Fatalf("len(events) after rejected clear = %d, want 1", len(server.events))
-	}
-	if server.counters["GET /users"] != 3 {
-		t.Fatalf("counters reset by rejected clear: %#v", server.counters)
 	}
 }
 
@@ -209,7 +205,6 @@ ok
 	}
 	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	server.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/users", nil))
-	server.counters["GET /users"] = 3
 
 	xhr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/clear", nil)
@@ -221,12 +216,8 @@ ok
 	if len(server.events) != 0 {
 		t.Fatalf("len(events) after UI clear = %d, want 0", len(server.events))
 	}
-	if server.counters["GET /users"] != 3 {
-		t.Fatalf("clear unexpectedly reset counters: %#v", server.counters)
-	}
 
 	server.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/users", nil))
-	server.counters["GET /users"] = 1
 	jsonClear := httptest.NewRecorder()
 	jsonReq := httptest.NewRequest(http.MethodPost, "/clear", strings.NewReader("{}"))
 	jsonReq.Header.Set("Content-Type", "application/json")
@@ -234,8 +225,8 @@ ok
 	if jsonClear.Code != http.StatusNoContent {
 		t.Fatalf("JSON Content-Type status = %d, want %d", jsonClear.Code, http.StatusNoContent)
 	}
-	if len(server.events) != 0 || server.counters["GET /users"] != 1 {
-		t.Fatalf("JSON clear left events=%d counters=%#v", len(server.events), server.counters)
+	if len(server.events) != 0 {
+		t.Fatalf("JSON clear left events=%d", len(server.events))
 	}
 }
 

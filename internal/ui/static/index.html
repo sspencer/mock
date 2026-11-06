@@ -50,7 +50,7 @@
                         <input id="filterInput" class="filter-input" type="search" placeholder="Filter traffic" aria-label="Filter requests by method, path, or status" />
                         <span class="key-hint" aria-hidden="true">/</span>
                     </label>
-                    <button id="clearRequestsButton" class="clear-button danger-button" type="button" title="Clear traffic without changing response sequences">Clear log</button>
+                    <button id="clearRequestsButton" class="clear-button danger-button" type="button" title="Clear traffic in every connected tab">Clear log</button>
                 </div>
                 <p id="clearError" class="clear-error" role="alert" hidden></p>
             </div>
@@ -81,7 +81,6 @@
                         </div>
                     </div>
                     <div class="routes-panel-actions">
-                        <button id="resetResponsesButton" class="clear-button" type="button" title="Restart all response sequences without clearing traffic">Reset responses</button>
                         <button id="routesToggleButton" class="clear-button route-toggle-button" type="button" aria-expanded="true" aria-controls="routesList" aria-label="Hide configured routes">
                             <span class="button-icon collapse-icon" aria-hidden="true"></span><span id="routesToggleLabel" class="route-toggle-label">Hide</span>
                         </button>
@@ -179,8 +178,8 @@
                 <dd>Arrow keys move through the traffic log and load Request/Response details. Home and End jump to the first or last visible row. / focuses the filter.</dd>
             </div>
             <div>
-                <dt>Clear log / Reset responses</dt>
-                <dd>Clear log removes traffic across connected tabs without changing response sequences. Reset responses restarts sequences without deleting traffic.</dd>
+                <dt>Clear log</dt>
+                <dd>Clear log removes traffic across connected tabs.</dd>
             </div>
             <div>
                 <dt>Refresh</dt>
@@ -192,7 +191,7 @@
             </div>
             <div><dt>Resize panels</dt><dd>Drag a divider to resize adjacent panels. Focus a divider and use arrow keys (Shift for larger steps), Home or End. Double-click restores its default size. Sizes are remembered.</dd></div>
             <div><dt>Inspect &amp; copy</dt><dd>Pretty formats valid JSON; Raw preserves captured content. Copy body copies the captured text (or base64 for binary data). Copy cURL creates a shell-quoted command for complete text requests. Captured credentials are included.</dd></div>
-            <div><dt>Route diagnostics</dt><dd>Select a route to inspect its requirements and response template, plus a sample cURL command for the mock server. Copy cURL copies it; path parameters such as <code>:id</code> are filled with sample values. Request details identify the selected fixture and sequence position. Unmatched requests list nearby routes and failed constraints.</dd></div>
+            <div><dt>Route diagnostics</dt><dd>Select a route to inspect its requirements and response template, plus a sample cURL command for the mock server. Copy cURL copies it; path parameters such as <code>:id</code> are filled with sample values. Request details identify the route that answered (the first one that matched). Unmatched requests list nearby routes and failed constraints.</dd></div>
             <div><dt>Reload status</dt><dd>Failed reloads retain active routes and show an error banner only when needed. On narrow screens, use Back to traffic &amp; routes to return from the inspector.</dd></div>
         </dl>
     </div>

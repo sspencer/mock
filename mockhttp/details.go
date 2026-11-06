@@ -15,6 +15,10 @@ import (
 
 const maxLoggedBodyBytes = 64 * 1024
 
+// maxMatchBodyBytes is how much of a request body @body and @json matchers
+// see. Larger bodies match no body matcher.
+const maxMatchBodyBytes = 1024 * 1024
+
 var truncatedBodyMarker = fmt.Sprintf("[body truncated after %d bytes]", maxLoggedBodyBytes)
 
 type responseCapture struct {
@@ -118,11 +122,13 @@ type replayBody struct {
 	io.Closer
 }
 
-func readRequestBody(r *http.Request) loggedBody {
+// readRequestBody reads up to maxMatchBodyBytes of the request body for
+// matching and logging, and leaves r.Body readable from the start.
+func readRequestBody(r *http.Request) (loggedBody, requestBody) {
 	if r.Body == nil {
-		return loggedBody{}
+		return loggedBody{}, requestBody{}
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxLoggedBodyBytes+1))
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxMatchBodyBytes+1))
 	readError := ""
 	if err != nil {
 		readError = err.Error()
@@ -131,10 +137,11 @@ func readRequestBody(r *http.Request) loggedBody {
 		Reader: io.MultiReader(bytes.NewReader(body), r.Body),
 		Closer: r.Body,
 	}
+	match := requestBody{data: body, unavailable: err != nil || len(body) > maxMatchBodyBytes}
 	if len(body) <= maxLoggedBodyBytes {
-		return loggedBody{text: string(body), readError: readError}
+		return loggedBody{text: string(body), readError: readError}, match
 	}
-	return loggedBody{text: string(body[:maxLoggedBodyBytes]), truncated: true, readError: readError}
+	return loggedBody{text: string(body[:maxLoggedBodyBytes]), truncated: true, readError: readError}, match
 }
 
 func (s *Server) logRequest(r *http.Request, requestBody loggedBody, response *responseCapture, status int, methodName string, arrivedAt time.Time, elapsed time.Duration) {

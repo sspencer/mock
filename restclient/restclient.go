@@ -21,6 +21,10 @@ import (
 //
 // Headers on the Method are response headers. Use MatchHeaders (from
 // @header.Name = value variables) to require request headers when matching.
+// MatchQuery (@query.name), MatchPath (@path.name), MatchBody (@body) and
+// MatchJSON (@json.field.path) and MatchForm (@form.name) add further request
+// matchers. Matcher values
+// are kept as written; see ParseMatcher and ParseBodyMatcher.
 //
 // Target is the request target as written, with any {{name}} references
 // unexpanded. It may be a full URL such as "{{host}}/users", so the same file
@@ -48,6 +52,11 @@ type Method struct {
 	Variables     map[string]string
 	VariableLines map[string]int
 	MatchHeaders  http.Header
+	MatchQuery    url.Values
+	MatchPath     map[string]string
+	MatchBody     string
+	MatchJSON     map[string]string
+	MatchForm     url.Values
 	Headers       http.Header
 	Body          string
 	File          string
@@ -167,6 +176,10 @@ func Parse(source string, r io.Reader) ([]Method, error) {
 				Variables:     make(map[string]string),
 				VariableLines: make(map[string]int),
 				MatchHeaders:  make(http.Header),
+				MatchQuery:    make(url.Values),
+				MatchPath:     make(map[string]string),
+				MatchJSON:     make(map[string]string),
+				MatchForm:     make(url.Values),
 				Headers:       make(http.Header),
 				Source:        source,
 				Line:          lineNumber,
@@ -369,7 +382,7 @@ func parseSection(pending pendingSection, fileDefs []definition, source string) 
 
 	defs := scopeDefinitions(fileDefs, pending.directives.defs)
 	for _, def := range defs {
-		if _, isHeader := strings.CutPrefix(def.name, "header."); isHeader {
+		if isMatcherName(def.name) {
 			continue
 		}
 		method.Variables[def.name] = def.value
@@ -453,6 +466,12 @@ func parseSection(pending pendingSection, fileDefs []definition, source string) 
 	if err != nil {
 		return method, parseErrorf(source, lineAt(i), "section %q: invalid query: %v", method.Name, err)
 	}
+	if err := checkWildcard(method.EscapedPath); err != nil {
+		return method, parseErrorf(source, lineAt(i), "section %q: %v", method.Name, err)
+	}
+	if err := checkPathMatchers(&method, pending.directives.defs, source); err != nil {
+		return method, err
+	}
 	i++
 
 	for i < len(lines) {
@@ -504,9 +523,89 @@ func parseSection(pending pendingSection, fileDefs []definition, source string) 
 
 const fileVariableRemoved = `$file and @file are no longer supported; start the response body with "< path" instead (example: "< ./users.json")`
 
+// isMatcherName reports whether a variable name is a request matcher
+// (@header.Name, @query.name, @path.name, @body, @json.path or @form.name)
+// rather than a {{name}} variable.
+func isMatcherName(name string) bool {
+	if name == "body" {
+		return true
+	}
+	for _, prefix := range []string{"header.", "query.", "path.", "json.", "form."} {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// PathParams returns the parameter names in an escaped route path (as
+// Method.EscapedPath): :name segments and a trailing *name wildcard. A bare *
+// wildcard has no name. Escaped %3A and %2A segments are literal text.
+func PathParams(path string) []string {
+	var names []string
+	for _, part := range strings.Split(path, "/") {
+		if name, ok := strings.CutPrefix(part, ":"); ok {
+			names = append(names, name)
+		} else if name, ok := strings.CutPrefix(part, "*"); ok && name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+var wildcardNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// checkWildcard requires a * or *name wildcard to be the last path segment.
+func checkWildcard(path string) error {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	for i, part := range parts {
+		name, ok := strings.CutPrefix(part, "*")
+		if !ok {
+			continue
+		}
+		if i != len(parts)-1 {
+			return fmt.Errorf("wildcard %q must be the last path segment (example: \"/files/*path\")", part)
+		}
+		if name != "" && !wildcardNamePattern.MatchString(name) {
+			return fmt.Errorf("invalid wildcard name %q (use letters, digits and '_', starting with a letter or '_')", name)
+		}
+	}
+	return nil
+}
+
+// checkPathMatchers drops file-scoped @path.name matchers for sections whose
+// path has no :name parameter, and rejects section-scoped ones.
+func checkPathMatchers(method *Method, sectionDefs []definition, source string) error {
+	params := make(map[string]bool)
+	for _, name := range PathParams(method.EscapedPath) {
+		params[name] = true
+	}
+	for name := range method.MatchPath {
+		if params[name] {
+			continue
+		}
+		delete(method.MatchPath, name)
+		for _, def := range sectionDefs {
+			if def.name == "path."+name {
+				return parseErrorf(source, def.line,
+					"section %q: @path.%s has no matching :%s parameter in the request path %q", method.Name, name, name, method.Path)
+			}
+		}
+	}
+	return nil
+}
+
+// parseMatcherValue validates a matcher value and wraps errors with the line.
+func parseMatcherValue(method *Method, def definition, value, source string) error {
+	if _, err := ParseMatcher(value); err != nil {
+		return parseErrorf(source, def.line, "section %q: @%s: %v", method.Name, def.name, err)
+	}
+	return nil
+}
+
 // applyControlVariable interprets the variables the mock server itself
-// consumes: @delay, @port and @header.Name. Other variables are only
-// referenced as {{name}} placeholders.
+// consumes: @delay, @port and the @header.Name, @query.name and @path.name
+// matchers. Other variables are only referenced as {{name}} placeholders.
 func applyControlVariable(method *Method, def definition, source string) error {
 	value := Expand(def.value, method.Variables, nil)
 	if headerName, ok := strings.CutPrefix(def.name, "header."); ok {
@@ -517,7 +616,69 @@ func applyControlVariable(method *Method, def definition, source string) error {
 		if !ValidHeaderName(headerName) || !ValidHeaderValue(value) {
 			return parseErrorf(source, def.line, "invalid request header matcher %q", headerName)
 		}
+		if err := parseMatcherValue(method, def, value, source); err != nil {
+			return err
+		}
 		method.MatchHeaders.Add(headerName, value)
+		return nil
+	}
+	if name, ok := strings.CutPrefix(def.name, "query."); ok {
+		if name == "" {
+			return parseErrorf(source, def.line,
+				`section %q: @query. requires a parameter name (example: "@query.page = ~[0-9]+")`, method.Name)
+		}
+		if err := parseMatcherValue(method, def, value, source); err != nil {
+			return err
+		}
+		method.MatchQuery.Set(name, value)
+		return nil
+	}
+	if def.name == "body" {
+		if value == "" {
+			return parseErrorf(source, def.line,
+				`section %q: @body needs a value (use "!" to require an empty body, "*" for any body, or "~regex")`, method.Name)
+		}
+		if _, err := ParseBodyMatcher(value); err != nil {
+			return parseErrorf(source, def.line, "section %q: @body: %v", method.Name, err)
+		}
+		method.MatchBody = value
+		return nil
+	}
+	if path, ok := strings.CutPrefix(def.name, "json."); ok {
+		if path == "" || slices.Contains(strings.Split(path, "."), "") {
+			return parseErrorf(source, def.line,
+				`section %q: @%s needs a dot-separated JSON field path (example: "@json.user.name = alice")`, method.Name, def.name)
+		}
+		if err := parseMatcherValue(method, def, value, source); err != nil {
+			return err
+		}
+		method.MatchJSON[path] = value
+		return nil
+	}
+	if name, ok := strings.CutPrefix(def.name, "form."); ok {
+		if name == "" {
+			return parseErrorf(source, def.line,
+				`section %q: @form. requires a field name (example: "@form.grant_type = client_credentials")`, method.Name)
+		}
+		if err := parseMatcherValue(method, def, value, source); err != nil {
+			return err
+		}
+		method.MatchForm.Set(name, value)
+		return nil
+	}
+	if name, ok := strings.CutPrefix(def.name, "path."); ok {
+		if name == "" {
+			return parseErrorf(source, def.line,
+				`section %q: @path. requires a path parameter name (example: "@path.id = ~[0-9]+")`, method.Name)
+		}
+		if value == "*" || value == "!" {
+			return parseErrorf(source, def.line,
+				`section %q: @path.%s = %s is not supported; path parameters are always present (use "~pattern" or an exact value)`, method.Name, name, value)
+		}
+		if err := parseMatcherValue(method, def, value, source); err != nil {
+			return err
+		}
+		method.MatchPath[name] = value
 		return nil
 	}
 	switch def.name {

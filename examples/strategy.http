@@ -1,25 +1,61 @@
-### Duplicate response rotation
-GET /rotation
+### Admin login
+# The first route that matches a request answers it, so put specific routes
+# before general ones.
+@json.username = admin
+POST /login
 Content-Type: application/json
 
-{
-  "behavior": "duplicate method and URL responses rotate in file order"
-}
+{ "role": "admin" }
 
-### Default Strategy 1
-GET /default
+### Login with a password
+@json.username = *
+@json.password = *
+POST /login
 Content-Type: application/json
 
-{ "n":  1 }
+{ "role": "user" }
 
-### Default Strategy 2
-GET /default
+### [400] Anything else
+POST /login
 Content-Type: application/json
 
-{ "n":  2 }
+{ "error": "username and password are required" }
+
+### Plain-text body pattern
+@body = ~.*\bping\b.*
+POST /echo
+Content-Type: text/plain
+
+pong
+
+### Echo a JSON field and a regex capture
+@json.email = ~(?P<user>[^@]+)@.+
+POST /signup
+Content-Type: application/json
+
+{ "welcome": "{{$json.name}}", "user": "{{$user}}" }
+
+### OAuth token from a form body
+@form.grant_type = client_credentials
+POST /oauth/token
+Content-Type: application/json
+
+{ "access_token": "{{$uuid}}", "scope": "{{$form.scope}}" }
 
 ### [202] Status variant
 GET /status-variant
 Content-Type: application/json
 
 { "accepted": true }
+
+### Download any file
+GET /files/*path
+Content-Type: text/plain
+
+contents of {{$path}}
+
+### [404] Fallback for every other /api path
+GET /api/*
+Content-Type: application/json
+
+{ "error": "not_found" }

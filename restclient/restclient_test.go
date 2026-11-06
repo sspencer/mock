@@ -648,6 +648,100 @@ GET /users
 			want: []string{"test.http:2:", "@header. requires a header name"},
 		},
 		{
+			name: "invalid header regexp",
+			input: `### User
+@header.Authorization = ~Bearer (
+GET /users
+`,
+			want: []string{"test.http:2:", "@header.Authorization", "invalid regular expression"},
+		},
+		{
+			name: "empty query regexp",
+			input: `### User
+@query.page = ~
+GET /users
+`,
+			want: []string{"test.http:2:", "@query.page", "empty"},
+		},
+		{
+			name: "empty query matcher name",
+			input: `### User
+@query. = x
+GET /users
+`,
+			want: []string{"test.http:2:", "@query. requires a parameter name"},
+		},
+		{
+			name: "path matcher without parameter",
+			input: `### User
+@path.id = ~[0-9]+
+GET /users
+`,
+			want: []string{"test.http:2:", "@path.id has no matching :id parameter"},
+		},
+		{
+			name: "empty body matcher",
+			input: `### User
+@body =
+POST /users
+`,
+			want: []string{"test.http:2:", "@body needs a value"},
+		},
+		{
+			name: "invalid body regexp",
+			input: `### User
+@body = ~(
+POST /users
+`,
+			want: []string{"test.http:2:", "@body", "invalid regular expression"},
+		},
+		{
+			name: "empty json path",
+			input: `### User
+@json. = x
+POST /users
+`,
+			want: []string{"test.http:2:", "dot-separated JSON field path"},
+		},
+		{
+			name: "json path with empty segment",
+			input: `### User
+@json.user..name = x
+POST /users
+`,
+			want: []string{"test.http:2:", "@json.user..name"},
+		},
+		{
+			name: "wildcard not last",
+			input: `### Files
+GET /files/*path/meta
+`,
+			want: []string{"test.http:2:", `wildcard "*path" must be the last path segment`},
+		},
+		{
+			name: "invalid wildcard name",
+			input: `### Files
+GET /files/*a-b
+`,
+			want: []string{"test.http:2:", `invalid wildcard name "a-b"`},
+		},
+		{
+			name: "empty form matcher name",
+			input: `### Token
+@form. = x
+POST /token
+`,
+			want: []string{"test.http:2:", "@form. requires a field name"},
+		},
+		{
+			name: "absent path matcher",
+			input: `### User
+@path.id = !
+GET /users/:id
+`,
+			want: []string{"test.http:2:", "path parameters are always present"},
+		},
+		{
 			name: "status below final range",
 			input: `### [100] User
 GET /users

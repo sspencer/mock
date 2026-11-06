@@ -67,14 +67,14 @@ func TestTextClassificationChecksEntireBody(t *testing.T) {
 }
 func TestPlaceholderGrammarAndUnknownPreservation(t *testing.T) {
 	method := restclient.Method{Variables: map[string]string{"user-name": "Alice", "user.name": "Bob"}}
-	if got := expandPlaceholders("{{user-name}} {{user.name}} {{typo}} {{$typo}}", method, nil); got != "Alice Bob {{typo}} {{$typo}}" {
+	if got := expandPlaceholders("{{user-name}} {{user.name}} {{typo}} {{$typo}}", method, templateValues{}); got != "Alice Bob {{typo}} {{$typo}}" {
 		t.Fatal(got)
 	}
 }
 
 func TestJSONInterpolationEscapesUntrustedValues(t *testing.T) {
 	method := restclient.Method{Headers: http.Header{"Content-Type": []string{"application/json"}}, Body: `{"value":"{{$id}}","number":{{$number}}}`}
-	body, err := renderBody(method, map[string]string{"id": "quote\"\n\\slash", "number": "42"}, "", false)
+	body, err := renderBody(method, templateValues{values: map[string]string{"id": "quote\"\n\\slash", "number": "42"}}, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestResponseFileCannotEscapeThroughSymlink(t *testing.T) {
 	if !ok {
 		t.Fatal("expected lexical path to resolve")
 	}
-	if _, err := renderBody(method, nil, path, true); err == nil {
+	if _, err := renderBody(method, templateValues{}, path, true); err == nil {
 		t.Fatal("served file outside fixture root")
 	}
 }
@@ -110,7 +110,7 @@ func TestBinaryMIMEPreventsTextLikeFileExpansion(t *testing.T) {
 	want := "printable binary {{$name}}"
 	os.WriteFile(path, []byte(want), 0600)
 	method := restclient.Method{Source: filepath.Join(dir, "test.http"), File: "body.bin"}
-	body, err := renderBody(method, nil, path, true)
+	body, err := renderBody(method, templateValues{}, path, true)
 	if err != nil || string(body) != want {
 		t.Fatalf("binary changed: %q, %v", body, err)
 	}

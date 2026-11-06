@@ -55,7 +55,8 @@ and logs the error.
 
 ```sh
 curl http://localhost:8080/users/42
-curl -X POST http://localhost:8080/users
+curl -X POST -d '{"email":"a@example.test"}' http://localhost:8080/users  # 201
+curl -X POST -d '{}' http://localhost:8080/users                         # 400
 curl 'http://localhost:8080/names?type=cat'
 ```
 
@@ -73,7 +74,7 @@ To populate the console during UI development, start the server with
 ```
 
 It sends 15 requests across the example routes, including JSON request bodies,
-the rotating `201`/`400` responses, and a `204` deletion. The `/delay` request
+`201`/`400` responses chosen by body matching, and a `204` deletion. The `/delay` request
 is commented out in the script; uncomment it to try the delayed route.
 It prints status/timing summaries and leaves response bodies for inspection in
 the console. Rerun it whenever you need more traffic.
@@ -304,7 +305,7 @@ only digits, such as `### [beta] Users`, stay part of the name. The old
 | `@name = value` file and method variables | Environment files / `{{env}}` from IDE |
 | Request line `METHOD /path` | Full multi-step scripts |
 | Response headers after the request line | Separate request vs response documents |
-| `@header.Name = value` request header matchers | Body-content matchers |
+| `@header.Name`, `@query.name`, `@path.name`, `@body`, `@json.path`, `@form.name` request matchers (exact, `*`, `!`, `~regex`) | Multipart and XML body matchers |
 | `{{name}}`, `{{%name}}` and `{{$placeholder}}` in bodies and response headers | Request variables (`{{login.response.body.token}}`) |
 | `< path` external body files | Mixing inline text and `< path` in one body; imports of other `.http` files |
 
@@ -397,7 +398,12 @@ Variable names with a special meaning, which `mock` consumes itself:
 
 - `@delay`: response delay parsed with Go duration syntax, such as `250ms` or `2s`. Negative or invalid durations are load errors. Set at file scope, it is the default for every section.
 - `@port`: serve the section on this port instead of the default port (`-p`). Set at file scope, it applies to every section. See [Multiple ports](#multiple-ports).
-- `@header.Name`: require the incoming request to include that header. Use `*` as the value to accept any non-empty header. Set at file scope, it applies to every section; a method-scoped header of the same name replaces it.
+- `@header.Name`: require the incoming request header to match the value: exact text, `*` (any non-empty value), `!` (absent), or `~regex`. Set at file scope, it applies to every section; a method-scoped header of the same name replaces it. See [Header matching](#header-matching).
+- `@query.name`: require the query parameter to match the value, with the same value forms as `@header.*`. See [Query and path parameter matching](#query-and-path-parameter-matching).
+- `@path.name`: require the `:name` path parameter to match the value: exact text or `~regex`. Set at file scope, it applies only to sections whose path has `:name`.
+- `@body`: require the request body to match the value. See [Body matching](#body-matching).
+- `@json.field.path`: require a field of a JSON request body to match the value. See [Body matching](#body-matching).
+- `@form.name`: require a field of a URL-encoded form body to match the value. See [Body matching](#body-matching).
 
 Every other variable is only used through `{{name}}` references. `mock` warns
 at load time about variables that nothing references.
@@ -409,11 +415,20 @@ Response bodies **and response headers** can contain placeholders:
 - `{{name}}` inserts the value of the `@name` variable in scope.
 - `{{%name}}` inserts it percent-encoded (a space becomes `%20`, `&` becomes `%26`).
 - `{{$name}}` inserts a request or generated value. `mock` resolves it from:
-  - Path parameters, such as `:id` in `/users/:id`.
+  - Path parameters, such as `:id` in `/users/:id` or `*path` in `/files/*path`.
+  - Named groups in matcher regexes, such as `token` in
+    `@header.Authorization = ~Bearer (?P<token>.+)`.
   - Query parameters, such as `type` in `/names?type=cat`.
+  - Request body fields: `{{$json.user.name}}` reads a JSON body field (same
+    paths as [`@json.*`](#body-matching)) and `{{$form.username}}` reads a
+    URL-encoded form field.
   - Built-in generated values.
 
-Path parameters take precedence over query parameters with the same name.
+Earlier sources in that list win when names collide: path parameters beat
+regex groups, which beat query parameters. A missing body field leaves the
+placeholder literal. A JSON string field is inserted as its text, and other
+JSON values as compact JSON, so `"name":"{{$json.name}}"` copies a string and
+`"profile":{{$json.profile}}` copies a whole object.
 Variable and placeholder names may contain dots and hyphens after their first character.
 Unknown placeholders remain literal and produce load-time warnings; query
 parameters supplied only at request time can resolve those warnings at runtime.
@@ -534,7 +549,9 @@ In Docker, publish every port the request files use, such as
 ## Matching
 
 Routes match on the listener port, HTTP method, path, any query parameters
-declared in the `.http` file, and any `@header.*` matchers.
+declared in the `.http` file, and any `@header.*`, `@query.*`, `@path.*`,
+`@body`, `@json.*` and `@form.*` matchers. The first route that matches, in load order,
+answers the request; see [Route order](#route-order).
 
 ```http
 ### Cat names
@@ -556,6 +573,25 @@ Content-Type: application/json
 {"id":"{{$id}}"}
 ```
 
+A `*` as the last path segment matches the rest of the path, including
+nothing: `/api/*` matches `/api`, `/api/users` and `/api/users/7/posts`. Name it
+(`*path`) to use the rest as `{{$path}}`, unescaped. A wildcard anywhere but
+the end is a load error. Write `%2A` for a literal `*` segment. Because the first
+matching route wins, a wildcard route makes a fallback when it comes last:
+
+```http
+### Download a file
+GET /files/*path
+
+You asked for {{$path}}
+
+### [404] Unknown API path
+GET /api/*
+Content-Type: application/json
+
+{"error":"not_found"}
+```
+
 ### Header matching
 
 An `@header.Name = value` matcher requires the incoming request to carry that
@@ -572,29 +608,183 @@ Content-Type: application/json
 {"ok":true}
 ```
 
-## Multiple Responses
+### Matcher values
 
-If more than one response has the same method and URL (including across multiple
-input files, in load order), `mock` rotates through the matching responses.
-This is useful for retry paths and stateful client behavior without building a
-stateful fake server.
+`@header.*`, `@query.*`, `@path.*`, `@body`, `@json.*` and `@form.*` matchers share one value syntax:
+
+| Value | Matches when |
+|-------|--------------|
+| `text` | a value equals `text` exactly (case-sensitive) |
+| `*` | the value is present and not blank |
+| `!` | the value is absent or blank (the opposite of `*`) |
+| `~regex` | a value matches the Go regular expression `regex` in full |
+
+A regex must match the whole value; it is anchored at both ends, so
+`~[0-9]+` rejects `12a`. Write `~.*token.*` to match anywhere in the value. Start the
+pattern with `(?i)` for a case-insensitive match: `~(?i)bearer .+`.
+When a header or query parameter is repeated, exact and regex matchers accept
+any one of the values. An invalid or empty regex is a load error. `\\` in a
+variable value is an escaped backslash, so write `\\\\` for a literal backslash in
+a pattern; other escapes such as `\d` pass through unchanged. To match a value
+that literally is `*` or `!`, or starts with `~`, use a regex such as `~\*`.
+
+`!` lets one route handle requests without a header:
 
 ```http
-### [201] First create succeeds
+### Signed in
+@header.Authorization = ~Bearer [A-Za-z0-9._-]+
+GET /me
+Content-Type: application/json
+
+{"name":"alice"}
+
+### [401] Not signed in
+@header.Authorization = !
+GET /me
+Content-Type: application/json
+
+{"error":"unauthorized"}
+```
+
+A request with `Authorization: Basic abc` matches neither route and gets a
+`404`. The admin UI explains why.
+
+### Query and path parameter matching
+
+`@query.name` constrains a query parameter beyond the exact values written in
+the request target. `@path.name` constrains a `:name` path parameter or a `*name` wildcard. `*` and `!`
+make no sense for path parameters, so they are load errors there, and so is an
+`@path.name` in a section without `:name`.
+
+```http
+### Numeric user
+@path.id = ~[0-9]+
+GET /users/:id
+Content-Type: application/json
+
+{"id":{{$id}}}
+
+### [400] Bad user id
+GET /users/:id
+Content-Type: application/json
+
+{"error":"id must be numeric"}
+
+### Search results
+@query.q = *
+GET /search
+
+results for {{$q}}
+
+### Search form
+@query.q = !
+GET /search
+
+<form>...</form>
+```
+
+The bad-id route catches every id the numeric route above it did not take,
+because the first matching route wins.
+
+### Body matching
+
+`@body` matches the whole request body as text, `@json.field.path` matches
+one field of a JSON body, and `@form.name` matches a field of a URL-encoded
+form body. All three take the [matcher values](#matcher-values) above.
+
+```http
+### Admin login
+@json.user.name = admin
+POST /login
+Content-Type: application/json
+
+{"role":"admin"}
+
+### Login
+@json.user.name = *
+@json.user.password = *
+POST /login
+Content-Type: application/json
+
+{"role":"user"}
+
+### [400] Missing credentials
+POST /login
+Content-Type: application/json
+
+{"error":"name and password are required"}
+
+### Ping
+@body = ~.*\bping\b.*
+POST /echo
+
+pong
+```
+
+- **`@body`**: `*` means a non-blank body, `!` an empty or blank one. In a
+  `@body` regex, `.` also matches newlines, so `~.*ping.*` finds `ping` on any
+  line of the body. Exact text must equal the entire body, byte for byte.
+- **`@json.field.path`**: the path is dot-separated, and numeric segments index
+  arrays: `@json.items.0.sku` is the `sku` of the first item. A string field is
+  compared as its text. Numbers, `true`, `false`, objects and arrays are
+  compared as compact JSON text, so `@json.age = 42` and `@json.active = true`
+  work, and `@json.age = ~[0-9]+` accepts `42` and `"42"`. A missing field or
+  `null` counts as absent for `*` and `!`.
+- **`@form.name`**: matches a field of an `a=1&b=2` body, decoded, in any
+  order. A repeated field matches when any of its values does. Field names must
+  be valid variable names, so `user[name]` cannot be matched.
+- Bodies are parsed as JSON or form data whatever their `Content-Type`. A blank
+  body has no fields, so `@json.name = !` and `@form.name = !` match it. A body
+  that does not parse matches no `@json.*` (or `@form.*`) matcher, not even
+  `!`.
+- Body matchers see the first 1 MiB of a request. A larger body matches no
+  `@body`, `@json.*` or `@form.*` matcher. The admin log still captures 64 KiB per body.
+
+Matchers and body placeholders combine into an OAuth-style token endpoint:
+
+```http
+### Client credentials
+@form.grant_type = client_credentials
+@form.client_id = ~(?P<client>[a-z]+)-[0-9]+
+POST /oauth/token
+Content-Type: application/json
+
+{"access_token":"{{$client}}-{{$uuid}}","scope":"{{$form.scope}}"}
+
+### [400] Unsupported grant
+POST /oauth/token
+Content-Type: application/json
+
+{"error":"unsupported_grant_type"}
+```
+
+## Route order
+
+`mock` tries routes in load order: top to bottom within a file, and files in
+the order they are given. The first route that matches answers. Put specific
+routes before general ones, and finish with a catch-all if unmatched requests
+should get something other than a `404`.
+
+```http
+### [201] Create user
+@json.email = ~[^@\s]+@[^@\s]+
 POST /users
 Content-Type: application/json
 
 {"id":1}
 
-### [400] Second create fails
+### [400] Create user without an email
 POST /users
 Content-Type: application/json
 
-{"error":"duplicate user"}
+{"error":"a valid email is required"}
 ```
 
-Repeated `POST /users` requests return `201`, then `400`, then `201` again.
-Use **Reset responses** to restart rotation counters. **Clear log** only removes traffic.
+A route that can never answer gets a load-time warning, and `mock validate
+-strict` fails on it. That happens when an earlier route has the same method,
+port and path, and all of its matchers are also on the later route. Two
+identical routes are the common case. Earlier versions of `mock` rotated
+through such duplicates; they now always return the first.
 
 ## Admin UI And API
 
@@ -604,22 +794,26 @@ The UI is served at the root of the admin port (`-a`, default `8081`):
 |------|---------|
 | `/` | Request log UI |
 | `/events` | Server-sent events stream (with event `id` / `Last-Event-ID`) |
-| `/clear` | `POST` clears stored events without changing rotation counters |
-| `/reset` | `POST` resets response sequences without clearing traffic |
+| `/clear` | `POST` clears stored events |
 | `/state` | `GET` active revision, route count, last successful reload, and reload error |
-| `/routes` | `GET` route configuration, including source location, port, match headers, status, delay, and body preview |
+| `/routes` | `GET` route configuration, including source location, port, matchers, status, delay, and body preview |
 
 Selecting a route shows a sample `curl` command for that route's port (the
 default mock port when the route declares none), ready to paste
 into a shell (**Copy cURL** copies it). The host is the one you used to open the
 UI, path parameters get sample values (`:id` becomes `1`), and required request
-headers from `@header.*` are included (a `*` wildcard value becomes `example`).
+headers from `@header.*` and parameters from `@query.*` are included. `@json.*`
+matchers become a sample JSON body (sent with `Content-Type: application/json`),
+`@form.*` matchers a form body, and an exact `@body` value is sent as the body.
+Wildcards get `example`. A `*` or `~regex` value becomes
+a sample value (`example` for headers and JSON fields), which may not satisfy
+the regex, and `!` matchers are left out.
 
-UI features: theme toggle, filter, pause stream, independent clear/reset controls,
+UI features: theme toggle, filter, pause stream, clear log,
 HAR export, a Help dialog, and a routes panel that refreshes after hot-reload.
 When `mock` listens on more than one port, the request table shows each
 request's host and port, and routes are labeled with their port.
-Both administrative POST endpoints require an `X-Requested-With` header or a JSON
+The `/clear` POST endpoint requires an `X-Requested-With` header or a JSON
 `Content-Type`, and reject cross-origin and cross-site requests.
 
 ### Resizing and mobile navigation
@@ -640,8 +834,8 @@ On narrow screens, selecting traffic or a route opens the inspector; use
   complete text bodies. Incomplete or binary request bodies show an explanation
   instead of producing a misleading replay command. Copied credentials are included.
 - Matched requests show the fixture name, source file/line, configuration revision,
-  selected response position, and elapsed time. Unmatched requests show up to five
-  nearby routes with method, path, query, and header mismatch explanations.
+  and elapsed time. Unmatched requests show up to five
+  nearby routes with method, path, query, header, and body mismatch explanations.
 - Select a configured route to inspect its match requirements, response headers,
   variables, status, delay, and body template or file reference. File contents
   are not loaded into the route preview; large inline previews are truncated.
@@ -649,13 +843,13 @@ On narrow screens, selecting traffic or a route opens the inspector; use
   hidden during normal operation to leave more room for traffic and details.
 Pause freezes the table while buffering the latest 1,000 new requests. Resume
 shows that traffic; the status indicates how many older paused requests were
-omitted. The **Clear log** button clears server history across connected tabs
-without changing response rotation. Traffic arriving after the clear boundary remains.
+omitted. The **Clear log** button clears server history across connected tabs.
+Traffic arriving after the clear boundary remains.
 
 SSE cursors include a server session and sequence number. Slow subscribers
 reconnect to replay retained events; a history gap or restart emits a `reset`
-event before replay. Clear emits a `clear` event. Request events include the selected route,
-sequence position, and configuration revision (or mismatch candidates). History is limited to 1,000
+event before replay. Clear emits a `clear` event. Request events include the selected route
+and configuration revision (or mismatch candidates). History is limited to 1,000
 events; gaps are reported rather than silently hidden. Event bodies include
 separate byte counts, truncation metadata, and base64 encoding for binary data.
 
@@ -671,7 +865,7 @@ time is measured, so individual network timing phases remain unknown.
 client needs HTTPS. It is meant to be called by HTTP clients such as curl, test suites, and
 backend services, not by web pages in a browser, so it adds no CORS headers.
 `OPTIONS` requests are matched against routes like any other method. The admin
-UI rejects cross-origin clear and reset requests.
+UI rejects cross-origin clear requests.
 
 Binding to all interfaces (`-b 0.0.0.0`) prints a warning: the admin UI is
 unauthenticated and request logs may include `Authorization` headers and bodies.

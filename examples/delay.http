@@ -7,8 +7,9 @@ Content-Type: application/json
   "name": "No delay"
 }
 
-### Return a user immediately or
-@delay = 0s
+### Return a user after 1 second when ?slow is set
+@delay = 1000ms
+@query.slow = *
 GET /users/1
 Content-Type: application/json
 
@@ -18,8 +19,8 @@ Content-Type: application/json
   "delay": "{{delay}}"
 }
 
-### return a user after 1 second delay
-@delay = 1000ms
+### Return a user immediately otherwise
+@delay = 0s
 GET /users/1
 Content-Type: application/json
 

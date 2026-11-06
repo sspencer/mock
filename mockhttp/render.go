@@ -30,7 +30,7 @@ func statusAllowsBody(status int) bool {
 	return status != http.StatusNoContent && status != http.StatusNotModified
 }
 
-func responseHeaders(method restclient.Method, values map[string]string, filePath string) http.Header {
+func responseHeaders(method restclient.Method, values templateValues, filePath string) http.Header {
 	headers := method.Headers.Clone()
 	for name, headerValues := range headers {
 		for i, value := range headerValues {
@@ -47,7 +47,7 @@ func responseHeaders(method restclient.Method, values map[string]string, filePat
 	return headers
 }
 
-func renderBody(method restclient.Method, values map[string]string, filePath string, hasFile bool) ([]byte, error) {
+func renderBody(method restclient.Method, values templateValues, filePath string, hasFile bool) ([]byte, error) {
 	if method.Body == "" {
 		if hasFile {
 			body, err := readResponseFile(method)
@@ -66,13 +66,13 @@ func renderBody(method restclient.Method, values map[string]string, filePath str
 	return []byte(expandBodyPlaceholders(method.Body, method, values)), nil
 }
 
-func expandPlaceholders(input string, method restclient.Method, values map[string]string) string {
+func expandPlaceholders(input string, method restclient.Method, values templateValues) string {
 	return restclient.Expand(input, method.Variables, func(key string, args []string) (string, bool) {
 		if len(args) > 0 {
 			value, err := callFunction(key, args, time.Now())
 			return value, err == nil
 		}
-		if value, ok := values[key]; ok {
+		if value, ok := values.lookup(key); ok {
 			return value, true
 		}
 		if value, err := callFunction(key, nil, time.Now()); err == nil {
@@ -194,7 +194,7 @@ func readRooted(dir, name string) ([]byte, error) {
 
 // JSON string interpolation must escape request values without changing raw
 // numeric/boolean placeholders outside strings. Other body formats stay literal.
-func expandBodyPlaceholders(input string, method restclient.Method, values map[string]string) string {
+func expandBodyPlaceholders(input string, method restclient.Method, values templateValues) string {
 	contentType, _, _ := strings.Cut(method.Headers.Get("Content-Type"), ";")
 	contentType = strings.ToLower(strings.TrimSpace(contentType))
 	if contentType == "" {

@@ -1,0 +1,164 @@
+package restclient
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestMatcherMatch(t *testing.T) {
+	tests := []struct {
+		raw    string
+		values []string
+		want   bool
+	}{
+		{"secret", []string{"secret"}, true},
+		{"secret", []string{"other", "secret"}, true},
+		{"secret", []string{"Secret"}, false},
+		{"secret", nil, false},
+		{"*", []string{"x"}, true},
+		{"*", []string{"  "}, false},
+		{"*", nil, false},
+		{"!", nil, true},
+		{"!", []string{""}, true},
+		{"!", []string{"x"}, false},
+		{"~Bearer [a-z]+", []string{"Bearer abc"}, true},
+		{"~Bearer [a-z]+", []string{"Bearer abc123"}, false}, // anchored at both ends
+		{"~Bearer [a-z]+", []string{"xBearer abc"}, false},
+		{"~[0-9]+", []string{"x", "42"}, true},
+		{"~[0-9]+", nil, false},
+		{"~a|b", []string{"b"}, true}, // alternation is grouped before anchoring
+		{"~a|b", []string{"ab"}, false},
+	}
+	for _, tt := range tests {
+		m, err := ParseMatcher(tt.raw)
+		if err != nil {
+			t.Fatalf("ParseMatcher(%q) error = %v", tt.raw, err)
+		}
+		if got := m.Match(tt.values); got != tt.want {
+			t.Errorf("ParseMatcher(%q).Match(%q) = %v, want %v", tt.raw, tt.values, got, tt.want)
+		}
+	}
+}
+
+func TestMustMatcherInvalidRegexpNeverMatches(t *testing.T) {
+	if MustMatcher("~(").Match([]string{"("}) {
+		t.Fatal("invalid regexp matched")
+	}
+}
+
+func TestParseRequestMatchers(t *testing.T) {
+	input := `@path.id = ~[0-9]+
+@query.debug = !
+
+### Numeric user
+@header.Authorization = ~Bearer .+
+@query.page = ~[0-9]+
+GET /users/:id
+
+ok
+
+### Listing has no :id
+GET /users
+
+ok
+`
+	methods, err := Parse("test.http", strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	user, list := methods[0], methods[1]
+	if got := user.MatchHeaders.Get("Authorization"); got != "~Bearer .+" {
+		t.Fatalf("Authorization matcher = %q", got)
+	}
+	if got := user.MatchQuery.Get("page"); got != "~[0-9]+" {
+		t.Fatalf("page matcher = %q", got)
+	}
+	if got := user.MatchQuery.Get("debug"); got != "!" {
+		t.Fatalf("file-scoped debug matcher = %q", got)
+	}
+	if got := user.MatchPath["id"]; got != "~[0-9]+" {
+		t.Fatalf("id matcher = %q", got)
+	}
+	if len(list.MatchPath) != 0 {
+		t.Fatalf("file-scoped @path.id should not apply without :id, got %v", list.MatchPath)
+	}
+	for _, method := range methods {
+		for name := range method.Variables {
+			if isMatcherName(name) {
+				t.Fatalf("matcher %q stored as a variable", name)
+			}
+		}
+	}
+	if unused := UnusedVariables(methods); len(unused) != 0 {
+		t.Fatalf("matchers reported as unused variables: %v", unused)
+	}
+}
+
+func TestParseBodyMatcherDotMatchesNewline(t *testing.T) {
+	m, err := ParseBodyMatcher("~.*hello.*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Raw != "~.*hello.*" || !m.Match([]string{"a\nhello\nb"}) {
+		t.Fatalf("body matcher = %+v", m)
+	}
+	if MustMatcher("~.*hello.*").Match([]string{"a\nhello\nb"}) {
+		t.Fatal("header matcher should not let . match newlines")
+	}
+}
+
+func TestParseBodyAndJSONMatchers(t *testing.T) {
+	methods, err := Parse("test.http", strings.NewReader(`### Login
+@body = ~.*alice.*
+@json.user.roles.0 = admin
+POST /login
+
+ok
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := methods[0]
+	if m.MatchBody != "~.*alice.*" || m.MatchJSON["user.roles.0"] != "admin" {
+		t.Fatalf("MatchBody = %q, MatchJSON = %v", m.MatchBody, m.MatchJSON)
+	}
+	if _, ok := m.Variables["body"]; ok {
+		t.Fatal("@body stored as a variable")
+	}
+}
+
+func TestMatcherCaptures(t *testing.T) {
+	m := MustMatcher("~Bearer (?P<token>[a-z]+)(?P<rest>.*)")
+	got := m.Captures([]string{"Basic x", "Bearer abc123"})
+	if got["token"] != "abc" || got["rest"] != "123" {
+		t.Fatalf("Captures = %v", got)
+	}
+	if MustMatcher("~[a-z]+").Captures([]string{"abc"}) != nil || MustMatcher("abc").Captures([]string{"abc"}) != nil {
+		t.Fatal("captures without named groups")
+	}
+	if names := CaptureNames("~(?P<a>x)(y)(?P<b>z)"); len(names) != 2 || names[0] != "a" || names[1] != "b" {
+		t.Fatalf("CaptureNames = %v", names)
+	}
+}
+
+func TestParseWildcardAndForm(t *testing.T) {
+	methods, err := Parse("test.http", strings.NewReader(`### Files
+@path.path = ~.*\.txt
+@form.kind = text
+POST /files/*path
+
+ok
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if methods[0].MatchPath["path"] != `~.*\.txt` || methods[0].MatchForm.Get("kind") != "text" {
+		t.Fatalf("MatchPath = %v, MatchForm = %v", methods[0].MatchPath, methods[0].MatchForm)
+	}
+	if got := PathParams("/a/:id/b/*rest"); len(got) != 2 || got[0] != "id" || got[1] != "rest" {
+		t.Fatalf("PathParams = %v", got)
+	}
+	if got := PathParams("/a/%3Aid/%2Arest"); len(got) != 0 {
+		t.Fatalf("escaped segments are literal, got %v", got)
+	}
+}
