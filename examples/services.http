@@ -2,28 +2,33 @@
 @auth = http://localhost:9090
 
 ### List users
+# Run: curl localhost:8080/users
 GET {{users}}/users
 Content-Type: application/json
 
 [{"id": 42, "name": "Rusty"}]
 
 ### Health (users)
+# Run: curl localhost:8080/health
 GET {{users}}/health
 
 users ok
 
 ### Issue a token
+# Run: curl -X POST localhost:9090/token
 POST {{auth}}/token
 Content-Type: application/json
 
 {"token": "{{$uuid}}", "expiresIn": 3600}
 
 ### Health (auth)
+# Run: curl localhost:9090/health
 GET {{auth}}/health
 
 auth ok
 
 ### Metrics on a third port
+# Run: curl localhost:9100/metrics
 @port = 9100
 GET /metrics
 Content-Type: text/plain

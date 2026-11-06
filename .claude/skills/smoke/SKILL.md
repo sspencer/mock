@@ -14,12 +14,13 @@ Run the script from the repo root:
 What it does:
 
 - Builds to a temp dir with `-X main.version=smoke`.
-- Checks `-version` and runs `mock validate examples/*.http`.
-- Serves `examples/user.http` on `18080`, with admin on `18081`. Checks:
+- Checks `-version` and runs `mock validate examples/*.http examples/matching/*.http`.
+- Serves `examples/user.http` and `examples/static.http` on `18080`, with admin on `18081`. Checks:
   - an external file body
   - HTML
-  - 201/400 by JSON body matching
-  - path params
+  - a query matcher
+  - 201/409/400 by JSON body matching, with a JSON field echoed back
+  - path params, with a regex matcher
   - a 404 for an unmatched route
   - the admin page (`id="mock-config"`)
   - `/state` and `/routes`

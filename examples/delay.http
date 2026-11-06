@@ -1,4 +1,5 @@
 ### Return a user without delay
+# Run: curl localhost:8080/users/0
 GET /users/0
 Content-Type: application/json
 
@@ -8,6 +9,7 @@ Content-Type: application/json
 }
 
 ### Return a user after 1 second when ?slow is set
+# Run: curl -w '\n%{time_total}s\n' 'localhost:8080/users/1?slow=1'
 @delay = 1000ms
 @query.slow = *
 GET /users/1
@@ -20,6 +22,7 @@ Content-Type: application/json
 }
 
 ### Return a user immediately otherwise
+# Run: curl localhost:8080/users/1
 @delay = 0s
 GET /users/1
 Content-Type: application/json
@@ -31,6 +34,7 @@ Content-Type: application/json
 }
 
 ### Return a user after 2 second delay
+# Run: curl -w '\n%{time_total}s\n' localhost:8080/users/2
 @delay = 2s
 GET /users/2
 Content-Type: application/json

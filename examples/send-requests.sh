@@ -18,8 +18,9 @@ Custom port:
   examples/send-requests.sh -p 9000
 
 Requires Bash and curl. Response bodies are hidden; inspect them in the UI.
-The two POST requests exercise body matching: the first has an email and
-gets 201, the second has none and gets 400.
+The requests walk through the users API: listing, filtering by role,
+fetching, creating (201, 409 and 400), replacing, updating, and deleting.
+Several of them are chosen by matchers on the path, query or JSON body.
 HELP
 }
 
@@ -65,13 +66,15 @@ fi
 
 base_url="http://127.0.0.1:$port"
 request() {
-    local method=$1 path=$2
+    local method=$1 path=$2 method_args
     shift 2
+    # curl must be told a HEAD response has no body, or it waits for one.
+    if [[ $method == HEAD ]]; then method_args=(--head); else method_args=(--request "$method"); fi
     printf '%-7s %-25s' "$method" "$path"
     # HTTP errors are useful UI data; only transport failures stop the script.
     if ! curl --silent --show-error --connect-timeout 3 --max-time 15 \
         --output /dev/null --write-out 'HTTP %{http_code} (%{time_total}s)\n' \
-        --request "$method" --header 'X-Demo-Source: send-requests.sh' \
+        "${method_args[@]}" --header 'X-Demo-Source: send-requests.sh' \
         "$@" "$base_url$path"; then
         printf 'Request failed. Is mock running with examples/user.http on port %s?\n' "$port" >&2
         exit 1
@@ -79,34 +82,24 @@ request() {
 }
 
 printf 'Sending sample traffic to %s\n\n' "$base_url"
-request GET /status
-request GET /
-request GET /index.html
-request GET /index2.html
 request GET /users
+request GET '/users?role=admin'
 request GET /users/42
-request GET /users/7
+request GET /users/0
+request GET /users/me
+request HEAD /users/42
 request POST /users --header 'Content-Type: application/json' --data '{
   "name": "Alex Morgan",
   "email": "alex@example.test",
-  "roles": ["editor", "reviewer"],
   "profile": {"city": "Seattle", "notifications": true}
 }'
-request POST /users --header 'Content-Type: application/json' --data '{
-  "name": "Sam Rivera",
-  "roles": ["viewer"],
-  "profile": {"city": "Portland", "notifications": false}
-}'
-request PUT /users --header 'Content-Type: application/json' --data '{
-  "name": "Alex Morgan",
-  "email": "alex@example.test",
-  "roles": ["editor", "reviewer"],
-  "profile": {"city": "Seattle", "notifications": true}
-}'
-request GET '/names?type=cat'
-request GET '/names?type=dog'
-request DELETE /users/7
-request GET /chords
-request GET /chords2
-#request GET /delay
+request POST /users --header 'Content-Type: application/json' --data '{"name": "Pasta Dough", "email": "pasta@dough.com"}'
+request POST /users --header 'Content-Type: application/json' --data '{"name": "Sam Rivera"}'
+request PUT /users/6 --header 'Content-Type: application/json' --data '{"name": "Alex Morgan", "email": "alex.morgan@example.test"}'
+request PUT /users/6 --header 'Content-Type: application/json' --data '{"name": "Alex Morgan"}'
+request PATCH /users/6 --header 'Content-Type: application/json' --data '{"role": "editor"}'
+request PATCH /users/6 --header 'Content-Type: application/json' --data '{"role": "owner"}'
+request PATCH /users/6 --header 'Content-Type: application/json' --data '{"name": "Alexandra Morgan"}'
+request POST /users/6/password-reset
+request DELETE /users/6
 printf '\nDone. Open the admin UI address printed at mock startup (default http://127.0.0.1:8081/) to inspect the traffic.\n'

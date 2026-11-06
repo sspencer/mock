@@ -1,6 +1,7 @@
 ### Admin login
 # The first route that matches a request answers it, so put specific routes
 # before general ones.
+# Run: curl -d '{"username":"admin"}' localhost:8080/login
 @json.username = admin
 POST /login
 Content-Type: application/json
@@ -8,6 +9,7 @@ Content-Type: application/json
 { "role": "admin" }
 
 ### Login with a password
+# Run: curl -d '{"username":"sam","password":"pw"}' localhost:8080/login
 @json.username = *
 @json.password = *
 POST /login
@@ -16,12 +18,14 @@ Content-Type: application/json
 { "role": "user" }
 
 ### [400] Anything else
+# Run: curl -d '{"username":"sam"}' localhost:8080/login
 POST /login
 Content-Type: application/json
 
 { "error": "username and password are required" }
 
 ### Plain-text body pattern
+# Run: curl -d 'say ping now' localhost:8080/echo
 @body = ~.*\bping\b.*
 POST /echo
 Content-Type: text/plain
@@ -29,6 +33,7 @@ Content-Type: text/plain
 pong
 
 ### Echo a JSON field and a regex capture
+# Run: curl -d '{"name":"Ann","email":"ann@example.test"}' localhost:8080/signup
 @json.email = ~(?P<user>[^@]+)@.+
 POST /signup
 Content-Type: application/json
@@ -36,6 +41,7 @@ Content-Type: application/json
 { "welcome": "{{$json.name}}", "user": "{{$user}}" }
 
 ### OAuth token from a form body
+# Run: curl -d 'grant_type=client_credentials&scope=read' localhost:8080/oauth/token
 @form.grant_type = client_credentials
 POST /oauth/token
 Content-Type: application/json
@@ -43,18 +49,21 @@ Content-Type: application/json
 { "access_token": "{{$uuid}}", "scope": "{{$form.scope}}" }
 
 ### [202] Status variant
+# Run: curl -i localhost:8080/status-variant
 GET /status-variant
 Content-Type: application/json
 
 { "accepted": true }
 
 ### Download any file
+# Run: curl localhost:8080/files/docs/readme.txt
 GET /files/*path
 Content-Type: text/plain
 
 contents of {{$path}}
 
 ### [404] Fallback for every other /api path
+# Run: curl localhost:8080/api/anything/else
 GET /api/*
 Content-Type: application/json
 

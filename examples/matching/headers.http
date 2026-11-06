@@ -1,0 +1,96 @@
+### Profile for a bearer token
+# Header matching: a regex with a named group. The token is echoed back as {{$token}}.
+# Run: curl -H 'Authorization: Bearer abc123' localhost:8080/account/me
+@header.Authorization = ~Bearer (?P<token>[A-Za-z0-9._-]+)
+GET /account/me
+Content-Type: application/json
+
+{"id": 42, "name": "Avery", "token": "{{$token}}"}
+
+### [401] Profile without credentials
+# "!" means the header is missing or blank.
+# Run: curl -i localhost:8080/account/me
+@header.Authorization = !
+GET /account/me
+Content-Type: application/json
+WWW-Authenticate: Bearer realm="mock"
+
+{"error": "missing_credentials"}
+
+### [403] Profile with another auth scheme
+# Any other Authorization value (Basic, a malformed token, ...) lands here,
+# because the first matching route wins and the two routes above did not match.
+# Run: curl -H 'Authorization: Basic dXNlcjpwYXNz' localhost:8080/account/me
+GET /account/me
+Content-Type: application/json
+
+{"error": "bearer_token_required"}
+
+### Report as CSV
+# (?i) makes a regex case-insensitive. Accept headers often list several types.
+# Run: curl -H 'Accept: TEXT/CSV' localhost:8080/account/report
+@header.Accept = ~(?i).*text/csv.*
+GET /account/report
+Content-Type: text/csv
+
+month,orders,revenue
+2026-09,120,4310.50
+2026-10,134,4892.75
+
+### Report as JSON (default)
+# Run: curl localhost:8080/account/report
+GET /account/report
+Content-Type: application/json
+
+[{"month": "2026-09", "orders": 120}, {"month": "2026-10", "orders": 134}]
+
+### Settings, API version 2
+# Exact value match on a custom header.
+# Run: curl -H 'X-Api-Version: 2' localhost:8080/account/settings
+@header.X-Api-Version = 2
+GET /account/settings
+Content-Type: application/json
+
+{"version": 2, "theme": {"mode": "dark", "accent": "teal"}}
+
+### Settings, no version header (defaults to version 1)
+# A regex never matches a missing header, so absence needs its own "!" route.
+# Run: curl localhost:8080/account/settings
+@header.X-Api-Version = !
+GET /account/settings
+Content-Type: application/json
+
+{"version": 1, "theme": "dark"}
+
+### Settings, API version 1
+# Run: curl -H 'X-Api-Version: 1' localhost:8080/account/settings
+@header.X-Api-Version = 1
+GET /account/settings
+Content-Type: application/json
+
+{"version": 1, "theme": "dark"}
+
+### [400] Settings, unknown API version
+# Run: curl -H 'X-Api-Version: 9' localhost:8080/account/settings
+GET /account/settings
+Content-Type: application/json
+
+{"error": "unsupported_api_version"}
+
+### Usage for a tenant
+# The regex requires a well-formed tenant id and captures it for the response
+# body and a response header.
+# Run: curl -i -H 'X-Tenant: acme-eu' localhost:8080/account/usage
+@header.X-Tenant = ~(?P<tenant>[a-z][a-z0-9-]*)
+GET /account/usage
+Content-Type: application/json
+X-Served-Tenant: {{$tenant}}
+
+{"tenant": "{{$tenant}}", "requests": {{$randomInt 100 1000}}}
+
+### [400] Usage without a tenant
+# Run: curl localhost:8080/account/usage
+GET /account/usage
+Content-Type: application/json
+
+{"error": "X-Tenant header is required (lowercase letters, digits and dashes)"}

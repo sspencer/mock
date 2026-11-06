@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Rework `examples/user.http` into a complete users API: list with a role filter, get (with numeric-id and not-found cases), `HEAD`, create (`201`, `409` for a taken email, `400`), `PUT`, `PATCH` for role or name, `DELETE`, and a password reset. Move the HTML pages, chords, status and delay routes into a new `examples/static.http`, and drop the `/names` cat and dog routes (see `examples/matching/` for query matching). `examples/send-requests.sh` follows the new routes.
+- Add `examples/matching/`: `headers.http`, `json.http`, `forms.http`, `paths-and-queries.http` and `webhooks.http` demonstrate every matcher, regex captures, wildcards, body placeholders and route order. `examples/matching/requests.sh` sends a request for each scenario and prints the status and body it gets.
 - Add request body placeholders. `{{$json.user.name}}` inserts a field of a JSON request body (objects and arrays as compact JSON) and `{{$form.username}}` a field of a form body, in response bodies and headers.
 - Add regex captures: named groups in any matcher regex, such as `@header.Authorization = ~Bearer (?P<token>.+)`, become `{{$token}}` placeholders. Path parameters win over captures, and captures over query parameters.
 - Add wildcard paths. A trailing `*` segment matches the rest of the path, including nothing, so `GET /api/*` placed last makes a fallback route. `*name` makes the rest available as `{{$name}}`, and `@path.name` can constrain it.

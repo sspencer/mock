@@ -1,0 +1,86 @@
+### Product by numeric id
+# @path.name restricts a :name path parameter with a regex.
+# Run: curl localhost:8080/catalog/products/7
+@path.id = ~[0-9]+
+GET /catalog/products/:id
+Content-Type: application/json
+
+{"id": {{$id}}, "name": "Loose leaf green tea", "price": 12.5}
+
+### Product by slug
+# A named group captures part of the parameter: /catalog/products/green-tea-250g
+# Run: curl localhost:8080/catalog/products/green-tea-250g
+@path.id = ~(?P<slug>[a-z0-9-]+)-(?P<grams>[0-9]+)g
+GET /catalog/products/:id
+Content-Type: application/json
+
+{"slug": "{{$slug}}", "grams": {{$grams}}}
+
+### [404] Product that matches neither form
+# Run: curl localhost:8080/catalog/products/Green_Tea
+GET /catalog/products/:id
+Content-Type: application/json
+
+{"error": "unknown product id {{$id}}"}
+
+### Search results
+# "*" requires a non-blank query parameter; its value is {{$q}}.
+# Run: curl 'localhost:8080/catalog/search?q=green&page=2'
+@query.q = *
+@query.page = ~[1-9][0-9]*
+GET /catalog/search
+Content-Type: application/json
+
+{"query": "{{$q}}", "page": {{$page}}, "results": ["green tea", "white tea"]}
+
+### Search results, first page
+# Without a page parameter (or a bad one) the route above does not match.
+# Run: curl 'localhost:8080/catalog/search?q=green'
+@query.q = *
+@query.page = !
+GET /catalog/search
+Content-Type: application/json
+
+{"query": "{{$q}}", "page": 1, "results": ["green tea", "white tea"]}
+
+### Search page without a query
+# "!" matches a missing or empty parameter: /catalog/search and /catalog/search?q=
+# Run: curl localhost:8080/catalog/search
+@query.q = !
+GET /catalog/search
+Content-Type: text/html
+
+<form action="/catalog/search"><input name="q" placeholder="Search teas"></form>
+
+### [400] Search with a bad page number
+# Run: curl 'localhost:8080/catalog/search?q=green&page=zero'
+GET /catalog/search
+Content-Type: application/json
+
+{"error": "page must be a positive number"}
+
+### Product image
+# A trailing *name wildcard matches the rest of the path and exposes it as {{$file}}.
+# @path.file restricts it like any other path parameter.
+# Run: curl localhost:8080/catalog/images/teas/green/hero.webp
+@path.file = ~.*\.(png|jpe?g|webp)
+GET /catalog/images/*file
+Content-Type: text/plain
+Cache-Control: max-age=86400
+
+(image bytes for {{$file}})
+
+### [415] Image path that is not an image
+# Run: curl localhost:8080/catalog/images/teas/notes.txt
+GET /catalog/images/*file
+Content-Type: application/json
+
+{"error": "unsupported image type", "path": "{{$file}}"}
+
+### [404] Anything else under /catalog
+# A bare * wildcard placed last is a fallback for the whole prefix.
+# Run: curl localhost:8080/catalog/brands/acme
+GET /catalog/*
+Content-Type: application/json
+
+{"error": "not_found"}
