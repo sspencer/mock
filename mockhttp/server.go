@@ -1,11 +1,15 @@
 package mockhttp
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
+	mathrand "math/rand/v2"
+	"net"
 	"net/http"
 	"net/url"
 	"slices"
@@ -98,18 +102,33 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = controller.SetWriteDeadline(time.Now().Add(30 * time.Second))
-	filePath, hasFile := resolveFilePath(method)
 
 	status = method.Status
-	body, err := renderBody(*method, values, filePath, hasFile)
+	render := newRenderer(method, values)
+	file, hasFile, err := render.file()
+	var body []byte
+	var headers http.Header
+	if err == nil {
+		body, err = render.body(file, hasFile)
+	}
+	if err == nil {
+		headers, err = render.headers(file)
+	}
 	if err != nil {
-		s.logResponseRenderError(err)
-		http.Error(capture, "mock: failed to read response file", http.StatusInternalServerError)
+		switch {
+		case errors.Is(err, errNoResponseFile):
+			http.Error(capture, "mock: no response file for this request", http.StatusNotFound)
+		case errors.Is(err, errRenderedTooLarge):
+			s.logResponseRenderError(err)
+			http.Error(capture, "mock: rendered response is too large", http.StatusInternalServerError)
+		default:
+			s.logResponseRenderError(err)
+			http.Error(capture, "mock: failed to read response file", http.StatusInternalServerError)
+		}
 		s.logRequest(r, requestBody, capture, capture.statusCode(), method.Name, arrivedAt, time.Since(arrivedAt))
 		return
 	}
 
-	headers := responseHeaders(*method, values, filePath)
 	for name, headerValues := range headers {
 		for _, value := range headerValues {
 			if !restclient.ValidHeaderName(name) || !restclient.ValidHeaderValue(value) {
@@ -127,30 +146,131 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if capture.Header().Get("Date") == "" {
 		capture.Header().Set("Date", time.Now().UTC().Format(http.TimeFormat))
 	}
+	sendsBody := r.Method != http.MethodHead && len(body) > 0 && statusAllowsBody(status)
+	fault := chooseFault(method, sendsBody)
+	if fault == "reset" {
+		// Log first: the handler does not return normally after a reset.
+		capture.fault = fault
+		capture.headers = http.Header{}
+		s.logRequest(r, requestBody, capture, 0, method.Name, arrivedAt, time.Since(arrivedAt))
+		resetConnection(capture)
+		return
+	}
+	streaming := method.Stream > 0 && sendsBody
 	if statusAllowsBody(status) {
 		if capture.Header().Get("Content-Type") == "" && len(body) > 0 {
 			capture.Header().Set("Content-Type", http.DetectContentType(body))
 		}
 		capture.Header().Del("Transfer-Encoding")
-		capture.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		if streaming {
+			capture.Header().Del("Content-Length")
+		} else {
+			capture.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		}
 	} else {
 		capture.Header().Del("Content-Length")
 		capture.Header().Del("Transfer-Encoding")
 	}
+	if fault == "truncate" {
+		// Send half the body, then drop the connection; with Content-Length
+		// set to the full size the client sees a short body.
+		capture.fault = fault
+		body = body[:len(body)/2]
+	}
 	capture.WriteHeader(status)
-	if r.Method != http.MethodHead && len(body) > 0 && statusAllowsBody(status) {
+	switch {
+	case streaming:
+		s.stream(r.Context(), controller, capture, body, method)
+	case sendsBody:
 		_, _ = capture.Write(body)
 	}
 
 	s.logRequest(r, requestBody, capture, status, method.Name, arrivedAt, time.Since(arrivedAt))
+	if fault == "truncate" {
+		_ = controller.Flush()
+		panic(http.ErrAbortHandler)
+	}
+}
+
+// chooseFault picks the @fault to inject for this response, if any. A
+// truncate fault needs a body to cut short.
+func chooseFault(method *restclient.Method, sendsBody bool) string {
+	if method.Fault == "" || method.Fault == "truncate" && !sendsBody {
+		return ""
+	}
+	if method.FaultRate < 1 && mathrand.Float64() >= method.FaultRate {
+		return ""
+	}
+	return method.Fault
+}
+
+// resetConnection drops the client connection without a response. On TCP it
+// sends a reset (RST) rather than a clean close.
+func resetConnection(w http.ResponseWriter) {
+	conn, _, err := http.NewResponseController(w).Hijack()
+	if err != nil {
+		panic(http.ErrAbortHandler)
+	}
+	if tcp, ok := conn.(*net.TCPConn); ok {
+		_ = tcp.SetLinger(0)
+	}
+	_ = conn.Close()
+}
+
+// stream writes body one chunk at a time, pausing method.Stream between
+// chunks. Each write gets a fresh write deadline.
+func (s *Server) stream(ctx context.Context, controller *http.ResponseController, w http.ResponseWriter, body []byte, method *restclient.Method) {
+	sse := responseContentType(*method, "") == "text/event-stream" || strings.HasPrefix(strings.ToLower(w.Header().Get("Content-Type")), "text/event-stream")
+	for i, chunk := range streamChunks(body, sse) {
+		if i > 0 && !sleep(ctx, method.Stream) {
+			return
+		}
+		_ = controller.SetWriteDeadline(time.Now().Add(30 * time.Second))
+		if _, err := w.Write(chunk); err != nil {
+			return
+		}
+		if controller.Flush() != nil {
+			return
+		}
+	}
+}
+
+// streamChunks splits a body into lines, or into events (ending at a blank
+// line) for server-sent events. Line endings stay with their chunk.
+func streamChunks(body []byte, sse bool) [][]byte {
+	var chunks [][]byte
+	for len(body) > 0 {
+		end := len(body)
+		if sse {
+			if i := bytes.Index(body, []byte("\n\n")); i >= 0 {
+				end = i + 2
+			}
+			if i := bytes.Index(body, []byte("\r\n\r\n")); i >= 0 && i+4 < end {
+				end = i + 4
+			}
+		} else if i := bytes.IndexByte(body, '\n'); i >= 0 {
+			end = i + 1
+		}
+		chunks = append(chunks, body[:end])
+		body = body[end:]
+	}
+	return chunks
 }
 
 func (s *Server) delay(ctx context.Context, method *restclient.Method) bool {
 	delay := method.Delay
-	if delay <= 0 {
+	if method.DelayMax > delay {
+		delay += time.Duration(mathrand.Int64N(int64(method.DelayMax-delay) + 1))
+	}
+	return sleep(ctx, delay)
+}
+
+// sleep waits for d, returning false if ctx ends first.
+func sleep(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
 		return true
 	}
-	timer := time.NewTimer(delay)
+	timer := time.NewTimer(d)
 	defer timer.Stop()
 
 	select {
@@ -168,13 +288,14 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 	checkedMethods := make([]restclient.Method, 0, len(methods))
 	for _, method := range methods {
 		if raw, ok := method.Variable("delay"); ok {
-			if _, err := time.ParseDuration(raw); err != nil {
+			if _, _, err := restclient.ParseDelay(raw); err != nil {
 				logger.Warn("invalid @delay will be ignored", "delay", raw, "method", method.Name, "source", method.Source, "error", err)
 			}
 		}
 		checked := method
-		if path, ok := resolveFilePath(&method); ok && method.Body == "" {
-			if body, err := readResponseFile(method); err == nil && fileTemplatesEnabled(method, path) && isMostlyText(body) {
+		if method.File != "" && method.Body == "" && !restclient.FileIsTemplate(method.File) {
+			path := restclient.ResolveFile(method.Source, method.File)
+			if body, err := readResponseFile(method.Source, method.File); err == nil && fileIsTemplated(method, path, body) {
 				checked.Body = string(body)
 			}
 		}
@@ -318,7 +439,7 @@ func cloneMethods(methods []restclient.Method) []restclient.Method {
 			out[i].Status = methods[i].Status
 		}
 		if raw, ok := methods[i].Variable("delay"); ok {
-			out[i].Delay, _ = time.ParseDuration(raw)
+			out[i].Delay, out[i].DelayMax, _ = restclient.ParseDelay(raw)
 		}
 		out[i].Headers = methods[i].Headers.Clone()
 		out[i].MatchHeaders = methods[i].MatchHeaders.Clone()
@@ -341,6 +462,9 @@ func cloneMethods(methods []restclient.Method) []restclient.Method {
 }
 
 func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method) {
+	if method.Template == "off" {
+		return
+	}
 	known := make(map[string]bool)
 	for k := range method.Query {
 		known[k] = true
@@ -350,47 +474,85 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method) {
 			known[k] = true
 		}
 	}
+	pathParams := make(map[string]bool)
 	for _, name := range restclient.PathParams(method.EscapedPath) {
 		known[name] = true
+		pathParams[name] = true
 	}
 	for _, raw := range matcherValues(method) {
 		for _, name := range restclient.CaptureNames(raw) {
 			known[name] = true
 		}
 	}
-	texts := []string{method.Body}
+	texts := []string{method.Body, method.File}
 	for _, values := range method.Headers {
 		texts = append(texts, values...)
 	}
 	seen := make(map[string]bool)
-	for _, text := range texts {
-		for _, match := range restclient.PlaceholderPattern.FindAllStringSubmatch(text, -1) {
-			prefix, key, args := match[1], match[2], strings.Fields(match[3])
-			if seen[match[0]] {
+	warn := func(message, placeholder string, args ...any) {
+		if seen[message+placeholder] {
+			return
+		}
+		seen[message+placeholder] = true
+		logger.Warn(message, append([]any{"placeholder", placeholder, "source", method.Source, "line", method.Line, "method", method.Name}, args...)...)
+	}
+	var check func(nodes []templateNode, inRepeat bool)
+	check = func(nodes []templateNode, inRepeat bool) {
+		for _, node := range nodes {
+			switch node.kind {
+			case repeatNode:
+				check(node.children, true)
+				continue
+			case textNode:
 				continue
 			}
-			if prefix == "$" && isFunction(key) {
-				seen[match[0]] = true
-				if _, err := callFunction(key, args, time.Now()); err != nil {
-					logger.Warn("invalid placeholder arguments preserved literally", "placeholder", match[0], "error", err, "source", method.Source, "line", method.Line, "method", method.Name)
+			if node.hasFilter("default") {
+				continue
+			}
+			key := node.name
+			if node.prefix != "$" {
+				if _, ok := method.Variables[key]; !ok {
+					warn("unresolved placeholder preserved literally (no @"+key+" variable is defined)", key)
 				}
 				continue
 			}
-			if prefix == "$" {
-				if known[key] || isGeneratedKey(key) || isBodyPlaceholder(key) {
-					continue
+			if isFunction(key) {
+				if _, err := callFunction(key, node.args, time.Now(), nil); err != nil {
+					warn("invalid placeholder arguments preserved literally", node.text, "error", err)
 				}
-			} else if _, ok := method.Variables[key]; ok {
 				continue
 			}
-			seen[match[0]] = true
-			if prefix == "$" {
-				logger.Warn("unresolved placeholder preserved literally (may be supplied by a request query)", "placeholder", key, "source", method.Source, "line", method.Line, "method", method.Name)
-			} else {
-				logger.Warn("unresolved placeholder preserved literally (no @"+key+" variable is defined)", "placeholder", key, "source", method.Source, "line", method.Line, "method", method.Name)
+			if name, ok := strings.CutPrefix(key, "path."); ok {
+				if !pathParams[name] {
+					warn("unresolved placeholder preserved literally (the route path has no :"+name+" parameter)", key)
+				}
+				continue
 			}
+			if key == "index" && inRepeat {
+				continue
+			}
+			if known[key] || isGeneratedKey(key) || isRequestPlaceholder(key) {
+				continue
+			}
+			warn("unresolved placeholder preserved literally (may be supplied by a request query)", key)
 		}
 	}
+	for _, text := range texts {
+		nodes, problems := parseTemplate(text)
+		for _, problem := range problems {
+			warn("template problem preserved literally: "+problem.message, problem.text)
+		}
+		check(nodes, false)
+	}
+}
+
+func (n templateNode) hasFilter(name string) bool {
+	for _, filter := range n.filters {
+		if filter.name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) clearLocked() {
@@ -411,11 +573,11 @@ func (s *Server) clearLocked() {
 	}
 }
 
-// isBodyPlaceholder reports whether key reads the request body at render
-// time ($json.field.path or $form.name). Its value depends on each request,
-// so it is never reported as unknown.
-func isBodyPlaceholder(key string) bool {
-	for _, prefix := range []string{"json.", "form."} {
+// isRequestPlaceholder reports whether key reads the request at render time
+// ($query.name, $header.Name, $json.field.path or $form.name). Its value
+// depends on each request, so it is never reported as unknown.
+func isRequestPlaceholder(key string) bool {
+	for _, prefix := range []string{"query.", "header.", "json.", "form."} {
 		if name, ok := strings.CutPrefix(key, prefix); ok && name != "" {
 			return true
 		}

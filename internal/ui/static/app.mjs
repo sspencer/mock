@@ -420,6 +420,7 @@ function eventMatchesFilter(http) {
         String(http.response.status),
         http.response.statusText || '',
         http.match?.upstream ? 'proxied' : '',
+        http.response.fault ? `fault ${http.response.fault}` : '',
     ].join(' ').toLowerCase();
     return hay.includes(filterText);
 }
@@ -463,7 +464,8 @@ function renderTable() {
         const c1 = row.insertCell(1);
         const statusSpan = document.createElement('span');
         const statusText = http.response.statusText || '';
-        statusSpan.textContent = `${http.response.status}`;
+        // A reset fault sends no response, so there is no status to show.
+        statusSpan.textContent = http.response.fault === 'reset' ? 'RST' : `${http.response.status}`;
         statusSpan.className = 'status-code';
         if (statusText) {
             statusSpan.title = statusText;
@@ -473,7 +475,7 @@ function renderTable() {
         if (status >= 200 && status < 300) statusSpan.classList.add('status-2xx');
         else if (status >= 300 && status < 400) statusSpan.classList.add('status-3xx');
         else if (status >= 400 && status < 500) statusSpan.classList.add('status-4xx');
-        else if (status >= 500) statusSpan.classList.add('status-5xx');
+        else if (status >= 500 || http.response.fault === 'reset') statusSpan.classList.add('status-5xx');
         c1.appendChild(statusSpan);
 
         const c2 = row.insertCell(2);

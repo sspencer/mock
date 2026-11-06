@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/sspencer/mock/restclient"
@@ -14,17 +15,22 @@ import (
 
 // RouteInfo describes a fixture without reading potentially large body files.
 type RouteInfo struct {
-	ID            string            `json:"id"`
-	Revision      uint64            `json:"revision"`
-	Name          string            `json:"name"`
-	Method        string            `json:"method"`
-	Path          string            `json:"path"`
-	Query         string            `json:"query,omitempty"`
-	Port          int               `json:"port,omitempty"`
-	Source        string            `json:"source"`
-	Line          int               `json:"line"`
-	Status        int               `json:"status"`
-	Delay         string            `json:"delay"`
+	ID       string `json:"id"`
+	Revision uint64 `json:"revision"`
+	Name     string `json:"name"`
+	Method   string `json:"method"`
+	Path     string `json:"path"`
+	Query    string `json:"query,omitempty"`
+	Port     int    `json:"port,omitempty"`
+	Source   string `json:"source"`
+	Line     int    `json:"line"`
+	Status   int    `json:"status"`
+	// Delay is "250ms", or a range such as "100ms..800ms".
+	Delay string `json:"delay"`
+	// Stream is the @stream pause between body chunks, when set.
+	Stream string `json:"stream,omitempty"`
+	// Fault is the @fault, such as "reset" or "truncate 25%", when set.
+	Fault         string            `json:"fault,omitempty"`
 	File          string            `json:"file,omitempty"`
 	Headers       http.Header       `json:"headers"`
 	MatchHeaders  http.Header       `json:"matchHeaders"`
@@ -74,10 +80,31 @@ func describeRoute(method restclient.Method, index int, revision uint64) RouteIn
 	}
 	return RouteInfo{ID: fmt.Sprintf("%d:%d", revision, index), Revision: revision, Name: method.Name, Method: method.Method,
 		Path: (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath(), Query: method.Query.Encode(), Port: method.Port, Source: method.Source, Line: method.Line, Status: method.Status,
-		Delay: method.Delay.String(), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
+		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
 		MatchQuery: cloneValues(method.MatchQuery), MatchPath: cloneOptional(method.MatchPath),
 		MatchBody: method.MatchBody, MatchJSON: cloneOptional(method.MatchJSON), MatchForm: cloneValues(method.MatchForm),
 		Variables: cloneVariables(method.Variables), Body: body, BodyTruncated: truncated}
+}
+
+func describeDelay(method restclient.Method) string {
+	if method.DelayMax > method.Delay {
+		return method.Delay.String() + ".." + method.DelayMax.String()
+	}
+	return method.Delay.String()
+}
+
+func describeStream(method restclient.Method) string {
+	if method.Stream <= 0 {
+		return ""
+	}
+	return method.Stream.String()
+}
+
+func describeFault(method restclient.Method) string {
+	if method.Fault == "" || method.FaultRate >= 1 {
+		return method.Fault
+	}
+	return method.Fault + " " + strconv.FormatFloat(method.FaultRate*100, 'f', -1, 64) + "%"
 }
 
 func cloneValues(values url.Values) url.Values {

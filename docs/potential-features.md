@@ -9,19 +9,16 @@ separately below so they do not remain in the backlog; release history is in
 
 Reviewed 2026-11-06. Highest value first; sizes are rough (S, M, L).
 
-1. **Placeholders in body file paths** (S). One route serves a fixture file per
-   id.
-2. **Copy an unmatched request as a route** (S). Turns the admin UI's "why
+1. **Copy an unmatched request as a route** (S). Turns the admin UI's "why
    nothing matched" into a one-click fix.
-3. **Strict mode and route coverage** (S). Fail CI on unmocked calls and find
+2. **Strict mode and route coverage** (S). Fail CI on unmocked calls and find
    fixtures that are never used.
-4. **Publish the Docker image and a Homebrew formula** (S). Mostly GoReleaser
+3. **Publish the Docker image and a Homebrew formula** (S). Mostly GoReleaser
    configuration.
-5. **Close small test gaps** (S). `warnUnknownPlaceholders` (unresolved
-   placeholders and invalid generator arguments) has no direct test in
-   `mockhttp`; the bad-argument warning is only exercised through the
-   `mock validate` tests. Add direct tests there.
-6. **JSON array matching** (S). `@json.roles.* = admin` (any element matches);
+4. **Close small test gaps** (S). The invalid generator argument warning in
+   `warnUnknownPlaceholders` is only exercised through the `mock validate`
+   tests; add a direct test in `mockhttp`.
+5. **JSON array matching** (S). `@json.roles.* = admin` (any element matches);
    today only fixed indexes such as `roles.0` work.
 
 Everything else is grouped by theme below. Stateful scenarios are deliberately
@@ -47,32 +44,9 @@ deferred; see [stateful-scenarios.md](stateful-scenarios.md).
 
 ### Responses and templating
 
-- **Placeholders in body file paths** (S): `< ./users/{{$id}}.json` picks a
-  fixture file per request, so one route can serve many records. Expand the
-  path at request time and keep the existing containment checks (no `..`, no
-  escaping the fixture directory); a missing file returns 404.
-- **Streaming responses** (M): `@stream = 50ms` sends the body one line or one
-  SSE event at a time with a pause between, for mocking LLM token streams,
-  progress feeds and log tails. Today a response is always written at once.
-- **Random delays and fault injection** (S–M): `@delay = 100ms..800ms` for
-  jitter, and `@fault = reset | truncate` to drop the connection or send a
-  short body. Exercises retry and timeout code without needing state.
-- **Generated lists** (M): `{{#repeat 20}} ... {{/repeat}}` repeats a block
-  with fresh generated values, for list endpoints. A focused first step
-  towards the template operators below.
-- **Template operators and namespaces:** context-aware operators and explicit
-  path/query/fixture namespaces. JSON string escaping, header expansion, and
-  preservation of unresolved placeholders already exist; path parameters take
-  precedence over query parameters with the same name. The generator functions
-  with arguments are the only callable placeholders; there are no general
-  operators.
-- **Reproducible generated data:** seeded faker values and `{{$randomInt}}`,
-  and configurable reuse of one generated placeholder within a response.
-  Generated values are currently random on every render.
-- **Explicit body modes:** selectable raw/template response-file modes and exact
-  inline-body preservation. File templating currently depends on content type
-  and text detection; inline bodies normalize line endings and trim trailing
-  blank lines. File-backed bodies already preserve bytes when served raw.
+- **Fixture namespace:** `{{$fixture.*}}` values read from a data file, left
+  over from the template namespaces item. Filters, `{{#repeat}}`, and explicit
+  `$path`/`$query`/`$header` namespaces exist.
 
 ### Testing and CI
 
@@ -166,6 +140,13 @@ Recorded so these are not proposed again without a new reason:
   Client-style tool.
 
 ## Implemented from the original ideas
+
+- **Responses and templating:** placeholders in body file paths
+  (`< ./users/{{$id}}.json`, `404` when no file matches), `{{#repeat}}`
+  generated lists with `{{$index}}`, placeholder filters (`upper`, `default`,
+  `add`, `keep` and more), `$path.`/`$query.`/`$header.` namespaces, `@seed`
+  for reproducible generated data, `@delay` ranges, `@stream`, `@fault = reset
+  | truncate`, `@template = auto|on|off` and `@trim = off`.
 
 - **Pass unmatched requests to a real API:** `mock --upstream
   https://api.example.com fixtures.http` forwards anything no route matches to

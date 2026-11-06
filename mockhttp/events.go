@@ -47,6 +47,9 @@ type EventResponse struct {
 	Time        string      `json:"time"`
 	ElapsedMs   int64       `json:"elapsedMs"`
 	Details     string      `json:"details"`
+	// Fault is the @fault injected into the response: "reset" (no response
+	// was sent; Status is 0) or "truncate" (the body was cut short).
+	Fault string `json:"fault,omitempty"`
 }
 
 func (s *Server) ServeEvents(w http.ResponseWriter, r *http.Request) {
@@ -259,10 +262,11 @@ func newRequestEvent(r *http.Request, requestBody loggedBody, response *response
 		Response: EventResponse{
 			Status:      status,
 			HTTPVersion: r.Proto, Headers: response.sentHeaders(), Body: eventBody(response.loggedBody(), int64(response.bodyLength())),
-			StatusText: statusText(status),
+			StatusText: eventStatusText(status, response.fault),
 			Time:       elapsed.Round(time.Microsecond).String(),
 			ElapsedMs:  elapsed.Milliseconds(),
 			Details:    responseDetails(r, response, status),
+			Fault:      response.fault,
 		},
 	}
 }

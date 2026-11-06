@@ -1,0 +1,51 @@
+### List users
+# Responses and templating features. Try:
+#   curl localhost:8080/users
+#   curl localhost:8080/users/1      (and /users/2 for a 404)
+#   curl -N localhost:8080/events
+#   curl localhost:8080/flaky
+@seed = demo
+GET /users
+Content-Type: application/json
+
+[
+  {{#repeat 3 6}}
+  {"id": {{$index | add 1}}, "name": "{{$name}}", "email": "{{$email | lower}}"}
+  {{/repeat}}
+]
+
+### User by id
+GET /users/:id
+Content-Type: application/json
+
+< ./users/{{$path.id}}.json
+
+### [201] Create order
+POST /orders
+Location: /orders/{{$uuid | keep}}
+Content-Type: application/json
+
+{"id": "{{$uuid | keep}}", "note": {{$json.note | default "" | json}}}
+
+### Progress events
+@stream = 300ms
+GET /events
+Content-Type: text/event-stream
+
+{{#repeat 5}}
+data: {"step": {{$index}}}
+
+{{/repeat}}
+
+### Flaky endpoint
+@delay = 100ms..800ms
+@fault = reset 30%
+GET /flaky
+
+ok
+
+### Literal template
+@template = off
+GET /docs/template
+
+Write {{$name}} to insert a generated name.

@@ -35,7 +35,7 @@ func TestCallFunction(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name+" "+tt.args, func(t *testing.T) {
-			got, err := callFunction(tt.name, strings.Fields(tt.args), now)
+			got, err := callFunction(tt.name, strings.Fields(tt.args), now, nil)
 			if err != nil || got != tt.want {
 				t.Fatalf("callFunction(%q, %q) = %q, %v; want %q", tt.name, tt.args, got, err, tt.want)
 			}
@@ -49,7 +49,7 @@ func TestCallFunctionLocalDatetime(t *testing.T) {
 		{"rfc1123", time.RFC1123Z},
 		{"iso8601", "2006-01-02T15:04:05.000-07:00"},
 	} {
-		got, err := callFunction("localDatetime", []string{tt.format}, now)
+		got, err := callFunction("localDatetime", []string{tt.format}, now, nil)
 		if err != nil {
 			t.Fatalf("localDatetime %s: %v", tt.format, err)
 		}
@@ -66,7 +66,7 @@ func TestCallFunctionLocalDatetime(t *testing.T) {
 func TestCallFunctionRandomInt(t *testing.T) {
 	seen := map[int]bool{}
 	for range 200 {
-		got, err := callFunction("randomInt", []string{"5", "8"}, time.Now())
+		got, err := callFunction("randomInt", []string{"5", "8"}, time.Now(), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -79,7 +79,7 @@ func TestCallFunctionRandomInt(t *testing.T) {
 	if len(seen) != 3 {
 		t.Fatalf("randomInt 5 8 produced %v, want all of 5, 6, 7", seen)
 	}
-	if got, err := callFunction("randomInt", []string{"-3", "-2"}, time.Now()); err != nil || got != "-3" {
+	if got, err := callFunction("randomInt", []string{"-3", "-2"}, time.Now(), nil); err != nil || got != "-3" {
 		t.Fatalf("randomInt -3 -2 = %q, %v; want -3", got, err)
 	}
 }
@@ -102,11 +102,11 @@ func TestCallFunctionErrors(t *testing.T) {
 		{"datetime", "iso8601 1"},
 		{"localDatetime", "rfc1123 1 nope"},
 	} {
-		if got, err := callFunction(tt.name, strings.Fields(tt.args), now); err == nil {
+		if got, err := callFunction(tt.name, strings.Fields(tt.args), now, nil); err == nil {
 			t.Errorf("callFunction(%q, %q) = %q, want error", tt.name, tt.args, got)
 		}
 	}
-	if _, err := callFunction("name", nil, now); !errors.Is(err, errNotFunction) {
+	if _, err := callFunction("name", nil, now, nil); !errors.Is(err, errNotFunction) {
 		t.Fatalf("callFunction(name) error = %v, want errNotFunction", err)
 	}
 }
@@ -118,7 +118,7 @@ func TestPlaceholdersWithFunctionArguments(t *testing.T) {
 	}
 	// "when" is a request parameter: with no arguments it wins, with arguments the function runs.
 	values := templateValues{values: map[string]string{"datetime": "from-request"}}
-	got := expandBodyPlaceholders(`{"r":{{$randomInt 3 4}},"t":{{$timestamp 0 s}},"p":"{{$datetime}}","d":"{{$datetime iso8601}}","bad":"{{$randomInt x}}","n":{{n}}}`, method, values)
+	got, _ := newRenderer(&method, values).text(`{"r":{{$randomInt 3 4}},"t":{{$timestamp 0 s}},"p":"{{$datetime}}","d":"{{$datetime iso8601}}","bad":"{{$randomInt x}}","n":{{n}}}`, true)
 	pattern := regexp.MustCompile(`^\{"r":3,"t":\d+,"p":"from-request","d":"\d{4}-\d\d-\d\dT[\d:.]+Z","bad":"\{\{\$randomInt x\}\}","n":7\}$`)
 	if !pattern.MatchString(got) {
 		t.Fatalf("expanded body = %s", got)
