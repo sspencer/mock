@@ -7,63 +7,170 @@ separately below so they do not remain in the backlog; release history is in
 
 ## Suggested order
 
-1. **Close small test gaps.** `warnUnknownPlaceholders` (unresolved
+Reviewed 2026-11-06. Highest value first; sizes are rough (S, M, L).
+
+1. **Pass unmatched requests to a real API** (M). The most common reason to
+   outgrow a mock server: mock a few endpoints, use the real service for the
+   rest. See [Working with real APIs](#working-with-real-apis).
+2. **Placeholders in body file paths** (S). One route serves a fixture file per
+   id.
+3. **Copy an unmatched request as a route** (S). Turns the admin UI's "why
+   nothing matched" into a one-click fix.
+4. **Strict mode and route coverage** (S). Fail CI on unmocked calls and find
+   fixtures that are never used.
+5. **Publish the Docker image and a Homebrew formula** (S). Mostly GoReleaser
+   configuration.
+6. **Close small test gaps** (S). `warnUnknownPlaceholders` (unresolved
    placeholders and invalid generator arguments) has no direct test in
    `mockhttp`; the bad-argument warning is only exercised through the
    `mock validate` tests. Add direct tests there.
-2. **JSON array matching.** `@json.roles.* = admin` (any element matches);
+7. **JSON array matching** (S). `@json.roles.* = admin` (any element matches);
    today only fixed indexes such as `roles.0` work.
-3. **Seeded generated data.**
-4. **Named scenarios.**
-5. **Aggregate validation diagnostics.** `mock validate` stops at the first load
-   error.
 
-## Deferred ideas
+Everything else is grouped by theme below. Stateful scenarios are deliberately
+deferred; see [stateful-scenarios.md](stateful-scenarios.md).
 
+## Ideas
+
+### Matching and routing
+
+- **Richer matching:** JSON paths with dotted keys or any-element wildcards,
+  cookies (`@cookie.name`), "present but not X" predicates, and multipart or
+  XML bodies. Current matching covers methods, encoded paths and path
+  parameters, declared query values, and exact, present (`*`), absent (`!`) and
+  regex (`~regex`) matchers on headers, query and path parameters, the raw body,
+  JSON fields and form fields, plus trailing `*` path wildcards. The first
+  matching route in load order wins, so catch-alls go last; shadowed routes get
+  a load warning.
+- **Smarter shadow warnings** (S): a route is only reported as unreachable when
+  an earlier route has the identical path pattern. It misses an earlier
+  `/api/*` with no matchers hiding every later `/api/...` route, and
+  `/users/:id` versus `/users/:userId`. Compare patterns segment by segment,
+  treating wildcards and parameter names properly.
+
+### Responses and templating
+
+- **Placeholders in body file paths** (S): `< ./users/{{$id}}.json` picks a
+  fixture file per request, so one route can serve many records. Expand the
+  path at request time and keep the existing containment checks (no `..`, no
+  escaping the fixture directory); a missing file returns 404.
+- **Streaming responses** (M): `@stream = 50ms` sends the body one line or one
+  SSE event at a time with a pause between, for mocking LLM token streams,
+  progress feeds and log tails. Today a response is always written at once.
+- **Random delays and fault injection** (S–M): `@delay = 100ms..800ms` for
+  jitter, and `@fault = reset | truncate` to drop the connection or send a
+  short body. Exercises retry and timeout code without needing state.
+- **Generated lists** (M): `{{#repeat 20}} ... {{/repeat}}` repeats a block
+  with fresh generated values, for list endpoints. A focused first step
+  towards the template operators below.
+- **Template operators and namespaces:** context-aware operators and explicit
+  path/query/fixture namespaces. JSON string escaping, header expansion, and
+  preservation of unresolved placeholders already exist; path parameters take
+  precedence over query parameters with the same name. The generator functions
+  with arguments are the only callable placeholders; there are no general
+  operators.
+- **Reproducible generated data:** seeded faker values and `{{$randomInt}}`,
+  and configurable reuse of one generated placeholder within a response.
+  Generated values are currently random on every render.
+- **Explicit body modes:** selectable raw/template response-file modes and exact
+  inline-body preservation. File templating currently depends on content type
+  and text detection; inline bodies normalize line endings and trim trailing
+  blank lines. File-backed bodies already preserve bytes when served raw.
+
+### Testing and CI
+
+- **Go test helper and request assertions** (M): expose the server as a test
+  helper, for example `srv := mocktest.Start(t, "testdata/api.http")` with
+  `srv.URL` and `srv.AssertCalled(t, "POST /users", 1)`, backed by the captured
+  requests. The same data could serve an admin endpoint for assertions from
+  other languages: expected request counts, ordering, and matching
+  constraints.
+- **Strict mode for unmatched requests** (S): `--strict` reports unmatched
+  requests at shutdown and exits non-zero if there were any, so a call to an
+  unmocked endpoint fails the build instead of hiding as a 404 in a log.
+- **Route hit counts and coverage** (S): `/routes` and the routes panel show how
+  many times each route answered; with `--strict`, shutdown also lists routes
+  that were never hit, which usually means a stale fixture.
+- **Structured JSON logs** (S): `--log-format json` writes one object per
+  request (method, path, status, route, duration) for CI log collectors and
+  `jq`. The server already logs through `slog`.
+- **Stateful scenarios** (deferred): `@times` for retry tests, then named
+  scenarios with `@scenario`, `@state` and `@next-state`. Full plan in
+  [stateful-scenarios.md](stateful-scenarios.md).
+
+### Working with real APIs
+
+- **Pass unmatched requests to a real API** (M): `mock --upstream
+  https://api.example.com fixtures.http` forwards anything no route matches to
+  the real service and returns its response, marked as proxied in the admin UI.
+  Lets a project mock a few endpoints of a large API. Plain HTTP to `mock` still
+  applies; the upstream may be HTTPS.
+- **Recording** (L): capture proxied traffic and write it out as `.http`
+  sections to start a fixture file. Builds on pass-through; lower priority.
 - **Broader REST Client import:** unnamed sections, comments before the first
   section, HTTP versions on request lines (all currently load errors),
   environment files and request variables, and explicit request-to-response
   conversion warnings. Named `###` sections, `@header.*` matchers,
   `@name = value` variables, and `{{host}}` or full URLs in the request target
-  (whose port selects the listener) are supported; warnings already flag likely request headers used as response
-  headers.
-- **Richer matching:** JSON paths with dotted keys or any-element wildcards,
-  cookies (`@cookie.name`), "present but not X" predicates, and multipart or
-  XML bodies. Current matching covers methods, encoded paths and
-  path parameters, declared query values, and exact, present (`*`), absent
-  (`!`) and regex (`~regex`) matchers on headers, query and path parameters,
-  the raw body, JSON fields and form fields, plus trailing `*` path wildcards. The first matching route in load order wins,
-  so catch-alls go last; shadowed routes get a load warning.
-- **Response modes and scenarios:** named stateful scenarios (for example,
-  "second call fails") to replace the removed response rotation for retry
-  tests. Deferred; a full plan (`@times`, then `@scenario`/`@state`) is in
-  [stateful-scenarios.md](stateful-scenarios.md).
-- **Reproducible generated data:** seeded faker values and
-  `{{$randomInt}}`, and configurable reuse of one generated placeholder within a
-  response. Generated values are currently random on every render.
-- **Request assertions:** structured assertions for integration tests, such as
-  expected request counts, ordering, and matching constraints.
-- **Template operators and namespaces:** context-aware operators and explicit
-  path/query/fixture namespaces. JSON string escaping, header expansion, and
-  preservation of unresolved placeholders already exist; path parameters take
-  precedence over query parameters with the same name. The generator functions
-  with arguments (see below) are the only callable placeholders; there are no
-  general operators.
+  (whose port selects the listener) are supported; warnings already flag likely
+  request headers used as response headers.
+
+### Configuration and inputs
+
+- **Variables from the command line and environment** (S): `-var
+  host=staging.example.com` overrides `@host`, and `{{$env.API_TOKEN}}` reads an
+  environment variable. A safer, explicit replacement for REST Client's
+  unsupported `$processEnv`.
+- **Directory of request files** (S–M): today a directory argument serves static
+  files. A mode such as `mock --dir fixtures/` would load every `.http` file
+  under it and pick up new files on reload; the watcher currently knows only
+  the files it started with.
+
+### Admin UI
+
+- **Copy an unmatched request as a route** (S): a button on unmatched requests
+  that copies a draft `.http` section: the method and path, `@json.*` matchers
+  guessed from the body, and a placeholder `[200]` response. Uses data the
+  request event already has.
 - **Credential redaction:** optional redaction for diagnostic history, copied
   requests, and exports. Current captures and Copy cURL include credentials.
-- **Explicit body modes:** selectable raw/template response-file modes and exact
-  inline-body preservation. File templating currently depends on content type
-  and text detection; inline bodies normalize line endings and trim trailing
-  blank lines. File-backed bodies already preserve bytes when served raw.
-- **Aggregate validation diagnostics:** `mock validate` reports warnings for
-  every route but stops at the first load error, so fixing a file can reveal the
-  next error. Collecting several parse errors per run would need the parser to
-  recover after an error.
 - **Browser-level UI tests:** the admin UI's logic is unit tested in Node
   (`internal/ui/tests/`), but layout, theming and real browser interaction
   (splitters, keyboard navigation, mobile views) have never been checked in a
   real browser. Headless browser tests or screenshot checks would cover that.
-- **Graphical fixture editing and proxy/recording:** lower-priority ideas.
+- **Graphical fixture editing:** lower priority.
+
+### Tooling, distribution and docs
+
+- **Publish the Docker image and a Homebrew formula** (S): the image is only
+  built locally (`make docker`). GoReleaser can push
+  `ghcr.io/sspencer/mock:<version>` and a Homebrew tap from the existing release
+  workflow, so `docker run ghcr.io/sspencer/mock` works without a checkout.
+- **Aggregate validation diagnostics:** `mock validate` reports warnings for
+  every route but stops at the first load error, so fixing a file can reveal the
+  next error. Collecting several parse errors per run would need the parser to
+  recover after an error.
+- **Editor support** (M–L): `mock validate -json` already produces
+  machine-readable diagnostics. A small VS Code extension or language server
+  could highlight directives and show load errors and shadow warnings while
+  editing.
+- **Recipes in the README** (S, docs only): common needs that already work but
+  are not obvious: GraphQL operations (`@json.operationName = GetUser`),
+  content negotiation (`@header.Accept = ~(?i).*csv.*`), case-insensitive
+  regexes, and per-test routing with an `X-Test` header matcher.
+
+## Considered and rejected
+
+Recorded so these are not proposed again without a new reason:
+
+- **TLS and CORS:** removed on purpose. `mock` serves plain HTTP to HTTP
+  clients; put a TLS-terminating proxy in front when HTTPS is needed.
+- **OpenAPI import:** an OpenAPI-to-routes helper existed and was deleted.
+- **Scripted or exec responses:** a JavaScript or shell handler would turn
+  `mock` into an application server. Matchers, captures and templates cover
+  most needs.
+- **gRPC and WebSockets:** different protocols, out of scope for a REST
+  Client-style tool.
 
 ## Implemented from the original ideas
 
