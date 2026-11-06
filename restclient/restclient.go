@@ -21,6 +21,8 @@ import (
 //
 // Headers on the Method are response headers. Use MatchHeaders (from
 // @header.Name = value variables) to require request headers when matching.
+// MatchQuery (@query.name) and MatchPath (@path.name) add further request
+// matchers. Matcher values are kept as written; see ParseMatcher.
 //
 // Target is the request target as written, with any {{name}} references
 // unexpanded. It may be a full URL such as "{{host}}/users", so the same file
@@ -48,6 +50,8 @@ type Method struct {
 	Variables     map[string]string
 	VariableLines map[string]int
 	MatchHeaders  http.Header
+	MatchQuery    url.Values
+	MatchPath     map[string]string
 	Headers       http.Header
 	Body          string
 	File          string
@@ -167,6 +171,8 @@ func Parse(source string, r io.Reader) ([]Method, error) {
 				Variables:     make(map[string]string),
 				VariableLines: make(map[string]int),
 				MatchHeaders:  make(http.Header),
+				MatchQuery:    make(url.Values),
+				MatchPath:     make(map[string]string),
 				Headers:       make(http.Header),
 				Source:        source,
 				Line:          lineNumber,
@@ -369,7 +375,7 @@ func parseSection(pending pendingSection, fileDefs []definition, source string) 
 
 	defs := scopeDefinitions(fileDefs, pending.directives.defs)
 	for _, def := range defs {
-		if _, isHeader := strings.CutPrefix(def.name, "header."); isHeader {
+		if isMatcherName(def.name) {
 			continue
 		}
 		method.Variables[def.name] = def.value
@@ -453,6 +459,9 @@ func parseSection(pending pendingSection, fileDefs []definition, source string) 
 	if err != nil {
 		return method, parseErrorf(source, lineAt(i), "section %q: invalid query: %v", method.Name, err)
 	}
+	if err := checkPathMatchers(&method, pending.directives.defs, source); err != nil {
+		return method, err
+	}
 	i++
 
 	for i < len(lines) {
@@ -504,9 +513,52 @@ func parseSection(pending pendingSection, fileDefs []definition, source string) 
 
 const fileVariableRemoved = `$file and @file are no longer supported; start the response body with "< path" instead (example: "< ./users.json")`
 
+// isMatcherName reports whether a variable name is a request matcher
+// (@header.Name, @query.name or @path.name) rather than a {{name}} variable.
+func isMatcherName(name string) bool {
+	for _, prefix := range []string{"header.", "query.", "path."} {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// checkPathMatchers drops file-scoped @path.name matchers for sections whose
+// path has no :name parameter, and rejects section-scoped ones.
+func checkPathMatchers(method *Method, sectionDefs []definition, source string) error {
+	params := make(map[string]bool)
+	for _, part := range strings.Split(method.Path, "/") {
+		if name, ok := strings.CutPrefix(part, ":"); ok {
+			params[name] = true
+		}
+	}
+	for name := range method.MatchPath {
+		if params[name] {
+			continue
+		}
+		delete(method.MatchPath, name)
+		for _, def := range sectionDefs {
+			if def.name == "path."+name {
+				return parseErrorf(source, def.line,
+					"section %q: @path.%s has no matching :%s parameter in the request path %q", method.Name, name, name, method.Path)
+			}
+		}
+	}
+	return nil
+}
+
+// parseMatcherValue validates a matcher value and wraps errors with the line.
+func parseMatcherValue(method *Method, def definition, value, source string) error {
+	if _, err := ParseMatcher(value); err != nil {
+		return parseErrorf(source, def.line, "section %q: @%s: %v", method.Name, def.name, err)
+	}
+	return nil
+}
+
 // applyControlVariable interprets the variables the mock server itself
-// consumes: @delay, @port and @header.Name. Other variables are only
-// referenced as {{name}} placeholders.
+// consumes: @delay, @port and the @header.Name, @query.name and @path.name
+// matchers. Other variables are only referenced as {{name}} placeholders.
 func applyControlVariable(method *Method, def definition, source string) error {
 	value := Expand(def.value, method.Variables, nil)
 	if headerName, ok := strings.CutPrefix(def.name, "header."); ok {
@@ -517,7 +569,36 @@ func applyControlVariable(method *Method, def definition, source string) error {
 		if !ValidHeaderName(headerName) || !ValidHeaderValue(value) {
 			return parseErrorf(source, def.line, "invalid request header matcher %q", headerName)
 		}
+		if err := parseMatcherValue(method, def, value, source); err != nil {
+			return err
+		}
 		method.MatchHeaders.Add(headerName, value)
+		return nil
+	}
+	if name, ok := strings.CutPrefix(def.name, "query."); ok {
+		if name == "" {
+			return parseErrorf(source, def.line,
+				`section %q: @query. requires a parameter name (example: "@query.page = ~[0-9]+")`, method.Name)
+		}
+		if err := parseMatcherValue(method, def, value, source); err != nil {
+			return err
+		}
+		method.MatchQuery.Set(name, value)
+		return nil
+	}
+	if name, ok := strings.CutPrefix(def.name, "path."); ok {
+		if name == "" {
+			return parseErrorf(source, def.line,
+				`section %q: @path. requires a path parameter name (example: "@path.id = ~[0-9]+")`, method.Name)
+		}
+		if value == "*" || value == "!" {
+			return parseErrorf(source, def.line,
+				`section %q: @path.%s = %s is not supported; path parameters are always present (use "~pattern" or an exact value)`, method.Name, name, value)
+		}
+		if err := parseMatcherValue(method, def, value, source); err != nil {
+			return err
+		}
+		method.MatchPath[name] = value
 		return nil
 	}
 	switch def.name {

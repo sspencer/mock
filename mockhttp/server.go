@@ -260,6 +260,8 @@ func cloneMethods(methods []restclient.Method) []restclient.Method {
 		}
 		out[i].Headers = methods[i].Headers.Clone()
 		out[i].MatchHeaders = methods[i].MatchHeaders.Clone()
+		out[i].MatchQuery = cloneValues(methods[i].MatchQuery)
+		out[i].MatchPath = maps.Clone(methods[i].MatchPath)
 		out[i].Comments = append([]string(nil), methods[i].Comments...)
 		out[i].Variables = make(map[string]string, len(methods[i].Variables))
 		for k, v := range methods[i].Variables {
@@ -278,6 +280,11 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method) {
 	known := make(map[string]bool)
 	for k := range method.Query {
 		known[k] = true
+	}
+	for k, values := range method.MatchQuery {
+		if len(values) > 0 && values[0] != "!" {
+			known[k] = true
+		}
 	}
 	for _, part := range strings.Split(method.Path, "/") {
 		if strings.HasPrefix(part, ":") {

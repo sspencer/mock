@@ -648,6 +648,46 @@ GET /users
 			want: []string{"test.http:2:", "@header. requires a header name"},
 		},
 		{
+			name: "invalid header regexp",
+			input: `### User
+@header.Authorization = ~Bearer (
+GET /users
+`,
+			want: []string{"test.http:2:", "@header.Authorization", "invalid regular expression"},
+		},
+		{
+			name: "empty query regexp",
+			input: `### User
+@query.page = ~
+GET /users
+`,
+			want: []string{"test.http:2:", "@query.page", "empty"},
+		},
+		{
+			name: "empty query matcher name",
+			input: `### User
+@query. = x
+GET /users
+`,
+			want: []string{"test.http:2:", "@query. requires a parameter name"},
+		},
+		{
+			name: "path matcher without parameter",
+			input: `### User
+@path.id = ~[0-9]+
+GET /users
+`,
+			want: []string{"test.http:2:", "@path.id has no matching :id parameter"},
+		},
+		{
+			name: "absent path matcher",
+			input: `### User
+@path.id = !
+GET /users/:id
+`,
+			want: []string{"test.http:2:", "path parameters are always present"},
+		},
+		{
 			name: "status below final range",
 			input: `### [100] User
 GET /users

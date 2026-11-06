@@ -3,6 +3,7 @@ package mockhttp
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -27,6 +28,8 @@ type RouteInfo struct {
 	File          string            `json:"file,omitempty"`
 	Headers       http.Header       `json:"headers"`
 	MatchHeaders  http.Header       `json:"matchHeaders"`
+	MatchQuery    url.Values        `json:"matchQuery,omitempty"`
+	MatchPath     map[string]string `json:"matchPath,omitempty"`
 	Variables     map[string]string `json:"variables"`
 	Body          string            `json:"body"`
 	BodyTruncated bool              `json:"bodyTruncated"`
@@ -69,7 +72,19 @@ func describeRoute(method restclient.Method, index int, revision uint64) RouteIn
 	return RouteInfo{ID: fmt.Sprintf("%d:%d", revision, index), Revision: revision, Name: method.Name, Method: method.Method,
 		Path: (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath(), Query: method.Query.Encode(), Port: method.Port, Source: method.Source, Line: method.Line, Status: method.Status,
 		Delay: method.Delay.String(), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
+		MatchQuery: cloneValues(method.MatchQuery), MatchPath: cloneVariables(method.MatchPath),
 		Variables: cloneVariables(method.Variables), Body: body, BodyTruncated: truncated}
+}
+
+func cloneValues(values url.Values) url.Values {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(url.Values, len(values))
+	for key, list := range values {
+		out[key] = append([]string(nil), list...)
+	}
+	return out
 }
 
 func cloneVariables(values map[string]string) map[string]string {
@@ -130,7 +145,8 @@ func mismatch(method restclient.Method, r *http.Request, actual url.Values, quer
 		result.Reasons = append(result.Reasons, fmt.Sprintf("Served on port %d; request arrived on port %d", method.Port, localPort))
 		result.score += 3
 	}
-	if _, ok := matchPath(pattern, r.URL.EscapedPath()); !ok {
+	params, pathOK := matchPath(pattern, r.URL.EscapedPath())
+	if !pathOK {
 		result.Reasons = append(result.Reasons, fmt.Sprintf("Path %q does not match %q", r.URL.EscapedPath(), pattern))
 		result.score += 10
 		result.score += abs(len(splitPath(pattern)) - len(splitPath(r.URL.EscapedPath())))
@@ -150,19 +166,62 @@ func mismatch(method restclient.Method, r *http.Request, actual url.Values, quer
 				result.score++
 			}
 		}
+		for _, key := range sortedKeys(method.MatchQuery) {
+			for _, expected := range method.MatchQuery[key] {
+				matcher := restclient.MustMatcher(expected)
+				if matcher.Match(actual[key]) {
+					continue
+				}
+				result.Reasons = append(result.Reasons, "Query "+key+": "+matcherReason(matcher, actual[key], true))
+				result.score++
+			}
+		}
+	}
+	if pathOK {
+		for _, key := range slices.Sorted(maps.Keys(method.MatchPath)) {
+			matcher := restclient.MustMatcher(method.MatchPath[key])
+			if value, ok := params[key]; !ok || !matcher.Match([]string{value}) {
+				result.Reasons = append(result.Reasons, "Path parameter "+key+": "+matcherReason(matcher, []string{params[key]}, true))
+				result.score++
+			}
+		}
 	}
 	for _, key := range sortedKeys(method.MatchHeaders) {
-		if !headerMatches(http.Header{key: method.MatchHeaders[key]}, headers) {
-			// Do not repeat credential values in diagnostic summaries.
-			reason := "is missing"
-			if len(headers.Values(key)) > 0 {
-				reason = "does not match"
+		for _, expected := range method.MatchHeaders[key] {
+			matcher := restclient.MustMatcher(expected)
+			actualValues := headers.Values(key)
+			if matcher.Match(actualValues) {
+				continue
 			}
-			result.Reasons = append(result.Reasons, fmt.Sprintf("Header %s: required value %s", key, reason))
+			// Do not repeat request header values (often credentials) in diagnostic summaries.
+			result.Reasons = append(result.Reasons, "Header "+key+": "+matcherReason(matcher, actualValues, false))
 			result.score++
 		}
 	}
 	return result
+}
+
+// matcherReason explains why actual values failed a matcher. Received values
+// are quoted only when showValues is set.
+func matcherReason(matcher restclient.Matcher, actual []string, showValues bool) string {
+	received := ""
+	if showValues {
+		received = fmt.Sprintf("; received %q", actual)
+	}
+	switch {
+	case matcher.Kind == restclient.MatchAbsent:
+		return "must be absent" + received
+	case len(actual) == 0:
+		return "required value is missing"
+	case matcher.Kind == restclient.MatchRegexp:
+		return fmt.Sprintf("does not match pattern %q", matcher.Raw[1:]) + received
+	case matcher.Kind == restclient.MatchPresent:
+		return "must not be blank"
+	}
+	if showValues {
+		return fmt.Sprintf("expected %q", matcher.Raw) + received
+	}
+	return "required value does not match"
 }
 func sortedKeys[M ~map[string][]string](values M) []string {
 	keys := make([]string, 0, len(values))

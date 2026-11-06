@@ -304,7 +304,7 @@ only digits, such as `### [beta] Users`, stay part of the name. The old
 | `@name = value` file and method variables | Environment files / `{{env}}` from IDE |
 | Request line `METHOD /path` | Full multi-step scripts |
 | Response headers after the request line | Separate request vs response documents |
-| `@header.Name = value` request header matchers | Body-content matchers |
+| `@header.Name`, `@query.name`, `@path.name` request matchers (exact, `*`, `!`, `~regex`) | Body-content matchers |
 | `{{name}}`, `{{%name}}` and `{{$placeholder}}` in bodies and response headers | Request variables (`{{login.response.body.token}}`) |
 | `< path` external body files | Mixing inline text and `< path` in one body; imports of other `.http` files |
 
@@ -397,7 +397,9 @@ Variable names with a special meaning, which `mock` consumes itself:
 
 - `@delay`: response delay parsed with Go duration syntax, such as `250ms` or `2s`. Negative or invalid durations are load errors. Set at file scope, it is the default for every section.
 - `@port`: serve the section on this port instead of the default port (`-p`). Set at file scope, it applies to every section. See [Multiple ports](#multiple-ports).
-- `@header.Name`: require the incoming request to include that header. Use `*` as the value to accept any non-empty header. Set at file scope, it applies to every section; a method-scoped header of the same name replaces it.
+- `@header.Name`: require the incoming request header to match the value: exact text, `*` (any non-empty value), `!` (absent), or `~regex`. Set at file scope, it applies to every section; a method-scoped header of the same name replaces it. See [Header matching](#header-matching).
+- `@query.name`: require the query parameter to match the value, with the same value forms as `@header.*`. See [Query and path parameter matching](#query-and-path-parameter-matching).
+- `@path.name`: require the `:name` path parameter to match the value: exact text or `~regex`. Set at file scope, it applies only to sections whose path has `:name`.
 
 Every other variable is only used through `{{name}}` references. `mock` warns
 at load time about variables that nothing references.
@@ -534,7 +536,8 @@ In Docker, publish every port the request files use, such as
 ## Matching
 
 Routes match on the listener port, HTTP method, path, any query parameters
-declared in the `.http` file, and any `@header.*` matchers.
+declared in the `.http` file, and any `@header.*`, `@query.*` and `@path.*`
+matchers.
 
 ```http
 ### Cat names
@@ -571,6 +574,85 @@ Content-Type: application/json
 
 {"ok":true}
 ```
+
+### Matcher values
+
+`@header.*`, `@query.*` and `@path.*` matchers share one value syntax:
+
+| Value | Matches when |
+|-------|--------------|
+| `text` | a value equals `text` exactly (case-sensitive) |
+| `*` | the value is present and not blank |
+| `!` | the value is absent or blank (the opposite of `*`) |
+| `~regex` | a value matches the Go regular expression `regex` in full |
+
+A regex must match the whole value; it is anchored at both ends, so
+`~[0-9]+` rejects `12a`. Write `~.*token.*` to match anywhere in the value.
+When a header or query parameter is repeated, exact and regex matchers accept
+any one of the values. An invalid or empty regex is a load error. `\\` in a
+variable value is an escaped backslash, so write `\\\\` for a literal backslash in
+a pattern; other escapes such as `\d` pass through unchanged. To match a value
+that literally is `*` or `!`, or starts with `~`, use a regex such as `~\*`.
+
+`!` lets one route handle requests without a header:
+
+```http
+### Signed in
+@header.Authorization = ~Bearer [A-Za-z0-9._-]+
+GET /me
+Content-Type: application/json
+
+{"name":"alice"}
+
+### [401] Not signed in
+@header.Authorization = !
+GET /me
+Content-Type: application/json
+
+{"error":"unauthorized"}
+```
+
+A request with `Authorization: Basic abc` matches neither route and gets a
+`404`. The admin UI explains why.
+
+### Query and path parameter matching
+
+`@query.name` constrains a query parameter beyond the exact values written in
+the request target. `@path.name` constrains a `:name` path parameter. `*` and `!`
+make no sense for path parameters, so they are load errors there, and so is an
+`@path.name` in a section without `:name`.
+
+```http
+### Numeric user
+@path.id = ~[0-9]+
+GET /users/:id
+Content-Type: application/json
+
+{"id":{{$id}}}
+
+### [400] Bad user id
+@path.id = ~.*[^0-9].*
+GET /users/:id
+Content-Type: application/json
+
+{"error":"id must be numeric"}
+
+### Search results
+@query.q = *
+GET /search
+
+results for {{$q}}
+
+### Search form
+@query.q = !
+GET /search
+
+<form>...</form>
+```
+
+Matchers do not set priorities. If a request matches several routes, they take
+turns as described in [Multiple Responses](#multiple-responses). That is why
+the bad-id route above excludes numeric ids instead of catching everything.
 
 ## Multiple Responses
 
@@ -613,7 +695,9 @@ Selecting a route shows a sample `curl` command for that route's port (the
 default mock port when the route declares none), ready to paste
 into a shell (**Copy cURL** copies it). The host is the one you used to open the
 UI, path parameters get sample values (`:id` becomes `1`), and required request
-headers from `@header.*` are included (a `*` wildcard value becomes `example`).
+headers from `@header.*` and parameters from `@query.*` are included. A `*`
+or `~regex` value becomes a sample value (`example` for headers), which may not
+satisfy the regex, and `!` matchers are left out.
 
 UI features: theme toggle, filter, pause stream, independent clear/reset controls,
 HAR export, a Help dialog, and a routes panel that refreshes after hot-reload.

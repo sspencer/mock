@@ -38,10 +38,10 @@ func (s *Server) findMethod(r *http.Request) (*restclient.Method, map[string]str
 		}
 		pattern := (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath()
 		values, ok := matchPath(pattern, r.URL.EscapedPath())
-		if !ok || !queryMatches(method.Query, query) {
+		if !ok || !queryMatches(method.Query, query) || !queryMatcherMatches(method.MatchQuery, query) {
 			continue
 		}
-		if !headerMatches(method.MatchHeaders, requestHeaders) {
+		if !pathMatcherMatches(method.MatchPath, values) || !headerMatches(method.MatchHeaders, requestHeaders) {
 			continue
 		}
 		for name, queryValues := range query {
@@ -150,22 +150,14 @@ func queryMatches(expected url.Values, actual url.Values) bool {
 	return true
 }
 
-// headerMatches requires every expected header name to be present with a matching
-// value. Expected value "*" matches any non-empty request header value.
+// headerMatches requires every expected header matcher to accept the request's
+// values for that header: an exact value, "*" (present and non-blank), "!"
+// (missing or blank), or "~pattern" (a full-value regular expression).
 func headerMatches(expected http.Header, actual http.Header) bool {
 	for name, expectedValues := range expected {
 		actualValues := actual.Values(name)
-		if len(actualValues) == 0 {
-			return false
-		}
 		for _, expectedValue := range expectedValues {
-			if expectedValue == "*" {
-				if strings.TrimSpace(actualValues[0]) == "" {
-					return false
-				}
-				continue
-			}
-			if !headerValuePresent(actualValues, expectedValue) {
+			if !restclient.MustMatcher(expectedValue).Match(actualValues) {
 				return false
 			}
 		}
@@ -173,11 +165,25 @@ func headerMatches(expected http.Header, actual http.Header) bool {
 	return true
 }
 
-func headerValuePresent(actual []string, want string) bool {
-	for _, value := range actual {
-		if value == want {
-			return true
+// queryMatcherMatches applies @query.name matchers to the request query.
+func queryMatcherMatches(expected url.Values, actual url.Values) bool {
+	for name, expectedValues := range expected {
+		for _, expectedValue := range expectedValues {
+			if !restclient.MustMatcher(expectedValue).Match(actual[name]) {
+				return false
+			}
 		}
 	}
-	return false
+	return true
+}
+
+// pathMatcherMatches applies @path.name matchers to the decoded path parameters.
+func pathMatcherMatches(expected map[string]string, params map[string]string) bool {
+	for name, expectedValue := range expected {
+		value, ok := params[name]
+		if !ok || !restclient.MustMatcher(expectedValue).Match([]string{value}) {
+			return false
+		}
+	}
+	return true
 }

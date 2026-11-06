@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add absent and regex request matchers. `@header.Name = !` matches only when the header is missing or blank, and a `~regex` value matches a Go regular expression against the whole value. The new `@query.name` and `@path.name` matchers use the same values (`@path.*` allows exact text or `~regex`), so routes can tell numeric from non-numeric ids or a search from an empty search. An invalid regex is a load error. Unmatched-request diagnostics explain which matcher failed, and the admin UI lists query and path requirements.
+- **Breaking:** an `@header.*` value of exactly `!`, or one that starts with `~`, is now a matcher rather than literal text. Variables named `query.*` or `path.*` are now matchers instead of `{{name}}` variables.
 - Reorganize the source tree: `main.go` is now a thin entry point, the command lives in `internal/cli/`, and the admin UI (embedded files, handler, and Node tests) lives in `internal/ui/`. Install paths, flags, and build flags are unchanged.
 
 ## v0.3.1 - 2026-11-04

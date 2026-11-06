@@ -49,6 +49,22 @@ test('Route cURL targets the mock origin with sample path parameters', () => {
     assert.equal(sampleParam('name'), 'example');
 });
 
+test('Route view and cURL handle absent and regexp matchers', () => {
+    const route = { method: 'GET', path: '/users/:id/:slug', query: 'a=1', source: 't.http', line: 1, revision: 1, status: 200,
+        matchHeaders: { Authorization: ['~Bearer .+'], 'X-Debug': ['!'] },
+        matchQuery: { page: ['~[0-9]+'], debug: ['!'], kind: ['cat'] },
+        matchPath: { id: '~[0-9]+', slug: 'a b' } };
+    assert.equal(buildRouteCurl(route, 'http://localhost:8080'),
+        "curl --header 'Authorization: example' 'http://localhost:8080/users/1/a%20b?a=1&page=1&kind=cat'");
+    const text = formatRoute(route);
+    for (const value of ['Authorization: ~Bearer .+ (regular expression)', 'X-Debug: ! (must be absent)',
+        'Query requirements\npage: ~[0-9]+ (regular expression)', 'debug: ! (must be absent)', 'kind: cat',
+        'Path parameter requirements\n:id: ~[0-9]+ (regular expression)', ':slug: a b']) {
+        assert.ok(text.includes(value), value);
+    }
+    assert.ok(!formatRoute({ ...route, matchQuery: undefined, matchPath: undefined }).includes('Query requirements'));
+});
+
 test('Route view shows the sample request when provided', () => {
     const route = { method: 'GET', path: '/x', source: 't.http', line: 1, revision: 1, status: 200 };
     assert.ok(formatRoute(route, "curl 'http://localhost:8080/x'").includes("Sample request\ncurl 'http://localhost:8080/x'"));

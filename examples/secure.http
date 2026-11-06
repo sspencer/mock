@@ -8,7 +8,14 @@ Content-Type: application/json
   "message": "authorized"
 }
 
-### Missing or wrong token falls through (no match)
+### [401] No token at all
+@header.Authorization = !
+GET /secure
+Content-Type: application/json
+
+{"ok":false,"error":"missing bearer token"}
+
+### Wrong token falls through (no match)
 GET /public
 Content-Type: application/json
 

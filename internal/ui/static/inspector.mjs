@@ -53,15 +53,32 @@ export function sampleParam(name) {
 
 // Builds a curl command for the mock listener that can be pasted into a shell.
 // `origin` is the scheme, host, and port the mock routes are served from.
+// Matcher values: "*" (present), "!" (absent), "~pattern" (regexp), else exact.
+// A sample request uses exact values as written and a placeholder otherwise;
+// a placeholder may not satisfy a regexp.
+const isSampleExact = value => value !== '*' && value !== '!' && !value.startsWith('~');
+
 export function buildRouteCurl(route, origin) {
-    const path = String(route.path).replace(/(^|\/):([^/]+)/g, (_, slash, name) => slash + sampleParam(name));
-    const url = `${origin}${path}${route.query ? '?' + route.query : ''}`;
+    const matchPath = route.matchPath || {};
+    const path = String(route.path).replace(/(^|\/):([^/]+)/g, (_, slash, name) =>
+        slash + (name in matchPath && isSampleExact(matchPath[name]) ? encodeURIComponent(matchPath[name]) : sampleParam(name)));
+    // Required @query.* parameters are appended to the declared query as written.
+    const extra = new URLSearchParams();
+    for (const [name, values] of Object.entries(route.matchQuery || {})) {
+        for (const value of values) {
+            if (value !== '!') extra.append(name, isSampleExact(value) ? value : sampleParam(name));
+        }
+    }
+    const queryText = [route.query, extra.toString()].filter(Boolean).join('&');
+    const url = `${origin}${path}${queryText ? '?' + queryText : ''}`;
     const parts = ['curl'];
     if (origin.startsWith('https:')) parts.push('--insecure');
     if (route.method === 'HEAD') parts.push('--head');
     else if (route.method !== 'GET') parts.push('--request', route.method);
     for (const [name, values] of Object.entries(route.matchHeaders || {})) {
-        for (const value of values) parts.push('--header', shellQuote(`${name}: ${value === '*' ? 'example' : value}`));
+        for (const value of values) {
+            if (value !== '!') parts.push('--header', shellQuote(`${name}: ${isSampleExact(value) ? value : 'example'}`));
+        }
     }
     parts.push(shellQuote(url));
     return parts.join(' ');
@@ -69,7 +86,10 @@ export function buildRouteCurl(route, origin) {
 
 export function formatRoute(route, sampleCurl = '') {
     const responseHeaders = Object.entries(route.headers || {}).flatMap(([name, values]) => values.map(value => `${name}: ${value}`)).join('\n');
-    const matchHeaders = Object.entries(route.matchHeaders || {}).flatMap(([name, values]) => values.map(value => `${name}: ${value}`)).join('\n');
+    const describe = value => value === '!' ? '! (must be absent)' : value.startsWith('~') ? `${value} (regular expression)` : value;
+    const matchHeaders = Object.entries(route.matchHeaders || {}).flatMap(([name, values]) => values.map(value => `${name}: ${describe(value)}`)).join('\n');
+    const matchQuery = Object.entries(route.matchQuery || {}).flatMap(([name, values]) => values.map(value => `${name}: ${describe(value)}`)).join('\n');
+    const matchPath = Object.entries(route.matchPath || {}).map(([name, value]) => `:${name}: ${describe(value)}`).join('\n');
     const variables = Object.entries(route.variables || {}).map(([key, value]) => `@${key} = ${value}`).join('\n');
     return [
         `${route.method} ${route.path}${route.query ? '?' + route.query : ''}`,
@@ -78,6 +98,8 @@ export function formatRoute(route, sampleCurl = '') {
         route.port ? `Port: ${route.port}` : '',
         `Response: ${route.status} · delay ${route.delay || '0s'}`,
         `Request header requirements\n${matchHeaders || '(none)'}`,
+        matchQuery ? `Query requirements\n${matchQuery}` : '',
+        matchPath ? `Path parameter requirements\n${matchPath}` : '',
         `Response headers\n${responseHeaders || '(automatic)'}`,
         `Variables\n${variables || '(none)'}`,
         route.file ? `Body file: ${route.file}` : 'Inline response body',

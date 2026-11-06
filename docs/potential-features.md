@@ -25,10 +25,12 @@ separately below so they do not remain in the backlog.
   `@name = value` variables, and `{{host}}` or full URLs in the request target
   (whose port selects the listener) are supported; warnings already flag likely request headers used as response
   headers.
-- **Richer matching:** JSON/body fields, regular expressions, absent-header
-  predicates, explicit priorities, and fallback routes. Current matching covers
-  methods, encoded paths and path parameters, declared query values, and exact
-  or non-empty wildcard request headers.
+- **Richer matching:** JSON/body fields, explicit priorities, and fallback
+  routes. Current matching covers methods, encoded paths and path parameters,
+  declared query values, and exact, present (`*`), absent (`!`) and regex
+  (`~regex`) matchers on headers, query parameters and path parameters.
+  Overlapping routes still rotate, so a catch-all must exclude what more
+  specific routes match; priorities would remove that workaround.
 - **Response modes and scenarios:** explicit selection modes and named stateful
   scenarios beyond the existing rotation through matching responses and manual
   sequence reset.
@@ -56,6 +58,10 @@ separately below so they do not remain in the backlog.
 - **Graphical fixture editing and proxy/recording:** lower-priority ideas.
 
 ## Implemented from the original ideas
+
+- **Absent and regex matchers:** `@header.Name = !` matches a missing or blank
+  header, and `~regex` values match in full. `@query.name` and `@path.name`
+  use the same value syntax.
 
 - **Multiple ports:** routes are served on the port of a full-URL request
   target, or the `@port` variable, else the default `-p` port. Every port is
