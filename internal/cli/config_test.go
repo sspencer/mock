@@ -268,3 +268,39 @@ func TestConfigRejectsInvalidPorts(t *testing.T) {
 		}
 	}
 }
+
+func TestParseConfigUpstream(t *testing.T) {
+	t.Setenv("MOCK_PORT", "")
+	t.Setenv("MOCK_UI_PORT", "")
+	t.Setenv("MOCK_BIND", "")
+	for _, flag := range []string{"-u", "--upstream", "-upstream"} {
+		cfg, err := parseConfig([]string{flag, "https://api.example.com:8443/v2", "api.http"})
+		if err != nil {
+			t.Fatalf("parseConfig(%s) error = %v", flag, err)
+		}
+		if cfg.Upstream == nil || cfg.Upstream.String() != "https://api.example.com:8443/v2" {
+			t.Fatalf("parseConfig(%s) Upstream = %v", flag, cfg.Upstream)
+		}
+	}
+	cfg, err := parseConfig([]string{"api.http"})
+	if err != nil || cfg.Upstream != nil {
+		t.Fatalf("parseConfig() Upstream = %v, err = %v; want nil", cfg.Upstream, err)
+	}
+	for _, raw := range []string{
+		"api.example.com",
+		"ftp://api.example.com",
+		"https://",
+		"https://api.example.com/?key=1",
+		"https://api.example.com/#top",
+		"https://user:pass@api.example.com",
+		"https://api.example.com/?",
+	} {
+		_, err := parseConfig([]string{"-u", raw, "api.http"})
+		if err == nil {
+			t.Fatalf("parseConfig(-u %q) error = nil, want usage error", raw)
+		}
+		if ExitCode(err) != 2 {
+			t.Fatalf("parseConfig(-u %q) exit code = %d, want 2", raw, ExitCode(err))
+		}
+	}
+}

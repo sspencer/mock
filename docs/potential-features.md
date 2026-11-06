@@ -9,22 +9,19 @@ separately below so they do not remain in the backlog; release history is in
 
 Reviewed 2026-11-06. Highest value first; sizes are rough (S, M, L).
 
-1. **Pass unmatched requests to a real API** (M). The most common reason to
-   outgrow a mock server: mock a few endpoints, use the real service for the
-   rest. See [Working with real APIs](#working-with-real-apis).
-2. **Placeholders in body file paths** (S). One route serves a fixture file per
+1. **Placeholders in body file paths** (S). One route serves a fixture file per
    id.
-3. **Copy an unmatched request as a route** (S). Turns the admin UI's "why
+2. **Copy an unmatched request as a route** (S). Turns the admin UI's "why
    nothing matched" into a one-click fix.
-4. **Strict mode and route coverage** (S). Fail CI on unmocked calls and find
+3. **Strict mode and route coverage** (S). Fail CI on unmocked calls and find
    fixtures that are never used.
-5. **Publish the Docker image and a Homebrew formula** (S). Mostly GoReleaser
+4. **Publish the Docker image and a Homebrew formula** (S). Mostly GoReleaser
    configuration.
-6. **Close small test gaps** (S). `warnUnknownPlaceholders` (unresolved
+5. **Close small test gaps** (S). `warnUnknownPlaceholders` (unresolved
    placeholders and invalid generator arguments) has no direct test in
    `mockhttp`; the bad-argument warning is only exercised through the
    `mock validate` tests. Add direct tests there.
-7. **JSON array matching** (S). `@json.roles.* = admin` (any element matches);
+6. **JSON array matching** (S). `@json.roles.* = admin` (any element matches);
    today only fixed indexes such as `roles.0` work.
 
 Everything else is grouped by theme below. Stateful scenarios are deliberately
@@ -100,13 +97,9 @@ deferred; see [stateful-scenarios.md](stateful-scenarios.md).
 
 ### Working with real APIs
 
-- **Pass unmatched requests to a real API** (M): `mock --upstream
-  https://api.example.com fixtures.http` forwards anything no route matches to
-  the real service and returns its response, marked as proxied in the admin UI.
-  Lets a project mock a few endpoints of a large API. Plain HTTP to `mock` still
-  applies; the upstream may be HTTPS.
 - **Recording** (L): capture proxied traffic and write it out as `.http`
-  sections to start a fixture file. Builds on pass-through; lower priority.
+  sections to start a fixture file. Builds on `--upstream` pass-through; lower
+  priority.
 - **Broader REST Client import:** unnamed sections, comments before the first
   section, HTTP versions on request lines (all currently load errors),
   environment files and request variables, and explicit request-to-response
@@ -174,6 +167,11 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Pass unmatched requests to a real API:** `mock --upstream
+  https://api.example.com fixtures.http` forwards anything no route matches to
+  the real service (HTTP or HTTPS) and returns its response, marked as proxied
+  in the admin UI. Upstream failures answer `502`, and requests that loop back
+  to `mock` answer `508`.
 - **Form matchers, wildcards and request placeholders:** `@form.name`
   matchers, trailing `*`/`*name` path wildcards, `{{$json.*}}` and
   `{{$form.*}}` body placeholders, and named regex captures as placeholders.

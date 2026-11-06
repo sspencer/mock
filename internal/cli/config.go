@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -32,6 +33,8 @@ type config struct {
 	Port, AdminPort  int
 	Version, NoAdmin bool
 	Args             []string
+	// Upstream receives requests no route matches (-u); nil answers 404.
+	Upstream *url.URL
 	// Help holds the usage text when -h or --help was requested.
 	Help string
 }
@@ -55,6 +58,8 @@ flags:
   -x, --no-ui          do not start the admin UI
   -b, --bind ADDR      bind address; use 0.0.0.0 for all interfaces
                        (default 127.0.0.1, or MOCK_BIND)
+  -u, --upstream URL   forward requests no route matches to this http or
+                       https URL and return its response
       --version        print version and exit
   -h, --help           print this help and exit
 `
@@ -89,6 +94,10 @@ func parseConfig(args []string) (config, error) {
 	for _, name := range []string{"b", "bind"} {
 		flagSet.StringVar(&cfg.Bind, name, bindDefault, "")
 	}
+	var upstream string
+	for _, name := range []string{"u", "upstream"} {
+		flagSet.StringVar(&upstream, name, "", "")
+	}
 	flagSet.BoolVar(&cfg.Version, "version", false, "")
 	if err := flagSet.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -97,6 +106,11 @@ func parseConfig(args []string) (config, error) {
 		return config{}, usageError("failed to parse flags: %v", err)
 	}
 	cfg.Args = flagSet.Args()
+	if upstream != "" {
+		if cfg.Upstream, err = parseUpstream(upstream); err != nil {
+			return config{}, err
+		}
+	}
 	if cfg.Port < 0 || cfg.Port > 65535 {
 		return config{}, usageError("port must be between 0 and 65535")
 	}
@@ -118,6 +132,22 @@ func parseConfig(args []string) (config, error) {
 		return config{}, usageError("admin port %d is the same as the mock port; change -a or MOCK_UI_PORT (or -p or MOCK_PORT)", cfg.AdminPort)
 	}
 	return cfg, nil
+}
+
+// parseUpstream accepts an absolute http or https URL, optionally with a base
+// path that request paths are appended to.
+func parseUpstream(raw string) (*url.URL, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, usageError("invalid --upstream %q: %v", raw, err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" || u.Host == "" {
+		return nil, usageError("invalid --upstream %q: use an http or https URL such as https://api.example.com", raw)
+	}
+	if u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.ForceQuery {
+		return nil, usageError("invalid --upstream %q: only a scheme, host, port and base path are allowed", raw)
+	}
+	return u, nil
 }
 
 // portFromEnv returns the port named by the environment variable, or def when

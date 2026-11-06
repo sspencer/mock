@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add `-u` / `--upstream URL` to pass requests that no route matches to a real API and return its response, so you can mock a few endpoints and use the real service for the rest. The upstream may be HTTP or HTTPS and may include a base path; the request path and query are appended to it. Forwarded requests keep their method, headers and body, and get the upstream's `Host` plus `X-Forwarded-*` and `Via` headers. An unreachable upstream answers `502`, and a request that loops back to `mock` answers `508`. The admin UI marks forwarded requests as **proxied**, and request events carry `match.upstream`. `--upstream` cannot be combined with a directory argument.
+
 ## v0.4.0 - 2026-11-06
 
 Choose responses from the request itself: new header, query, path, body, JSON and form matchers, regex captures and request-body placeholders, wildcard paths, and a simple rule for which route answers. This release has breaking changes; see below.

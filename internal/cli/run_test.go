@@ -178,3 +178,28 @@ func TestRunWarnsWhenBoundToAllInterfaces(t *testing.T) {
 		t.Fatalf("stdout = %q, want actual 0.0.0.0 listen address", out.String())
 	}
 }
+
+func TestRunUpstreamPrintsForwardingBanner(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "api.http")
+	if err := os.WriteFile(path, []byte("### User\nGET /users\n\nok\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	var out bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	args := []string{"-x", "-p", "0", "-b", "127.0.0.1", "-u", "https://api.example.com/v2", path}
+	if err := Run(cancelledContext(), args, strings.NewReader(""), &out, io.Discard, logger); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "forwarding unmatched requests to https://api.example.com/v2") {
+		t.Fatalf("stdout = %q, want upstream banner", out.String())
+	}
+}
+
+func TestRunUpstreamRejectsStaticDirectory(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	err := Run(cancelledContext(), []string{"-u", "https://api.example.com", t.TempDir()}, strings.NewReader(""), io.Discard, io.Discard, logger)
+	if err == nil || ExitCode(err) != 2 || !strings.Contains(err.Error(), "upstream") {
+		t.Fatalf("Run(dir, -u) error = %v (exit %d), want usage error", err, ExitCode(err))
+	}
+}

@@ -28,6 +28,7 @@ type Server struct {
 	clearedThrough uint64
 	mu             sync.Mutex
 	config         ConfigState
+	upstream       atomic.Pointer[upstreamProxy]
 }
 
 func New(methods []restclient.Method, logger *slog.Logger) *Server {
@@ -83,7 +84,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	status := http.StatusNotFound
 	if !ok {
 		_ = controller.SetWriteDeadline(time.Now().Add(30 * time.Second))
-		http.NotFound(capture, r)
+		if up := s.upstream.Load(); up != nil {
+			capture.match.Upstream = up.target.String()
+			up.serve(capture, r)
+		} else {
+			http.NotFound(capture, r)
+		}
 		status = capture.statusCode()
 		s.logRequest(r, requestBody, capture, status, "", arrivedAt, time.Since(arrivedAt))
 		return

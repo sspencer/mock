@@ -203,6 +203,7 @@ Flags:
 | `-a`, `--ui-port` | `MOCK_UI_PORT`, else `8081`, or random if `-p` / `MOCK_PORT` is set | Admin UI port. `0` picks a random free port |
 | `-x`, `--no-ui` | (off) | Do not start the admin UI. Cannot be combined with `-a` |
 | `-b`, `--bind` | `127.0.0.1`, or `MOCK_BIND` | Bind address. Use `0.0.0.0` to listen on all interfaces |
+| `-u`, `--upstream` | (off) | Forward requests no route matches to this `http` or `https` URL and return its response (see [Passing unmatched requests to a real API](#passing-unmatched-requests-to-a-real-api)) |
 | `--version` | | Print version and exit |
 | `-h`, `--help` | | Print usage and exit |
 
@@ -804,6 +805,39 @@ port and path, and all of its matchers are also on the later route. Two
 identical routes are the common case. Earlier versions of `mock` rotated
 through such duplicates; they now always return the first.
 
+## Passing unmatched requests to a real API
+
+Pass `-u` (`--upstream`) to mock only part of an API. Requests a route matches
+get the mock response; everything else is forwarded to the real service, and
+its response is returned unchanged:
+
+```sh
+mock --upstream https://api.example.com fixtures.http
+```
+
+- The request path and query are appended to the upstream URL, so with
+  `--upstream https://api.example.com/v2` a request for `/users?role=admin`
+  goes to `https://api.example.com/v2/users?role=admin`. The upstream URL may
+  have a scheme, host, port and base path, but no query, fragment or
+  credentials.
+- The method, headers and body are forwarded as received, including
+  `Authorization` and cookies. `Host` is set to the upstream's host, and
+  `X-Forwarded-For`, `X-Forwarded-Host`, `X-Forwarded-Proto` and `Via` are
+  added.
+- `mock` itself still serves plain HTTP; only the upstream may be HTTPS.
+- One upstream serves every mock port. A catch-all route answers before the
+  upstream is reached.
+- If the upstream can't be reached, or sends no response headers within 30
+  seconds, the client gets `502 Bad Gateway`. If the upstream sends a request
+  back to the same `mock` (for example `--upstream` points at `mock`'s own
+  port), the client gets `508 Loop Detected` instead of looping.
+- Hot reload changes routes, not the upstream. Restart `mock` to change it.
+- `--upstream` needs request files; it cannot be combined with a directory
+  argument.
+
+The admin UI marks forwarded requests as **proxied** and shows the upstream
+URL, the real response, and the nearby routes that didn't match.
+
 ## Admin UI And API
 
 The UI is served at the root of the admin port (`-a`, default `8081`):
@@ -854,6 +888,8 @@ On narrow screens, selecting traffic or a route opens the inspector; use
 - Matched requests show the fixture name, source file/line, configuration revision,
   and elapsed time. Unmatched requests show up to five
   nearby routes with method, path, query, header, and body mismatch explanations.
+  Requests forwarded with `--upstream` are marked **proxied** in the table (the
+  filter matches `proxied`), and the inspector names the upstream URL.
 - Select a configured route to inspect its match requirements, response headers,
   variables, status, delay, and body template or file reference. File contents
   are not loaded into the route preview; large inline previews are truncated.
@@ -867,7 +903,8 @@ Traffic arriving after the clear boundary remains.
 SSE cursors include a server session and sequence number. Slow subscribers
 reconnect to replay retained events; a history gap or restart emits a `reset`
 event before replay. Clear emits a `clear` event. Request events include the selected route
-and configuration revision (or mismatch candidates). History is limited to 1,000
+and configuration revision (or mismatch candidates, plus `upstream` when the
+request was forwarded). History is limited to 1,000
 events; gaps are reported rather than silently hidden. Event bodies include
 separate byte counts, truncation metadata, and base64 encoding for binary data.
 

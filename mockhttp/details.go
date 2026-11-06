@@ -151,14 +151,17 @@ func (s *Server) logRequest(r *http.Request, requestBody loggedBody, response *r
 	if logger == nil {
 		logger = slog.Default()
 	}
-	logger.Info(
-		"http request",
+	attrs := []any{
 		"method", r.Method,
 		"path", r.URL.RequestURI(),
 		"status", status,
 		"mock", methodName,
 		"duration", elapsed.String(),
-	)
+	}
+	if upstream := response.match.Upstream; upstream != "" {
+		attrs = append(attrs, "upstream", upstream)
+	}
+	logger.Info("http request", attrs...)
 }
 
 func (s *Server) logResponseRenderError(err error) {
