@@ -71,7 +71,7 @@ func formatFixture(methods []restclient.Method) (string, error) {
 		}
 
 		filePath, hasFile := resolveFilePath(&method)
-		body, err := renderBody(method, nil, filePath, hasFile)
+		body, err := renderBody(method, templateValues{}, filePath, hasFile)
 		if err != nil {
 			return "", err
 		}
@@ -83,7 +83,7 @@ func formatFixture(methods []restclient.Method) (string, error) {
 			method.Path,
 			delay,
 			method.Status,
-			headerSize(responseHeaders(method, nil, filePath)),
+			headerSize(responseHeaders(method, templateValues{}, filePath)),
 			len(body),
 		)
 	}

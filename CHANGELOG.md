@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add request body placeholders. `{{$json.user.name}}` inserts a field of a JSON request body (objects and arrays as compact JSON) and `{{$form.username}}` a field of a form body, in response bodies and headers.
+- Add regex captures: named groups in any matcher regex, such as `@header.Authorization = ~Bearer (?P<token>.+)`, become `{{$token}}` placeholders. Path parameters win over captures, and captures over query parameters.
+- Add wildcard paths. A trailing `*` segment matches the rest of the path, including nothing, so `GET /api/*` placed last makes a fallback route. `*name` makes the rest available as `{{$name}}`, and `@path.name` can constrain it.
+- Add `@form.name` matchers for URL-encoded form bodies, with the usual matcher values. Unmatched-request diagnostics explain form mismatches, and route sample `curl` commands send a matching form body.
+- **Breaking:** variables named `form.*` are now matchers. A `*` path segment in a request target is now a wildcard; write `%2A` for a literal `*`.
 - Add body matchers. `@body` matches the whole request body (`.` in a `@body` regex also matches newlines), and `@json.field.path` matches a field of a JSON body, with numeric segments indexing arrays. Both take the usual matcher values: exact text, `*`, `!` or `~regex`. Body matchers see the first 1 MiB of a request. Unmatched-request diagnostics explain body and JSON mismatches, and route sample `curl` commands send a matching JSON or text body.
 - **Breaking:** remove response rotation. The first route in load order that matches a request now always answers it, so put specific routes before catch-alls. Use body, header, query or path matchers to return different responses. A route that an earlier route always beats now gets a load warning, and `mock validate -strict` fails on it.
 - **Breaking:** remove the `/reset` admin endpoint and the **Reset responses** button. Request events no longer include a response position (`match.position`, `match.total`).

@@ -10,8 +10,8 @@ separately below so they do not remain in the backlog.
    placeholders and invalid generator arguments) has no direct test in
    `mockhttp`; the bad-argument warning is only exercised through the
    `mock validate` tests. Add direct tests there.
-2. **Form-field matching.** `@form.field` for URL-encoded bodies, the main
-   gap left after body and JSON matchers.
+2. **JSON array matching.** `@json.roles.* = admin` (any element matches);
+   today only fixed indexes such as `roles.0` work.
 3. **Seeded generated data.**
 4. **Named scenarios.**
 5. **Aggregate validation diagnostics.** `mock validate` stops at the first load
@@ -26,11 +26,12 @@ separately below so they do not remain in the backlog.
   `@name = value` variables, and `{{host}}` or full URLs in the request target
   (whose port selects the listener) are supported; warnings already flag likely request headers used as response
   headers.
-- **Richer matching:** form fields, explicit priorities, and JSON paths with
-  dotted keys or wildcards. Current matching covers methods, encoded paths and
+- **Richer matching:** JSON paths with dotted keys or any-element wildcards,
+  cookies (`@cookie.name`), "present but not X" predicates, and multipart or
+  XML bodies. Current matching covers methods, encoded paths and
   path parameters, declared query values, and exact, present (`*`), absent
   (`!`) and regex (`~regex`) matchers on headers, query and path parameters,
-  the raw body and JSON fields. The first matching route in load order wins,
+  the raw body, JSON fields and form fields, plus trailing `*` path wildcards. The first matching route in load order wins,
   so catch-alls go last; shadowed routes get a load warning.
 - **Response modes and scenarios:** named stateful scenarios (for example,
   "second call fails") to replace the removed response rotation for retry
@@ -60,6 +61,9 @@ separately below so they do not remain in the backlog.
 
 ## Implemented from the original ideas
 
+- **Form matchers, wildcards and request placeholders:** `@form.name`
+  matchers, trailing `*`/`*name` path wildcards, `{{$json.*}}` and
+  `{{$form.*}}` body placeholders, and named regex captures as placeholders.
 - **Body matchers and route order:** `@body` and `@json.field.path` matchers.
   Response rotation, `POST /reset` and the Reset responses button were
   removed; the first matching route answers, and routes an earlier route

@@ -91,10 +91,25 @@ export function sampleJSONBody(matchJson) {
     return JSON.stringify(root);
 }
 
+// Builds a sample URL-encoded body from @form matchers, like the query string.
+export function sampleFormBody(matchForm) {
+    const form = new URLSearchParams();
+    for (const [name, values] of Object.entries(matchForm || {})) {
+        for (const value of values) {
+            if (value !== '!') form.append(name, isSampleExact(value) ? value : 'example');
+        }
+    }
+    return form.toString();
+}
+
 export function buildRouteCurl(route, origin) {
     const matchPath = route.matchPath || {};
-    const path = String(route.path).replace(/(^|\/):([^/]+)/g, (_, slash, name) =>
-        slash + (name in matchPath && isSampleExact(matchPath[name]) ? encodeURIComponent(matchPath[name]) : sampleParam(name)));
+    const path = String(route.path)
+        .replace(/(^|\/):([^/]+)/g, (_, slash, name) =>
+            slash + (name in matchPath && isSampleExact(matchPath[name]) ? encodeURIComponent(matchPath[name]) : sampleParam(name)))
+        // A trailing * or *name wildcard matches the rest of the path.
+        .replace(/(^|\/)\*([A-Za-z0-9_]*)$/, (_, slash, name) =>
+            slash + (name in matchPath && isSampleExact(matchPath[name]) ? matchPath[name].split('/').map(encodeURIComponent).join('/') : 'example'));
     // Required @query.* parameters are appended to the declared query as written.
     const extra = new URLSearchParams();
     for (const [name, values] of Object.entries(route.matchQuery || {})) {
@@ -114,7 +129,9 @@ export function buildRouteCurl(route, origin) {
         }
     }
     const json = sampleJSONBody(route.matchJson);
-    const body = json || (route.matchBody && isSampleExact(route.matchBody) ? route.matchBody : '');
+    const form = sampleFormBody(route.matchForm);
+    const body = json || form || (route.matchBody && isSampleExact(route.matchBody) ? route.matchBody : '');
+    // curl sends --data-raw as application/x-www-form-urlencoded by default.
     if (json && !Object.keys(route.matchHeaders || {}).some(name => name.toLowerCase() === 'content-type')) {
         parts.push('--header', shellQuote('Content-Type: application/json'));
     }
@@ -132,6 +149,7 @@ export function formatRoute(route, sampleCurl = '') {
     const matchBody = [
         route.matchBody ? `body: ${describe(route.matchBody)}` : '',
         ...Object.entries(route.matchJson || {}).map(([path, value]) => `json ${path}: ${describe(value)}`),
+        ...Object.entries(route.matchForm || {}).flatMap(([name, values]) => values.map(value => `form ${name}: ${describe(value)}`)),
     ].filter(Boolean).join('\n');
     const variables = Object.entries(route.variables || {}).map(([key, value]) => `@${key} = ${value}`).join('\n');
     return [

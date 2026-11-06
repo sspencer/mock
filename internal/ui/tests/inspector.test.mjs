@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sampleJSONBody, buildCurl, buildRouteCurl, formatMessage, formatRoute, bodyNotice, sampleParam } from '../static/inspector.mjs';
+import { sampleFormBody, sampleJSONBody, buildCurl, buildRouteCurl, formatMessage, formatRoute, bodyNotice, sampleParam } from '../static/inspector.mjs';
 import { attachSplitter, clampPercent, alignedTrafficHeight } from '../static/layout.mjs';
 
 const message = {
@@ -127,4 +127,16 @@ test('Route cURL sends a sample body for body and JSON matchers', () => {
     assert.equal(sampleJSONBody({ x: '!' }), '');
     const text = formatRoute({ method: 'POST', path: '/login', source: 't.http', line: 1, revision: 1, status: 200, matchBody: '~.*x.*', matchJson: { 'user.name': 'alice' } });
     assert.ok(text.includes('Body requirements\nbody: ~.*x.* (regular expression)\njson user.name: alice'), text);
+});
+
+test('Route cURL fills wildcards and sends form bodies', () => {
+    const origin = 'http://localhost:8080';
+    assert.equal(buildRouteCurl({ method: 'GET', path: '/files/*path' }, origin), "curl 'http://localhost:8080/files/example'");
+    assert.equal(buildRouteCurl({ method: 'GET', path: '/api/*' }, origin), "curl 'http://localhost:8080/api/example'");
+    assert.equal(buildRouteCurl({ method: 'GET', path: '/files/*path', matchPath: { path: 'a b/c.txt' } }, origin), "curl 'http://localhost:8080/files/a%20b/c.txt'");
+    assert.equal(buildRouteCurl({ method: 'POST', path: '/token', matchForm: { grant_type: ['client_credentials'], scope: ['~.+'], debug: ['!'] } }, origin),
+        "curl --request POST --data-raw 'grant_type=client_credentials&scope=example' 'http://localhost:8080/token'");
+    assert.equal(sampleFormBody({}), '');
+    const text = formatRoute({ method: 'POST', path: '/token', source: 't.http', line: 1, revision: 1, status: 200, matchForm: { grant_type: ['client_credentials'] } });
+    assert.ok(text.includes('Body requirements\nform grant_type: client_credentials'), text);
 });

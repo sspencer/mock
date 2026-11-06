@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -227,10 +228,12 @@ func shadows(a, b restclient.Method) bool {
 			}
 		}
 	}
-	for key, values := range a.MatchQuery {
-		for _, value := range values {
-			if !slices.Contains(b.MatchQuery[key], value) {
-				return false
+	for _, pair := range [][2]url.Values{{a.MatchQuery, b.MatchQuery}, {a.MatchForm, b.MatchForm}} {
+		for key, values := range pair[0] {
+			for _, value := range values {
+				if !slices.Contains(pair[1][key], value) {
+					return false
+				}
 			}
 		}
 	}
@@ -316,6 +319,7 @@ func cloneMethods(methods []restclient.Method) []restclient.Method {
 		out[i].MatchQuery = cloneValues(methods[i].MatchQuery)
 		out[i].MatchPath = maps.Clone(methods[i].MatchPath)
 		out[i].MatchJSON = maps.Clone(methods[i].MatchJSON)
+		out[i].MatchForm = cloneValues(methods[i].MatchForm)
 		out[i].Comments = append([]string(nil), methods[i].Comments...)
 		out[i].Variables = make(map[string]string, len(methods[i].Variables))
 		for k, v := range methods[i].Variables {
@@ -340,9 +344,12 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method) {
 			known[k] = true
 		}
 	}
-	for _, part := range strings.Split(method.Path, "/") {
-		if strings.HasPrefix(part, ":") {
-			known[part[1:]] = true
+	for _, name := range restclient.PathParams(method.EscapedPath) {
+		known[name] = true
+	}
+	for _, raw := range matcherValues(method) {
+		for _, name := range restclient.CaptureNames(raw) {
+			known[name] = true
 		}
 	}
 	texts := []string{method.Body}
@@ -364,7 +371,7 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method) {
 				continue
 			}
 			if prefix == "$" {
-				if known[key] || isGeneratedKey(key) {
+				if known[key] || isGeneratedKey(key) || isBodyPlaceholder(key) {
 					continue
 				}
 			} else if _, ok := method.Variables[key]; ok {
@@ -396,4 +403,41 @@ func (s *Server) clearLocked() {
 		}
 		subscriber <- event
 	}
+}
+
+// isBodyPlaceholder reports whether key reads the request body at render
+// time ($json.field.path or $form.name). Its value depends on each request,
+// so it is never reported as unknown.
+func isBodyPlaceholder(key string) bool {
+	for _, prefix := range []string{"json.", "form."} {
+		if name, ok := strings.CutPrefix(key, prefix); ok && name != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// matcherValues returns every raw matcher value of a method, for scanning
+// regexp capture names. @body values are adjusted as at match time.
+func matcherValues(method restclient.Method) []string {
+	var out []string
+	for _, values := range method.MatchHeaders {
+		out = append(out, values...)
+	}
+	for _, values := range method.MatchQuery {
+		out = append(out, values...)
+	}
+	for _, values := range method.MatchForm {
+		out = append(out, values...)
+	}
+	for _, value := range method.MatchPath {
+		out = append(out, value)
+	}
+	for _, value := range method.MatchJSON {
+		out = append(out, value)
+	}
+	if method.MatchBody != "" {
+		out = append(out, method.MatchBody)
+	}
+	return out
 }

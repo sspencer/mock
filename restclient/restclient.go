@@ -22,7 +22,8 @@ import (
 // Headers on the Method are response headers. Use MatchHeaders (from
 // @header.Name = value variables) to require request headers when matching.
 // MatchQuery (@query.name), MatchPath (@path.name), MatchBody (@body) and
-// MatchJSON (@json.field.path) add further request matchers. Matcher values
+// MatchJSON (@json.field.path) and MatchForm (@form.name) add further request
+// matchers. Matcher values
 // are kept as written; see ParseMatcher and ParseBodyMatcher.
 //
 // Target is the request target as written, with any {{name}} references
@@ -55,6 +56,7 @@ type Method struct {
 	MatchPath     map[string]string
 	MatchBody     string
 	MatchJSON     map[string]string
+	MatchForm     url.Values
 	Headers       http.Header
 	Body          string
 	File          string
@@ -177,6 +179,7 @@ func Parse(source string, r io.Reader) ([]Method, error) {
 				MatchQuery:    make(url.Values),
 				MatchPath:     make(map[string]string),
 				MatchJSON:     make(map[string]string),
+				MatchForm:     make(url.Values),
 				Headers:       make(http.Header),
 				Source:        source,
 				Line:          lineNumber,
@@ -463,6 +466,9 @@ func parseSection(pending pendingSection, fileDefs []definition, source string) 
 	if err != nil {
 		return method, parseErrorf(source, lineAt(i), "section %q: invalid query: %v", method.Name, err)
 	}
+	if err := checkWildcard(method.EscapedPath); err != nil {
+		return method, parseErrorf(source, lineAt(i), "section %q: %v", method.Name, err)
+	}
 	if err := checkPathMatchers(&method, pending.directives.defs, source); err != nil {
 		return method, err
 	}
@@ -518,13 +524,13 @@ func parseSection(pending pendingSection, fileDefs []definition, source string) 
 const fileVariableRemoved = `$file and @file are no longer supported; start the response body with "< path" instead (example: "< ./users.json")`
 
 // isMatcherName reports whether a variable name is a request matcher
-// (@header.Name, @query.name, @path.name, @body or @json.path) rather than a
-// {{name}} variable.
+// (@header.Name, @query.name, @path.name, @body, @json.path or @form.name)
+// rather than a {{name}} variable.
 func isMatcherName(name string) bool {
 	if name == "body" {
 		return true
 	}
-	for _, prefix := range []string{"header.", "query.", "path.", "json."} {
+	for _, prefix := range []string{"header.", "query.", "path.", "json.", "form."} {
 		if strings.HasPrefix(name, prefix) {
 			return true
 		}
@@ -532,14 +538,47 @@ func isMatcherName(name string) bool {
 	return false
 }
 
+// PathParams returns the parameter names in an escaped route path (as
+// Method.EscapedPath): :name segments and a trailing *name wildcard. A bare *
+// wildcard has no name. Escaped %3A and %2A segments are literal text.
+func PathParams(path string) []string {
+	var names []string
+	for _, part := range strings.Split(path, "/") {
+		if name, ok := strings.CutPrefix(part, ":"); ok {
+			names = append(names, name)
+		} else if name, ok := strings.CutPrefix(part, "*"); ok && name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+var wildcardNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// checkWildcard requires a * or *name wildcard to be the last path segment.
+func checkWildcard(path string) error {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	for i, part := range parts {
+		name, ok := strings.CutPrefix(part, "*")
+		if !ok {
+			continue
+		}
+		if i != len(parts)-1 {
+			return fmt.Errorf("wildcard %q must be the last path segment (example: \"/files/*path\")", part)
+		}
+		if name != "" && !wildcardNamePattern.MatchString(name) {
+			return fmt.Errorf("invalid wildcard name %q (use letters, digits and '_', starting with a letter or '_')", name)
+		}
+	}
+	return nil
+}
+
 // checkPathMatchers drops file-scoped @path.name matchers for sections whose
 // path has no :name parameter, and rejects section-scoped ones.
 func checkPathMatchers(method *Method, sectionDefs []definition, source string) error {
 	params := make(map[string]bool)
-	for _, part := range strings.Split(method.Path, "/") {
-		if name, ok := strings.CutPrefix(part, ":"); ok {
-			params[name] = true
-		}
+	for _, name := range PathParams(method.EscapedPath) {
+		params[name] = true
 	}
 	for name := range method.MatchPath {
 		if params[name] {
@@ -614,6 +653,17 @@ func applyControlVariable(method *Method, def definition, source string) error {
 			return err
 		}
 		method.MatchJSON[path] = value
+		return nil
+	}
+	if name, ok := strings.CutPrefix(def.name, "form."); ok {
+		if name == "" {
+			return parseErrorf(source, def.line,
+				`section %q: @form. requires a field name (example: "@form.grant_type = client_credentials")`, method.Name)
+		}
+		if err := parseMatcherValue(method, def, value, source); err != nil {
+			return err
+		}
+		method.MatchForm.Set(name, value)
 		return nil
 	}
 	if name, ok := strings.CutPrefix(def.name, "path."); ok {

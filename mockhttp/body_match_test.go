@@ -77,7 +77,7 @@ fallback
 		{`{"user":{},"meta":{"a":1}}`, "object"},
 		{`{"user":null}`, "no user"},
 		{`{}`, "no user"},
-		{``, "no user"},  // a blank body has no fields
+		{``, "no user"},          // a blank body has no fields
 		{`not json`, "fallback"}, // invalid JSON matches no @json matcher, even "!"
 		{`{"user":1} {"x":2}`, "fallback"},
 	}

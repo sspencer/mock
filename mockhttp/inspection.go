@@ -32,6 +32,7 @@ type RouteInfo struct {
 	MatchPath     map[string]string `json:"matchPath,omitempty"`
 	MatchBody     string            `json:"matchBody,omitempty"`
 	MatchJSON     map[string]string `json:"matchJson,omitempty"`
+	MatchForm     url.Values        `json:"matchForm,omitempty"`
 	Variables     map[string]string `json:"variables"`
 	Body          string            `json:"body"`
 	BodyTruncated bool              `json:"bodyTruncated"`
@@ -73,7 +74,7 @@ func describeRoute(method restclient.Method, index int, revision uint64) RouteIn
 		Path: (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath(), Query: method.Query.Encode(), Port: method.Port, Source: method.Source, Line: method.Line, Status: method.Status,
 		Delay: method.Delay.String(), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
 		MatchQuery: cloneValues(method.MatchQuery), MatchPath: cloneOptional(method.MatchPath),
-		MatchBody: method.MatchBody, MatchJSON: cloneOptional(method.MatchJSON),
+		MatchBody: method.MatchBody, MatchJSON: cloneOptional(method.MatchJSON), MatchForm: cloneValues(method.MatchForm),
 		Variables: cloneVariables(method.Variables), Body: body, BodyTruncated: truncated}
 }
 
@@ -218,6 +219,22 @@ func mismatch(method restclient.Method, facts *requestFacts) RouteMismatch {
 		}
 		result.Reasons = append(result.Reasons, reason)
 		result.score++
+	}
+	for _, name := range sortedKeys(method.MatchForm) {
+		for _, expected := range method.MatchForm[name] {
+			if facts.formMatches(name, expected) {
+				continue
+			}
+			values, err := facts.formValues(name)
+			reason := "Form " + name + ": "
+			if err != nil {
+				reason += err.Error()
+			} else {
+				reason += matcherReason(restclient.MustMatcher(expected), values, true)
+			}
+			result.Reasons = append(result.Reasons, reason)
+			result.score++
+		}
 	}
 	return result
 }

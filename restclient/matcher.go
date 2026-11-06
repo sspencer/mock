@@ -3,6 +3,7 @@ package restclient
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -111,6 +112,44 @@ func (m Matcher) Match(values []string) bool {
 		}
 	}
 	return false
+}
+
+// Captures returns the named groups, such as id in ~(?P<id>[0-9]+), of the
+// first value a regexp matcher matches. It returns nil for other matchers,
+// for patterns without named groups, and when nothing matches.
+func (m Matcher) Captures(values []string) map[string]string {
+	if m.Kind != MatchRegexp || m.re == nil || !slices.ContainsFunc(m.re.SubexpNames(), func(name string) bool { return name != "" }) {
+		return nil
+	}
+	for _, value := range values {
+		groups := m.re.FindStringSubmatch(value)
+		if groups == nil {
+			continue
+		}
+		captures := make(map[string]string)
+		for i, name := range m.re.SubexpNames() {
+			if name != "" {
+				captures[name] = groups[i]
+			}
+		}
+		return captures
+	}
+	return nil
+}
+
+// CaptureNames returns the named groups of a regexp matcher value, or nil.
+func CaptureNames(raw string) []string {
+	m := MustMatcher(raw)
+	if m.re == nil {
+		return nil
+	}
+	var names []string
+	for _, name := range m.re.SubexpNames() {
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 var matcherRegexps sync.Map // pattern -> *regexp.Regexp

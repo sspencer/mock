@@ -305,7 +305,7 @@ only digits, such as `### [beta] Users`, stay part of the name. The old
 | `@name = value` file and method variables | Environment files / `{{env}}` from IDE |
 | Request line `METHOD /path` | Full multi-step scripts |
 | Response headers after the request line | Separate request vs response documents |
-| `@header.Name`, `@query.name`, `@path.name`, `@body`, `@json.path` request matchers (exact, `*`, `!`, `~regex`) | Form-field (`application/x-www-form-urlencoded`) matchers |
+| `@header.Name`, `@query.name`, `@path.name`, `@body`, `@json.path`, `@form.name` request matchers (exact, `*`, `!`, `~regex`) | Multipart and XML body matchers |
 | `{{name}}`, `{{%name}}` and `{{$placeholder}}` in bodies and response headers | Request variables (`{{login.response.body.token}}`) |
 | `< path` external body files | Mixing inline text and `< path` in one body; imports of other `.http` files |
 
@@ -403,6 +403,7 @@ Variable names with a special meaning, which `mock` consumes itself:
 - `@path.name`: require the `:name` path parameter to match the value: exact text or `~regex`. Set at file scope, it applies only to sections whose path has `:name`.
 - `@body`: require the request body to match the value. See [Body matching](#body-matching).
 - `@json.field.path`: require a field of a JSON request body to match the value. See [Body matching](#body-matching).
+- `@form.name`: require a field of a URL-encoded form body to match the value. See [Body matching](#body-matching).
 
 Every other variable is only used through `{{name}}` references. `mock` warns
 at load time about variables that nothing references.
@@ -414,11 +415,20 @@ Response bodies **and response headers** can contain placeholders:
 - `{{name}}` inserts the value of the `@name` variable in scope.
 - `{{%name}}` inserts it percent-encoded (a space becomes `%20`, `&` becomes `%26`).
 - `{{$name}}` inserts a request or generated value. `mock` resolves it from:
-  - Path parameters, such as `:id` in `/users/:id`.
+  - Path parameters, such as `:id` in `/users/:id` or `*path` in `/files/*path`.
+  - Named groups in matcher regexes, such as `token` in
+    `@header.Authorization = ~Bearer (?P<token>.+)`.
   - Query parameters, such as `type` in `/names?type=cat`.
+  - Request body fields: `{{$json.user.name}}` reads a JSON body field (same
+    paths as [`@json.*`](#body-matching)) and `{{$form.username}}` reads a
+    URL-encoded form field.
   - Built-in generated values.
 
-Path parameters take precedence over query parameters with the same name.
+Earlier sources in that list win when names collide: path parameters beat
+regex groups, which beat query parameters. A missing body field leaves the
+placeholder literal. A JSON string field is inserted as its text, and other
+JSON values as compact JSON, so `"name":"{{$json.name}}"` copies a string and
+`"profile":{{$json.profile}}` copies a whole object.
 Variable and placeholder names may contain dots and hyphens after their first character.
 Unknown placeholders remain literal and produce load-time warnings; query
 parameters supplied only at request time can resolve those warnings at runtime.
@@ -540,7 +550,7 @@ In Docker, publish every port the request files use, such as
 
 Routes match on the listener port, HTTP method, path, any query parameters
 declared in the `.http` file, and any `@header.*`, `@query.*`, `@path.*`,
-`@body` and `@json.*` matchers. The first route that matches, in load order,
+`@body`, `@json.*` and `@form.*` matchers. The first route that matches, in load order,
 answers the request; see [Route order](#route-order).
 
 ```http
@@ -563,6 +573,25 @@ Content-Type: application/json
 {"id":"{{$id}}"}
 ```
 
+A `*` as the last path segment matches the rest of the path, including
+nothing: `/api/*` matches `/api`, `/api/users` and `/api/users/7/posts`. Name it
+(`*path`) to use the rest as `{{$path}}`, unescaped. A wildcard anywhere but
+the end is a load error. Write `%2A` for a literal `*` segment. Because the first
+matching route wins, a wildcard route makes a fallback when it comes last:
+
+```http
+### Download a file
+GET /files/*path
+
+You asked for {{$path}}
+
+### [404] Unknown API path
+GET /api/*
+Content-Type: application/json
+
+{"error":"not_found"}
+```
+
 ### Header matching
 
 An `@header.Name = value` matcher requires the incoming request to carry that
@@ -581,7 +610,7 @@ Content-Type: application/json
 
 ### Matcher values
 
-`@header.*`, `@query.*`, `@path.*`, `@body` and `@json.*` matchers share one value syntax:
+`@header.*`, `@query.*`, `@path.*`, `@body`, `@json.*` and `@form.*` matchers share one value syntax:
 
 | Value | Matches when |
 |-------|--------------|
@@ -591,7 +620,8 @@ Content-Type: application/json
 | `~regex` | a value matches the Go regular expression `regex` in full |
 
 A regex must match the whole value; it is anchored at both ends, so
-`~[0-9]+` rejects `12a`. Write `~.*token.*` to match anywhere in the value.
+`~[0-9]+` rejects `12a`. Write `~.*token.*` to match anywhere in the value. Start the
+pattern with `(?i)` for a case-insensitive match: `~(?i)bearer .+`.
 When a header or query parameter is repeated, exact and regex matchers accept
 any one of the values. An invalid or empty regex is a load error. `\\` in a
 variable value is an escaped backslash, so write `\\\\` for a literal backslash in
@@ -622,7 +652,7 @@ A request with `Authorization: Basic abc` matches neither route and gets a
 ### Query and path parameter matching
 
 `@query.name` constrains a query parameter beyond the exact values written in
-the request target. `@path.name` constrains a `:name` path parameter. `*` and `!`
+the request target. `@path.name` constrains a `:name` path parameter or a `*name` wildcard. `*` and `!`
 make no sense for path parameters, so they are load errors there, and so is an
 `@path.name` in a section without `:name`.
 
@@ -658,8 +688,9 @@ because the first matching route wins.
 
 ### Body matching
 
-`@body` matches the whole request body as text, and `@json.field.path` matches
-one field of a JSON body. Both take the [matcher values](#matcher-values) above.
+`@body` matches the whole request body as text, `@json.field.path` matches
+one field of a JSON body, and `@form.name` matches a field of a URL-encoded
+form body. All three take the [matcher values](#matcher-values) above.
 
 ```http
 ### Admin login
@@ -699,11 +730,33 @@ pong
   compared as compact JSON text, so `@json.age = 42` and `@json.active = true`
   work, and `@json.age = ~[0-9]+` accepts `42` and `"42"`. A missing field or
   `null` counts as absent for `*` and `!`.
-- The body is parsed as JSON whatever its `Content-Type`. A blank body has no
-  fields, so `@json.name = !` matches it. A body that is not valid JSON matches
-  no `@json.*` matcher, not even `!`.
+- **`@form.name`**: matches a field of an `a=1&b=2` body, decoded, in any
+  order. A repeated field matches when any of its values does. Field names must
+  be valid variable names, so `user[name]` cannot be matched.
+- Bodies are parsed as JSON or form data whatever their `Content-Type`. A blank
+  body has no fields, so `@json.name = !` and `@form.name = !` match it. A body
+  that does not parse matches no `@json.*` (or `@form.*`) matcher, not even
+  `!`.
 - Body matchers see the first 1 MiB of a request. A larger body matches no
-  `@body` or `@json.*` matcher. The admin log still captures 64 KiB per body.
+  `@body`, `@json.*` or `@form.*` matcher. The admin log still captures 64 KiB per body.
+
+Matchers and body placeholders combine into an OAuth-style token endpoint:
+
+```http
+### Client credentials
+@form.grant_type = client_credentials
+@form.client_id = ~(?P<client>[a-z]+)-[0-9]+
+POST /oauth/token
+Content-Type: application/json
+
+{"access_token":"{{$client}}-{{$uuid}}","scope":"{{$form.scope}}"}
+
+### [400] Unsupported grant
+POST /oauth/token
+Content-Type: application/json
+
+{"error":"unsupported_grant_type"}
+```
 
 ## Route order
 
@@ -751,7 +804,8 @@ into a shell (**Copy cURL** copies it). The host is the one you used to open the
 UI, path parameters get sample values (`:id` becomes `1`), and required request
 headers from `@header.*` and parameters from `@query.*` are included. `@json.*`
 matchers become a sample JSON body (sent with `Content-Type: application/json`),
-and an exact `@body` value is sent as the body. A `*` or `~regex` value becomes
+`@form.*` matchers a form body, and an exact `@body` value is sent as the body.
+Wildcards get `example`. A `*` or `~regex` value becomes
 a sample value (`example` for headers and JSON fields), which may not satisfy
 the regex, and `!` matchers are left out.
 

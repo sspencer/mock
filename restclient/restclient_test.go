@@ -712,6 +712,28 @@ POST /users
 			want: []string{"test.http:2:", "@json.user..name"},
 		},
 		{
+			name: "wildcard not last",
+			input: `### Files
+GET /files/*path/meta
+`,
+			want: []string{"test.http:2:", `wildcard "*path" must be the last path segment`},
+		},
+		{
+			name: "invalid wildcard name",
+			input: `### Files
+GET /files/*a-b
+`,
+			want: []string{"test.http:2:", `invalid wildcard name "a-b"`},
+		},
+		{
+			name: "empty form matcher name",
+			input: `### Token
+@form. = x
+POST /token
+`,
+			want: []string{"test.http:2:", "@form. requires a field name"},
+		},
+		{
 			name: "absent path matcher",
 			input: `### User
 @path.id = !

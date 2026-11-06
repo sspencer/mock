@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -34,6 +36,10 @@ type requestFacts struct {
 	jsonDone bool
 	json     any
 	jsonErr  error
+
+	formDone bool
+	form     url.Values
+	formErr  error
 }
 
 func newRequestFacts(r *http.Request, body requestBody) *requestFacts {
@@ -42,7 +48,7 @@ func newRequestFacts(r *http.Request, body requestBody) *requestFacts {
 }
 
 // findMethod returns the first route, in load order, that matches r.
-func (s *Server) findMethod(r *http.Request, body requestBody) (*restclient.Method, map[string]string, MatchInfo, bool) {
+func (s *Server) findMethod(r *http.Request, body requestBody) (*restclient.Method, templateValues, MatchInfo, bool) {
 	// Routes are immutable once installed; SetMethods swaps the slice, so a
 	// snapshot keeps one request within one configuration revision.
 	s.mu.Lock()
@@ -55,11 +61,11 @@ func (s *Server) findMethod(r *http.Request, body requestBody) (*restclient.Meth
 			method := &methods[i]
 			if values, ok := facts.match(method); ok {
 				route := describeRoute(*method, i, revision)
-				return method, values, MatchInfo{Route: &route, Revision: revision}, true
+				return method, templateValues{values: values, facts: facts}, MatchInfo{Route: &route, Revision: revision}, true
 			}
 		}
 	}
-	return nil, nil, MatchInfo{Revision: revision, Candidates: closestRoutes(methods, facts)}, false
+	return nil, templateValues{}, MatchInfo{Revision: revision, Candidates: closestRoutes(methods, facts)}, false
 }
 
 // match reports whether method accepts the request and returns the path and
@@ -83,12 +89,124 @@ func (f *requestFacts) match(method *restclient.Method) (map[string]string, bool
 			return nil, false
 		}
 	}
+	for name, expectedValues := range method.MatchForm {
+		for _, expected := range expectedValues {
+			if !f.formMatches(name, expected) {
+				return nil, false
+			}
+		}
+	}
+	params := make(map[string]bool, len(values))
+	for name := range values {
+		params[name] = true
+	}
+	for name, value := range f.captures(method) {
+		if !params[name] {
+			values[name] = value
+		}
+	}
 	for name, queryValues := range f.query {
 		if _, exists := values[name]; !exists && len(queryValues) > 0 {
 			values[name] = queryValues[0]
 		}
 	}
 	return values, true
+}
+
+// captures collects named regexp groups from a matched route's matchers.
+// Later matchers win when two groups share a name: path, query, headers,
+// body, JSON fields, then form fields, each in name order.
+func (f *requestFacts) captures(method *restclient.Method) map[string]string {
+	out := make(map[string]string)
+	add := func(m restclient.Matcher, values []string) {
+		for name, value := range m.Captures(values) {
+			out[name] = value
+		}
+	}
+	pathValues, _ := matchPath(routePattern(*method), f.r.URL.EscapedPath())
+	for _, name := range slices.Sorted(maps.Keys(method.MatchPath)) {
+		add(restclient.MustMatcher(method.MatchPath[name]), []string{pathValues[name]})
+	}
+	for _, name := range slices.Sorted(maps.Keys(method.MatchQuery)) {
+		for _, raw := range method.MatchQuery[name] {
+			add(restclient.MustMatcher(raw), f.query[name])
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(method.MatchHeaders)) {
+		for _, raw := range method.MatchHeaders[name] {
+			add(restclient.MustMatcher(raw), f.headers.Values(name))
+		}
+	}
+	if method.MatchBody != "" {
+		add(restclient.MustBodyMatcher(method.MatchBody), f.bodyValues())
+	}
+	for _, path := range slices.Sorted(maps.Keys(method.MatchJSON)) {
+		values, _ := f.jsonValues(path)
+		add(restclient.MustMatcher(method.MatchJSON[path]), values)
+	}
+	for _, name := range slices.Sorted(maps.Keys(method.MatchForm)) {
+		values, _ := f.formValues(name)
+		for _, raw := range method.MatchForm[name] {
+			add(restclient.MustMatcher(raw), values)
+		}
+	}
+	return out
+}
+
+func (f *requestFacts) formMatches(name, expected string) bool {
+	values, err := f.formValues(name)
+	return err == nil && restclient.MustMatcher(expected).Match(values)
+}
+
+// formValues returns a field of a URL-encoded body. A blank body has no
+// fields; a body that does not parse is an error, and then no @form matcher
+// matches.
+func (f *requestFacts) formValues(name string) ([]string, error) {
+	if f.body.unavailable {
+		return nil, errBodyUnavailable
+	}
+	if !f.formDone {
+		f.formDone = true
+		f.form, f.formErr = url.Values{}, nil
+		if text := strings.TrimSpace(string(f.body.data)); text != "" {
+			if form, err := url.ParseQuery(text); err != nil {
+				f.formErr = errBodyNotForm
+			} else {
+				f.form = form
+			}
+		}
+	}
+	if f.formErr != nil {
+		return nil, f.formErr
+	}
+	return f.form[name], nil
+}
+
+// lookup resolves a {{$name}} placeholder: path, capture and query values
+// first, then $json.field.path and $form.name from the request body.
+func (v templateValues) lookup(key string) (string, bool) {
+	if value, ok := v.values[key]; ok {
+		return value, true
+	}
+	if v.facts == nil {
+		return "", false
+	}
+	var values []string
+	if path, ok := strings.CutPrefix(key, "json."); ok && path != "" {
+		values, _ = v.facts.jsonValues(path)
+	} else if name, ok := strings.CutPrefix(key, "form."); ok && name != "" {
+		values, _ = v.facts.formValues(name)
+	}
+	if len(values) == 0 {
+		return "", false
+	}
+	return values[0], true
+}
+
+// templateValues are the request values a response template can reference.
+type templateValues struct {
+	values map[string]string
+	facts  *requestFacts
 }
 
 func routePattern(method restclient.Method) string {
@@ -170,6 +288,7 @@ func (f *requestFacts) jsonValues(path string) ([]string, error) {
 var (
 	errBodyUnavailable = errors.New("request body is larger than 1 MiB or could not be read")
 	errBodyNotJSON     = errors.New("request body is not valid JSON")
+	errBodyNotForm     = errors.New("request body is not valid URL-encoded form data")
 )
 
 // requestLocalPort returns the port of the listener that accepted r, or 0 when
@@ -194,11 +313,26 @@ func matchPath(pattern string, requestPath string) (map[string]string, bool) {
 	}
 	patternParts := splitPath(pattern)
 	requestParts := splitPath(requestPath)
+	values := make(map[string]string)
+	// A trailing * or *name segment matches the rest of the path, including
+	// nothing; *name captures it, unescaped.
+	if last := len(patternParts) - 1; last >= 0 && strings.HasPrefix(patternParts[last], "*") {
+		if len(requestParts) < last {
+			return nil, false
+		}
+		if name := patternParts[last][1:]; name != "" {
+			rest, err := url.PathUnescape(strings.Join(requestParts[last:], "/"))
+			if err != nil {
+				return nil, false
+			}
+			values[name] = rest
+		}
+		patternParts, requestParts = patternParts[:last], requestParts[:last]
+	}
 	if len(patternParts) != len(requestParts) {
 		return nil, false
 	}
 
-	values := make(map[string]string)
 	for i := range patternParts {
 		if key, ok := strings.CutPrefix(patternParts[i], ":"); ok {
 			if key == "" {

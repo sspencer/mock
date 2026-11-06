@@ -126,3 +126,39 @@ ok
 		t.Fatal("@body stored as a variable")
 	}
 }
+
+func TestMatcherCaptures(t *testing.T) {
+	m := MustMatcher("~Bearer (?P<token>[a-z]+)(?P<rest>.*)")
+	got := m.Captures([]string{"Basic x", "Bearer abc123"})
+	if got["token"] != "abc" || got["rest"] != "123" {
+		t.Fatalf("Captures = %v", got)
+	}
+	if MustMatcher("~[a-z]+").Captures([]string{"abc"}) != nil || MustMatcher("abc").Captures([]string{"abc"}) != nil {
+		t.Fatal("captures without named groups")
+	}
+	if names := CaptureNames("~(?P<a>x)(y)(?P<b>z)"); len(names) != 2 || names[0] != "a" || names[1] != "b" {
+		t.Fatalf("CaptureNames = %v", names)
+	}
+}
+
+func TestParseWildcardAndForm(t *testing.T) {
+	methods, err := Parse("test.http", strings.NewReader(`### Files
+@path.path = ~.*\.txt
+@form.kind = text
+POST /files/*path
+
+ok
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if methods[0].MatchPath["path"] != `~.*\.txt` || methods[0].MatchForm.Get("kind") != "text" {
+		t.Fatalf("MatchPath = %v, MatchForm = %v", methods[0].MatchPath, methods[0].MatchForm)
+	}
+	if got := PathParams("/a/:id/b/*rest"); len(got) != 2 || got[0] != "id" || got[1] != "rest" {
+		t.Fatalf("PathParams = %v", got)
+	}
+	if got := PathParams("/a/%3Aid/%2Arest"); len(got) != 0 {
+		t.Fatalf("escaped segments are literal, got %v", got)
+	}
+}
