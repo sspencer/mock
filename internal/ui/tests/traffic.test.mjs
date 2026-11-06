@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PendingTraffic, streamLabel, requestHost } from '../static/traffic.mjs';
+import { PendingTraffic, TrafficStream, streamLabel, requestHost } from '../static/traffic.mjs';
 test('pause retains bounded traffic and reports overflow', () => {
  const pending=new PendingTraffic(2);
  for(let id=1;id<=3;id++)pending.add({id});
@@ -22,4 +22,45 @@ test('request host shows only when mock listens on several ports', () => {
  assert.equal(requestHost({ host: 'localhost:9090' }, true), 'localhost:9090');
  assert.equal(requestHost({ host: 'localhost:9090' }, false), '');
  assert.equal(requestHost({}, true), '');
+});
+
+const ev=(id,session='one')=>({id,session});
+test('stream starts offline and live, and connection is independent of pause', () => {
+ const stream=new TrafficStream();
+ assert.equal(stream.connection,'offline');assert.equal(stream.display,'live');assert.equal(stream.label(),'Reconnecting');
+ stream.opened();assert.equal(stream.label(),'Listening');
+ stream.pause();stream.failed();assert.equal(stream.label(),'Reconnecting');
+ stream.opened();assert.match(stream.label(),/^Paused/);
+});
+test('live messages show; paused messages wait and drain in id order on resume', () => {
+ const stream=new TrafficStream();
+ assert.deepEqual(stream.message(ev(1)),{clearThrough:Infinity,show:[ev(1)]});
+ assert.deepEqual(stream.message(ev(2)),{show:[ev(2)]});
+ stream.pause();assert.deepEqual(stream.message(ev(4)).show,[]);stream.message(ev(3));
+ assert.deepEqual(stream.resume().show.map(e=>e.id),[3,4]);assert.equal(stream.display,'live');
+});
+test('a new session starts a new epoch and drops pending traffic', () => {
+ const stream=new TrafficStream();stream.message(ev(5));stream.cleared({session:'one',id:5});stream.pause();stream.message(ev(6));
+ const effect=stream.message(ev(1,'two'));
+ assert.equal(effect.clearThrough,Infinity);assert.equal(stream.session,'two');assert.equal(stream.clearedThrough,0);
+ assert.deepEqual(stream.resume().show.map(e=>e.id),[1]);
+});
+test('clear boundaries only move forward and drop older events', () => {
+ const stream=new TrafficStream();stream.message(ev(1));
+ assert.equal(stream.cleared({session:'one',id:4}).clearThrough,4);
+ assert.deepEqual(stream.message(ev(3)).show,[]);
+ assert.equal(stream.clearConfirmed('one',2).clearThrough,4);
+ assert.deepEqual(stream.message(ev(5)).show,[ev(5)]);
+});
+test('a clear confirmed by another session is stale and ignored', () => {
+ const stream=new TrafficStream();stream.message(ev(1));
+ assert.equal(stream.clearConfirmed('two',9),null);assert.equal(stream.clearedThrough,0);
+ assert.equal(new TrafficStream().clearConfirmed('any',3).clearThrough,3);
+});
+test('reset explains history gaps and a later clear removes the notice', () => {
+ const stream=new TrafficStream();stream.opened();
+ assert.equal(stream.reset({session:'one',reason:'history-gap'}).clearThrough,Infinity);
+ assert.match(stream.label(),/History gap/);
+ stream.reset({session:'two',reason:'server-restarted'});assert.equal(stream.label(),'Listening');
+ stream.reset({session:'two',reason:'history-gap'});stream.cleared({session:'two',id:1});assert.equal(stream.label(),'Listening');
 });

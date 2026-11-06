@@ -98,6 +98,10 @@ test('routes open their configuration and copy a sample request', async () => {
  assert.match(element('routeSummary').textContent,/users.http:1/);
  let copied='';Object.defineProperty(globalThis,'navigator',{configurable:true,value:{clipboard:{writeText:async text=>{copied=text;}}}});
  click('copyRouteCurlButton');await Promise.resolve();assert.equal(copied,"curl --request POST 'http://localhost:8080/users'");
+ routesData=[{...routesData[0],id:'3:0',revision:3}];
+ click('refreshRoutesButton');await new Promise(resolve=>setImmediate(resolve));
+ assert.match(element('routeSummary').textContent,/previous revision/);
+ assert.equal(element('routeView').hidden,false);
 });
 
 test('request column hides the host on a single-port server',()=>{

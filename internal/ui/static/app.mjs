@@ -1,7 +1,8 @@
 import { formatMessage, bodyNotice, buildCurl, buildRouteCurl, formatRoute } from './inspector.mjs';
 import { attachSplitter, alignedTrafficHeight } from './layout.mjs';
 import { buildHAR } from './har.mjs';
-import { PendingTraffic, streamLabel, requestHost } from './traffic.mjs';
+import { TrafficStream, requestHost } from './traffic.mjs';
+import { noSelection, selectRequest, selectRoute, selectedRequestId, selectedRoute, afterEventsChanged, afterRoutesLoaded } from './selection.mjs';
 
 const MAX_EVENTS = 1000;
 const MOCK_CONFIG = JSON.parse(document.getElementById("mock-config").textContent);
@@ -54,7 +55,7 @@ const configBanner = document.getElementById('configBanner');
 const reloadErrorPanel = document.getElementById('reloadErrorPanel');
 const reloadError = document.getElementById('reloadError');
 const pretty = { request: true, response: true };
-let selectedRoute = null;
+let selection = noSelection;
 let returnFocus = null;
 let copyGeneration = 0;
 
@@ -62,15 +63,9 @@ let copyGeneration = 0;
 const eventsById = new Map();
 /** @type {number[]} newest-first ids */
 let eventOrder = [];
-let paused = false;
-let selectedId = null;
 let filterText = '';
-let streamSession = null;
-let clearedThrough = 0;
-const pending = new PendingTraffic(MAX_EVENTS);
-let connected = false;
+const stream = new TrafficStream(MAX_EVENTS);
 let renderPending = false;
-let streamNotice = '';
 const preferences = {
     get(key) { try { return localStorage.getItem(key); } catch { return null; } },
     set(key, value) { try { localStorage.setItem(key, value); } catch { /* Storage is optional. */ } },
@@ -87,7 +82,7 @@ attachSplitter(document.getElementById('routesSplitter'), requestPanel,
       initial: () => alignedTrafficHeight(requestPanel.getBoundingClientRect().height, responseSection?.getBoundingClientRect().height, 70) }, preferences);
 
 function updateStreamStatus() {
-    streamStatus.textContent = streamLabel(connected, paused, pending.events.size, pending.dropped) + streamNotice;
+    streamStatus.textContent = stream.label();
 }
 function scheduleRender() {
     if (renderPending) return;
@@ -134,60 +129,52 @@ themeToggle.addEventListener('click', () => {
 });
 
 const source = new EventSource('events');
-function clearThrough(cursor = Infinity) {
-    pending.clearThrough(cursor);
+// clearDisplayed removes displayed events with id <= cursor (Infinity = all).
+function clearDisplayed(cursor) {
     for (const id of eventOrder) { if (id <= cursor) eventsById.delete(id); }
     eventOrder = eventOrder.filter(id => eventsById.has(id));
-    if (!eventsById.has(selectedId)) {
-        selectedId = null;
-        updateDetail(requestDetails, '');
-        updateDetail(responseDetails, '');
-    }
+    dropMissingSelection();
     updateRequestCount();
     renderTable();
+}
+// applyStream applies the effect of a TrafficStream transition to the page.
+function applyStream(effect) {
+    if (!effect) return;
+    if (effect.clearThrough != null) clearDisplayed(effect.clearThrough);
+    for (const event of effect.show) upsertEvent(event);
     updateStreamStatus();
 }
-source.addEventListener('reset', event => {
-    const data = JSON.parse(event.data);
-    streamNotice = data.reason === 'history-gap' ? ' · History gap; showing retained traffic' : '';
-    streamSession = data.session;
-    clearedThrough = 0;
-    clearThrough();
-});
-source.addEventListener('clear', event => {
-    const data = JSON.parse(event.data);
-    streamNotice = '';
-    streamSession = data.session;
-    clearedThrough = Math.max(clearedThrough, data.id);
-    clearThrough(clearedThrough);
-});
+source.addEventListener('reset', event => applyStream(stream.reset(JSON.parse(event.data))));
+source.addEventListener('clear', event => applyStream(stream.cleared(JSON.parse(event.data))));
 source.onopen = function () {
-    connected = true;
+    stream.opened();
     document.body.classList.remove('stream-offline');
     updateStreamStatus();
 };
 source.onerror = function () {
-    connected = false;
+    stream.failed();
     document.body.classList.add('stream-offline');
     updateStreamStatus();
 };
 source.onmessage = function (event) {
+    let data;
     try {
-        const data = JSON.parse(event.data);
-        if (streamSession !== data.session) {
-            clearThrough();
-            clearedThrough = 0;
-            streamSession = data.session;
-        }
-        if (data.id > clearedThrough) {
-            if (paused) pending.add(data);
-            else upsertEvent(data);
-            updateStreamStatus();
-        }
+        data = JSON.parse(event.data);
     } catch (e) {
         console.error('Error parsing json', e);
+        return;
     }
+    applyStream(stream.message(data));
 };
+
+// dropMissingSelection deselects a request that is no longer displayed.
+function dropMissingSelection(isDisplayed = (id) => eventsById.has(id)) {
+    const next = afterEventsChanged(selection, isDisplayed);
+    if (next === selection) return;
+    selection = next;
+    updateDetail(requestDetails, '');
+    updateDetail(responseDetails, '');
+}
 
 function getDataRows() {
     return [...requestTableBody.querySelectorAll('tr[data-id]')];
@@ -197,7 +184,7 @@ function syncRowTabindex() {
     const rows = getDataRows();
     let focusTarget = null;
     for (const row of rows) {
-        const isSelected = selectedId != null && row.dataset.id === String(selectedId);
+        const isSelected = row.dataset.id === String(selectedRequestId(selection));
         row.tabIndex = -1;
         row.setAttribute('aria-selected', isSelected ? 'true' : 'false');
         if (isSelected) {
@@ -214,14 +201,13 @@ function syncRowTabindex() {
 }
 
 function selectRow(row, http) {
-    selectedId = http.id;
+    selection = selectRequest(http.id);
     for (const r of requestTableBody.querySelectorAll('tr[data-id]')) {
         const isSelected = r === row;
         r.classList.toggle('selected', isSelected);
         r.setAttribute('aria-selected', isSelected ? 'true' : 'false');
         r.tabIndex = isSelected ? 0 : -1;
     }
-    selectedRoute = null;
     for (const button of routesList.querySelectorAll('button')) button.setAttribute('aria-pressed', 'false');
     returnFocus = row;
     showInspector();
@@ -305,7 +291,7 @@ function showClearError() {
 }
 
 clearRequestsButton.addEventListener('click', async () => {
-    let cursor = 0;
+    let effect;
     try {
         const res = await fetch('clear', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, signal: AbortSignal.timeout(5000) });
         if (!res.ok) {
@@ -313,27 +299,24 @@ clearRequestsButton.addEventListener('click', async () => {
             showClearError();
             return;
         }
-        const responseSession = res.headers.get('X-Mock-Session');
-        if (streamSession && responseSession !== streamSession) return;
-        cursor = Number(res.headers.get('X-Mock-Cursor'));
+        effect = stream.clearConfirmed(res.headers.get('X-Mock-Session'), Number(res.headers.get('X-Mock-Cursor')));
     } catch (e) {
         console.error('failed to clear server events', e);
         showClearError();
         return;
     }
-    clearedThrough = Math.max(clearedThrough, cursor);
-    clearThrough(clearedThrough);
+    if (!effect) return;
+    applyStream(effect);
     hideClearError();
 });
 
 pauseButton.addEventListener('click', () => {
-    paused = !paused;
-    if (!paused) { for (const event of pending.drain()) upsertEvent(event); }
+    applyStream(stream.paused ? stream.resume() : stream.pause());
+    const paused = stream.paused;
     pauseButtonLabel.textContent = paused ? 'Resume' : 'Pause';
     pauseButton.classList.toggle('active', paused);
     pauseButton.setAttribute('aria-pressed', String(paused));
     pauseButton.setAttribute('aria-label', paused ? 'Resume request log' : 'Pause request log');
-    updateStreamStatus();
     document.body.classList.toggle('stream-paused', paused);
 });
 
@@ -417,11 +400,7 @@ function upsertEvent(http) {
             eventsById.delete(dropped);
         }
     }
-    if (selectedId != null && !eventsById.has(selectedId)) {
-        selectedId = null;
-        updateDetail(requestDetails, '');
-        updateDetail(responseDetails, '');
-    }
+    dropMissingSelection();
     scheduleRender();
 }
 
@@ -451,23 +430,16 @@ function renderTable() {
         .filter(Boolean)
         .filter(eventMatchesFilter);
 
+    const visibleIDs = new Set(visible.map(event => event.id));
+    dropMissingSelection(id => visibleIDs.has(id));
     if (visible.length === 0) {
-        selectedId = null;
-        updateDetail(requestDetails, '');
-        updateDetail(responseDetails, '');
         renderEmptyState(filterText ? 'No matching requests' : 'No requests yet');
         return;
     }
 
     const existing = new Map(getDataRows().map(row => [Number(row.dataset.id), row]));
-    const visibleIDs = new Set(visible.map(event => event.id));
     for (const row of requestTableBody.querySelectorAll('tr')) {
         if (!row.dataset.id || !visibleIDs.has(Number(row.dataset.id))) row.remove();
-    }
-    if (selectedId != null && !visibleIDs.has(selectedId)) {
-        selectedId = null;
-        updateDetail(requestDetails, '');
-        updateDetail(responseDetails, '');
     }
     let previous = null;
     for (const http of visible) {
@@ -479,7 +451,7 @@ function renderTable() {
         row.dataset.id = String(http.id);
         row.tabIndex = -1;
         row.setAttribute('aria-selected', 'false');
-        if (selectedId === http.id) {
+        if (selectedRequestId(selection) === http.id) {
             row.classList.add('selected');
         }
 
@@ -532,7 +504,7 @@ function renderTable() {
 
 function updateDetail(element, newContent) {
     element.textContent = newContent;
-    if (!newContent && selectedId == null && !selectedRoute) resetInspector();
+    if (!newContent && selection.kind === 'none') resetInspector();
 }
 
 function showInspector() {
@@ -543,7 +515,7 @@ function showInspector() {
 
 // On narrow screens the inspector replaces the list, so move focus to its heading.
 function focusInspectorOnMobile() {
-    if (window.matchMedia('(max-width: 900px)').matches) (selectedRoute ? routeTitle : requestTitle).focus();
+    if (window.matchMedia('(max-width: 900px)').matches) (selection.kind === 'route' ? routeTitle : requestTitle).focus();
 }
 
 backToList.addEventListener('click', () => {
@@ -570,16 +542,19 @@ function routeCurl(route) {
 }
 
 function renderInspector() {
-    const event = eventsById.get(selectedId);
-    exchangeView.hidden = !!selectedRoute;
-    routeView.hidden = !selectedRoute;
-    if (selectedRoute) {
-        routeTitle.textContent = selectedRoute.name || 'Route';
-        routeSummary.textContent = `Configured route · revision ${selectedRoute.revision} · ${selectedRoute.source}:${selectedRoute.line}`;
-        routeDetails.textContent = formatRoute(selectedRoute, routeCurl(selectedRoute));
-        copyRouteCurlButton.disabled = !routePort(selectedRoute);
+    exchangeView.hidden = selection.kind === 'route';
+    routeView.hidden = selection.kind !== 'route';
+    if (selection.kind === 'route') {
+        const { route, stale } = selection;
+        routeTitle.textContent = route.name || 'Route';
+        routeSummary.textContent = stale
+            ? 'This route belongs to a previous revision. Select a current route to inspect it.'
+            : `Configured route · revision ${route.revision} · ${route.source}:${route.line}`;
+        routeDetails.textContent = formatRoute(route, routeCurl(route));
+        copyRouteCurlButton.disabled = !routePort(route);
         return;
     }
+    const event = eventsById.get(selectedRequestId(selection));
     if (!event) { resetInspector(); return; }
     const match = event.match;
     const route = match?.route;
@@ -632,16 +607,17 @@ for (const kind of ['request', 'response']) {
         });
     }
     document.getElementById(`copy${kind === 'request' ? 'Request' : 'Response'}Body`).addEventListener('click', () => {
-        const body = eventsById.get(selectedId)?.[kind]?.body;
+        const body = eventsById.get(selectedRequestId(selection))?.[kind]?.body;
         if (body) copyText(body.text);
     });
 }
 copyCurlButton.addEventListener('click', () => {
-    try { copyText(buildCurl(eventsById.get(selectedId)?.request)); }
+    try { copyText(buildCurl(eventsById.get(selectedRequestId(selection))?.request)); }
     catch (error) { copyNotice.textContent = error.message; }
 });
 copyRouteCurlButton.addEventListener('click', () => {
-    const command = selectedRoute && routeCurl(selectedRoute);
+    const route = selectedRoute(selection);
+    const command = route && routeCurl(route);
     if (command) copyText(command);
 });
 
@@ -666,10 +642,9 @@ async function loadRoutes() {
         const routesJSON = JSON.stringify(routes);
         if (routesJSON === lastRoutesJSON) return;
         lastRoutesJSON = routesJSON;
-        if (selectedRoute) {
-            const current = routes.find(route => route.id === selectedRoute.id);
-            if (current) { selectedRoute = current; renderInspector(); }
-            else routeSummary.textContent = 'This route belongs to a previous revision. Select a current route to inspect it.';
+        if (selection.kind === 'route') {
+            selection = afterRoutesLoaded(selection, routes);
+            renderInspector();
         }
         routeCount.textContent = String(routes.length).padStart(2, '0');
         routeCount.setAttribute('aria-label', `${routes.length} configured routes`);
@@ -702,11 +677,10 @@ async function loadRoutes() {
             button.type = 'button';
             button.className = 'route-button';
             button.setAttribute('aria-label', `${route.method} ${routePath}: ${route.name}`);
-            button.setAttribute('aria-pressed', String(selectedRoute?.id === route.id));
+            button.setAttribute('aria-pressed', String(selectedRoute(selection)?.id === route.id));
             button.append(method, path, name);
             button.addEventListener('click', () => {
-                selectedId = null;
-                selectedRoute = route;
+                selection = selectRoute(route);
                 returnFocus = button;
                 for (const item of routesList.querySelectorAll('button')) item.setAttribute('aria-pressed', String(item === button));
                 for (const row of getDataRows()) row.classList.remove('selected');
