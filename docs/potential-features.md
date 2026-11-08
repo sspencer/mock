@@ -10,34 +10,22 @@ separately below so they do not remain in the backlog; release history is in
 Reviewed 2026-11-08. Highest value first; sizes are rough (S, M, L). Each item
 is described in full under [Ideas](#ideas).
 
-1. **Validate the examples in CI** (S). Nothing checks `examples/` today, so the
-   files the README points new users to can silently stop loading or stop
-   demonstrating what their comments claim.
-2. **Answer `HEAD` from `GET` routes** (S). A correctness gap: health checkers,
-   link checkers and some HTTP clients send `HEAD`, and today it only matches
-   an explicit `HEAD` route.
-3. **Variables from the command line and environment** (S). Tokens and hosts
-   are the most common things people need to vary without editing files.
-4. **Smarter shadow warnings** (S). The current check misses the most common
-   ordering mistake, a catch-all such as `/api/*` placed first.
-5. **Request journal API** (S–M). `GET /requests` on the admin port turns the
-   captured traffic into something tests in any language can assert on.
-6. **Go test helper and request assertions** (M). Builds on the journal so Go
-   tests can start a mock per test and assert on what it received.
-7. **Lint rendered JSON bodies** (S). Catch a trailing comma or a placeholder
-   that breaks JSON at load time instead of in the client under test.
-8. **Directory of request files** (S–M). Load every `.http` file under a
-   directory and pick up new files on reload.
-9. **Reload trigger and polling fallback** (S). File events are unreliable on
-   Docker bind mounts and some network filesystems; give users a way to force
-   a reload.
-10. **Directive reference and recipes** (S, docs only). One table of every
-    `@` directive, plus recipes for needs that already work but are not obvious.
+1. ~~**Validate the examples in CI** (S).~~ Done; see
+   [Implemented](#implemented-from-the-original-ideas).
+2. ~~**Answer `HEAD` from `GET` routes** (S).~~ Done.
+3. ~~**Variables from the command line and environment** (S).~~ Done.
+4. ~~**Smarter shadow warnings** (S).~~ Done.
+5. ~~**Request journal API** (S–M).~~ Done.
+6. ~~**Go test helper and request assertions** (M).~~ Done.
+7. ~~**Lint rendered JSON bodies** (S).~~ Done.
+8. ~~**Directory of request files** (S–M).~~ Done.
+9. ~~**Reload trigger and polling fallback** (S).~~ Done.
+10. ~~**Directive reference and recipes** (S, docs only).~~ Done.
 
 Stateful scenarios (`@times`, then named scenarios) remain deliberately
 deferred; see [stateful-scenarios.md](stateful-scenarios.md). They are the
 largest remaining gap in what routes can express (retry tests in particular),
-so revisit them once the items above are done.
+and with the items above done they are the next thing to revisit.
 
 ## Ideas
 
@@ -51,16 +39,6 @@ so revisit them once the items above are done.
   JSON fields and form fields, plus trailing `*` path wildcards. The first
   matching route in load order wins, so catch-alls go last; shadowed routes get
   a load warning.
-- **Smarter shadow warnings** (S): a route is only reported as unreachable when
-  an earlier route has the identical path pattern. It misses an earlier
-  `/api/*` with no matchers hiding every later `/api/...` route, and
-  `/users/:id` versus `/users/:userId`. Compare patterns segment by segment,
-  treating wildcards and parameter names properly.
-- **Answer `HEAD` from `GET` routes** (S): routes match the request method
-  exactly, so `HEAD /users` is a `404` unless a `HEAD` route exists. When no
-  `HEAD` route matches, try the `GET` routes and send their status and headers
-  without the body (the server already drops bodies for `HEAD`). Document it
-  next to the `OPTIONS` note in Clients and safety.
 - **Per-route proxying** (M): `@proxy = https://api.example.com` on a section
   forwards requests that match it to that URL, optionally rewriting the path.
   `--upstream` is all or nothing for unmatched requests; this lets one file
@@ -95,31 +73,9 @@ so revisit them once the items above are done.
 
 ### Testing and CI
 
-- **Validate the examples in CI** (S): a Go test that loads every
-  `examples/**/*.http` with the same checks as `mock validate -strict`, and
-  runs the scenarios in `examples/matching/requests.sh` against an in-process
-  server with expected statuses and route names. Today the examples are only
-  checked by hand, although the README sends new users to them first.
-- **Request journal API** (S–M): `GET /requests` on the admin port returns the
-  retained request events as JSON, filterable by method, path, route name,
-  matched or unmatched, and a sequence cursor (`?since=`). Tests in any
-  language can then assert "the client called `POST /users` once with this
-  body" without parsing SSE. `/events` already holds the data; this is a
-  query interface over it.
-- **Go test helper and request assertions** (M): expose the server as a test
-  helper, for example `srv := mocktest.Start(t, "testdata/api.http")` with
-  `srv.URL` and `srv.AssertCalled(t, "POST /users", 1)`, backed by the captured
-  requests. The same data could serve an admin endpoint for assertions from
-  other languages: expected request counts, ordering, and matching
-  constraints.
 - **Structured JSON logs** (S): `--log-format json` writes one object per
   request (method, path, status, route, duration) for CI log collectors and
   `jq`. The server already logs through `slog`.
-- **Lint rendered JSON bodies** (S): for routes whose `Content-Type` is JSON,
-  `mock validate` (and startup) renders the body with sample values and warns
-  when the result does not parse, naming the route and line. Hand-written
-  fixtures with a trailing comma, or a `{{$json.name}}` placeholder left
-  unquoted, currently fail only in the client under test.
 - **Global latency and faults** (S): `--delay 50ms..300ms` and `--fault reset
   5%` apply to every route without editing files, for a resilience run
   against the same fixtures the normal tests use. Route-level `@delay` and
@@ -164,19 +120,6 @@ so revisit them once the items above are done.
 
 ### Configuration and inputs
 
-- **Variables from the command line and environment** (S): `-var
-  host=staging.example.com` overrides `@host`, and `{{$env.API_TOKEN}}` reads an
-  environment variable. A safer, explicit replacement for REST Client's
-  unsupported `$processEnv`.
-- **Directory of request files** (S–M): today a directory argument serves static
-  files. A mode such as `mock --dir fixtures/` would load every `.http` file
-  under it and pick up new files on reload; the watcher currently knows only
-  the files it started with.
-- **Reload trigger and polling fallback** (S): `POST /reload` on the admin
-  port, a `SIGHUP` handler, and a `--poll 1s` option. fsnotify misses changes
-  on Docker Desktop bind mounts, some network filesystems and editors that
-  save through renames into other directories, and today the only remedy is a
-  restart.
 - **Shared definitions across files** (S–M): `@import ./common.http` (or a
   variables-only file) so several request files can share `@host`, tokens and
   common response headers. The dialect table lists imports as unsupported.
@@ -224,16 +167,6 @@ so revisit them once the items above are done.
   machine-readable diagnostics. A small VS Code extension or language server
   could highlight directives and show load errors and shadow warnings while
   editing.
-- **Directive reference and recipes** (S, docs only): the README is about
-  1,200 lines and each `@` directive is explained in its own section, so there
-  is no single place to look one up. Add one reference table (`@port`,
-  `@delay`, `@stream`, `@fault`, `@seed`, `@template`, `@trim` and the
-  matcher prefixes, with values and defaults) and a table of contents. Then
-  add recipes for common needs that already work but are not obvious:
-  GraphQL operations (`@json.operationName = GetUser`), content negotiation
-  (`@header.Accept = ~(?i).*csv.*`), case-insensitive regexes, per-test
-  routing with an `X-Test` header matcher, and readiness checks in CI and
-  Docker Compose (poll `/state` on the admin port).
 - **Request file formatter** (M): `mock fmt` normalizes spacing, directive
   order and blank lines in `.http` files, like `gofmt`. Lower priority; most
   value once files are large or shared across a team.
@@ -252,6 +185,53 @@ Recorded so these are not proposed again without a new reason:
   Client-style tool.
 
 ## Implemented from the original ideas
+
+- **Directive reference and recipes:** a README table of contents, one
+  reference table of every `@` directive, and recipes for GraphQL operations,
+  content negotiation, case-insensitive matchers, per-test `X-Test` routing
+  and readiness checks (`GET /state`) in CI and Docker Compose.
+- **Reload trigger and polling fallback:** `POST /reload` on the admin port
+  (same cross-site rules as `/clear`, `422` on a failed reload), `SIGHUP`,
+  and `-i` / `--poll 1s`, which compares sizes and modification times of the
+  request and body files. One reload runs at a time whatever triggers it.
+- **Directory of request files:** `-d` / `--dir` loads every `.http` file
+  under a directory (lexical order, after file arguments, hidden entries
+  skipped) and watches the tree, so new files and subdirectories reload.
+  `mock validate` takes directories too. A positional directory still serves
+  static files, so existing commands keep working.
+- **Lint rendered JSON bodies:** startup and `mock validate` render each JSON
+  route's body (inline or a fixed `< file`) with request placeholders set to
+  `1` and warn, with the route and body line, when it does not parse. An
+  unquoted request placeholder cannot be judged, since `1` fits both a bare
+  value and a string.
+- **Go test helper and request assertions:** the `mocktest` package starts a
+  server per test (`mocktest.Start(t, "api.http")`, `srv.URL`) and asserts
+  with `AssertCalled(t, "POST /users", 1)`, `AssertNotCalled` and
+  `AssertAllMatched`, backed by `Server.Requests`.
+- **Request journal API:** `GET /requests` on the admin port returns the
+  retained request events as JSON, filtered by `method`, `path`, `route`,
+  `matched` and `since`; `Server.Requests` exposes the same query in Go.
+- **Smarter shadow warnings:** paths are compared segment by segment, so a
+  catch-all such as `/api/*`, a `:param` before a literal, or a renamed
+  parameter now produces the warning, and `@path.*` matchers on the earlier
+  route narrow what it covers. Regex matchers are still compared as text, so
+  `~[0-9]+` does not cover `~[1-9][0-9]*`.
+- **Variables from the command line and environment:** `-v` / `--var
+  NAME=VALUE` (and `mock validate -var`) sets `@NAME` in every file,
+  overriding its definitions, and `{{$env.NAME}}` reads the server's
+  environment at render time (never from the request), warning at load when
+  the variable is unset. The flag is `-v` rather than `-var` because every
+  serve flag has a short and a long name.
+- **Answer `HEAD` from `GET` routes:** a `HEAD` request tries `HEAD` routes
+  first, then the first matching `GET` route, which answers with its status
+  and headers and no body. Unmatched `HEAD` diagnostics no longer blame the
+  method of a `GET` candidate.
+- **Validate the examples in CI:** `go test ./...` validates every
+  `examples/**/*.http` file with the `mock validate -strict` checks (only
+  `small.http` warns, on purpose) and replays every scenario in
+  `examples/matching/requests.sh` against an in-process server, checking the
+  status and the route that answered. A test fails if the script and the
+  Go scenario table drift apart.
 
 - **Close small test gaps:** the invalid generator argument warning has a
   direct `mockhttp` test, not only coverage through `mock validate`.

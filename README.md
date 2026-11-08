@@ -9,6 +9,31 @@ reload and a request-log UI. It is a single binary for the gap between
 hand-written test doubles and a real backend — not a replacement for WireMock,
 Prism, or Mockoon, and not the Go unit-test mocking libraries (gomock, mockery).
 
+## Contents
+
+- [Install](#install)
+- [Quick Start](#quick-start)
+- [Building From Source](#building-from-source)
+- [Docker](#docker)
+- [CLI](#cli)
+- [Request File Format](#request-file-format)
+- [External response bodies](#external-response-bodies)
+- [Variables](#variables)
+- [Placeholders](#placeholders)
+- [Generated lists](#generated-lists)
+- [Reproducible data](#reproducible-data)
+- [Delays, streaming and faults](#delays-streaming-and-faults)
+- [Multiple ports](#multiple-ports)
+- [Matching](#matching)
+- [Route order](#route-order)
+- [Passing unmatched requests to a real API](#passing-unmatched-requests-to-a-real-api)
+- [Strict mode and route coverage](#strict-mode-and-route-coverage)
+- [Recipes](#recipes)
+- [Using mock in Go tests](#using-mock-in-go-tests)
+- [Admin UI And API](#admin-ui-and-api)
+- [Clients and safety](#clients-and-safety)
+- [Development](#development)
+
 ## Install
 
 Requires [Go](https://go.dev/dl/) 1.26 or newer:
@@ -170,7 +195,9 @@ mounted the routes that use them return `500`; mount the directory as shown
 below to serve them. The bind mount keeps the request file outside the image. Rebuild the image only
 when the `mock` binary or static UI changes. Because the file is mounted from
 the host, edits to the host `.http` file are picked up by the running container
-and reloaded automatically.
+and reloaded automatically. Docker Desktop does not always pass file change
+events through a bind mount; if edits are not picked up, add `-i 1s` to poll
+for changes (see [Reloading](#reloading)).
 
 If the request file uses `< path` external response bodies, mount the whole
 directory so relative file references are available inside the container:
@@ -186,9 +213,10 @@ docker run --rm \
 
 ```text
 mock [flags] <file.http> [file.http...]
+mock [flags] -d <dir> [-d <dir>...] [file.http...]
 mock [flags] <directory>
 cat file.http | mock
-mock validate [-strict] [-json] <file.http> [file.http...]
+mock validate [-strict] [-json] [-var name=value] <file.http|dir> [file.http|dir...]
 mock -version
 mock -h
 ```
@@ -205,6 +233,9 @@ Flags:
 | `-b`, `--bind` | `127.0.0.1`, or `MOCK_BIND` | Bind address. Use `0.0.0.0` to listen on all interfaces |
 | `-u`, `--upstream` | (off) | Forward requests no route matches to this `http` or `https` URL and return its response (see [Passing unmatched requests to a real API](#passing-unmatched-requests-to-a-real-api)) |
 | `-s`, `--strict` | (off) | At shutdown, list requests no route matched and routes that never matched, and exit `1` if any request was unmatched (see [Strict mode and route coverage](#strict-mode-and-route-coverage)) |
+| `-v`, `--var` | | `NAME=VALUE`: set the `@NAME` variable in every request file, overriding its definitions. Repeat for more variables (see [Variables from the command line](#variables-from-the-command-line)) |
+| `-d`, `--dir` | | Load every `.http` file under this directory, after any file arguments, and pick up added or removed files on reload. Repeat for more directories (see [A directory of request files](#a-directory-of-request-files)) |
+| `-i`, `--poll` | (off) | Also check the request files for changes this often, such as `1s` (at least `100ms`), for filesystems that do not deliver change events (see [Reloading](#reloading)) |
 | `--version` | | Print version and exit |
 | `-h`, `--help` | | Print usage and exit |
 
@@ -240,21 +271,84 @@ relative `< path` response bodies. On save, `mock` reloads those files, swaps in
 the new routes without restarting the process, and prints the updated route list.
 SIGINT/SIGTERM shut the server down cleanly and stop the file watcher.
 
+### Reloading
+
+File change events do not reach `mock` on every filesystem: Docker Desktop bind
+mounts, some network filesystems, and editors that save by renaming through
+another directory can miss them. Three other ways to reload:
+
+- `-i 1s` (`--poll`) checks the size and modification time of every request
+  and body file (and, with `-d`, the files under each directory) at that
+  interval, and reloads when any changed. File events still work alongside
+  it.
+- `kill -HUP <pid>` reloads at once.
+- `POST /reload` on the admin port reloads at once and answers with the same
+  JSON as `/state`: `200` when the reload succeeded, `422` when it failed
+  (the previous routes stay active and `error` says why). Like `/clear`, it
+  needs an `X-Requested-With` header or a JSON `Content-Type`, and rejects
+  cross-site requests:
+
+  ```sh
+  curl -s -X POST -H 'X-Requested-With: curl' http://127.0.0.1:8081/reload
+  ```
+
+A reload from any trigger re-reads every file, and only one runs at a time.
+With routes read from stdin there is nothing to reload: `-i` is rejected and
+`/reload` answers `409`.
+
 If you pass a single directory, `mock` serves that directory as a static file
 server from `/` instead of loading mock routes or the request-log UI.
 
+### A directory of request files
+
+`-d fixtures` (`--dir`) loads every `.http` file under `fixtures`, including
+subdirectories, so you can keep one file per resource or team and add files
+without changing the command:
+
+```sh
+mock -d fixtures
+mock -d fixtures -d shared overrides.http
+```
+
+- Files load in lexical path order within each directory (`a.http`,
+  `b.http`, `users/list.http`), after any file arguments, and directories in
+  the order given. Because the first matching route wins, a file argument is
+  a place for routes that must beat everything in the directories.
+- Only files ending in `.http` (any case) are loaded. Hidden files and
+  directories, such as `.git` or an editor's `.swap.http`, are skipped.
+- The whole tree is watched. Adding, changing, removing or renaming a `.http`
+  file, or adding a subdirectory, reloads every file. If the directories end
+  up with no routes, the reload fails and the old routes stay.
+- A positional directory still means a static file server; `-d` is what
+  loads request files. `mock validate` accepts directories and checks every
+  `.http` file under them.
+
 ### Validating request files
 
-`mock validate` loads the files without starting a server and prints every
+`mock validate` loads the files (or every `.http` file under a directory
+argument) without starting a server and prints every
 problem it finds, one per line as `file:line: level: message`. It checks the
 same things `mock` checks at startup: syntax errors, invalid `@delay` or `@port`
-values, a URL port that conflicts with `@port`, invalid placeholder arguments, unresolved placeholders, unused variables, and request
-headers used as response headers.
+values, a URL port that conflicts with `@port`, invalid placeholder arguments, unresolved placeholders, unused variables,
+request headers used as response headers, routes that can never match, and
+JSON bodies that do not parse.
+
+A route whose `Content-Type` is JSON (`application/json` or `+json`, or a
+`< file.json` with no `Content-Type`) has its body rendered once without a
+request and parsed, so a trailing comma or a broken `{{#repeat}}` warns at
+load time instead of failing in the client under test. Placeholders that read
+the request (or an unset `$env` variable) render as `1`, which is valid both
+bare and inside a string, so `{"id": {{$id}}}` passes; the check cannot tell
+whether an unquoted placeholder will be a number at request time. Bodies with
+`@template = off` are parsed as written, and a body file whose path has a
+placeholder is not checked. The warning gives the line within the rendered
+body.
 
 | Flag | Description |
 |------|-------------|
 | `-strict` | Treat warnings as errors |
 | `-json` | Print a JSON report (`ok`, `routes`, `diagnostics`) instead of text |
+| `-var name=value` | Set a variable as `mock -v` does, so the same warnings apply. Repeatable |
 
 It exits `0` when the files are valid, `1` when there are errors (or warnings
 with `-strict`), and `2` for usage mistakes, so it fits in CI:
@@ -321,7 +415,7 @@ only digits, such as `### [beta] Users`, stay part of the name. The old
 | Supported | Not supported |
 |-----------|----------------|
 | `###` named sections | Request separators beyond `###` |
-| `@name = value` file and method variables | Environment files / `{{env}}` from IDE |
+| `@name = value` file and method variables, `-v name=value` overrides and `{{$env.NAME}}` | Environment files / `{{env}}` from IDE |
 | Request line `METHOD /path` | Full multi-step scripts |
 | Response headers after the request line | Separate request vs response documents |
 | `@header.Name`, `@query.name`, `@path.name`, `@body`, `@json.path`, `@form.name` request matchers (exact, `*`, `!`, `~regex`) | Multipart and XML body matchers |
@@ -444,24 +538,68 @@ required. Plain `# comment` lines may also appear there. The old
 `# $name=value` comment variables are no longer supported and are a load error
 that points to the `@name = value` form.
 
-Variable names with a special meaning, which `mock` consumes itself:
+### Directive reference
 
-- `@delay`: response delay parsed with Go duration syntax, such as `250ms` or `2s`, or a random range such as `100ms..800ms` (both ends inclusive, picked afresh per request). Negative or invalid durations are load errors. Set at file scope, it is the default for every section. See [Delays, streaming and faults](#delays-streaming-and-faults).
-- `@stream`: send the body in pieces with this pause between them, such as `50ms`. See [Delays, streaming and faults](#delays-streaming-and-faults).
-- `@fault`: break the response on purpose: `reset` or `truncate`, optionally followed by the share of requests, such as `reset 25%`. See [Delays, streaming and faults](#delays-streaming-and-faults).
-- `@seed`: make generated values reproducible. See [Reproducible data](#reproducible-data).
-- `@template`: `auto`, `on` or `off`, whether placeholders are expanded. See [External response bodies](#external-response-bodies).
-- `@trim`: `on` (the default) or `off`. With `off` the inline body keeps its exact text and line endings. See [Supported dialect](#supported-dialect).
-- `@port`: serve the section on this port instead of the default port (`-p`). Set at file scope, it applies to every section. See [Multiple ports](#multiple-ports).
-- `@header.Name`: require the incoming request header to match the value: exact text, `*` (any non-empty value), `!` (absent), or `~regex`. Set at file scope, it applies to every section; a method-scoped header of the same name replaces it. See [Header matching](#header-matching).
-- `@query.name`: require the query parameter to match the value, with the same value forms as `@header.*`. See [Query and path parameter matching](#query-and-path-parameter-matching).
-- `@path.name`: require the `:name` path parameter to match the value: exact text or `~regex`. Set at file scope, it applies only to sections whose path has `:name`.
-- `@body`: require the request body to match the value. See [Body matching](#body-matching).
-- `@json.field.path`: require a field of a JSON request body to match the value; `@json.roles.* = admin` matches any array element. See [Body matching](#body-matching).
-- `@form.name`: require a field of a URL-encoded form body to match the value. See [Body matching](#body-matching).
+Some variable names have a special meaning; `mock` consumes them itself. Every
+directive can be set at file scope, where it is the default for every section
+in the file, or in a section, where it replaces the file value.
+
+| Directive | Values | Default | Effect |
+|-----------|--------|---------|--------|
+| `@delay` | Go duration such as `250ms` or `2s`, or a range `100ms..800ms` (both ends inclusive, picked afresh per request) | none | Wait before responding. Negative or invalid durations are load errors. See [Delays, streaming and faults](#delays-streaming-and-faults). |
+| `@stream` | non-negative duration such as `50ms` | off | Send the body in pieces (one event or line at a time) with this pause between them. See [Delays, streaming and faults](#delays-streaming-and-faults). |
+| `@fault` | `reset` or `truncate`, optionally followed by a share such as `reset 25%` | off | Break the response on purpose. See [Delays, streaming and faults](#delays-streaming-and-faults). |
+| `@seed` | any non-empty text | random | Make generated values reproducible per request. See [Reproducible data](#reproducible-data). |
+| `@template` | `auto`, `on` or `off` | `auto` | Whether placeholders are expanded in the body. See [External response bodies](#external-response-bodies). |
+| `@trim` | `on` or `off` | `on` | With `off` the inline body keeps its exact text and line endings. See [Supported dialect](#supported-dialect). |
+| `@port` | port number | `-p` (`8080`) | Serve the section on this port. A port in the request URL takes precedence. See [Multiple ports](#multiple-ports). |
+| `@header.Name` | [matcher value](#matcher-values): `text`, `*`, `!` or `~regex` | none | Require the incoming request header to match. A section's header matcher replaces a file one of the same name. See [Header matching](#header-matching). |
+| `@query.name` | matcher value | none | Require the query parameter to match. See [Query and path parameter matching](#query-and-path-parameter-matching). |
+| `@path.name` | `text` or `~regex` | none | Require the `:name` path parameter or `*name` wildcard to match. At file scope it applies only to sections whose path has that parameter. |
+| `@body` | matcher value | none | Require the whole request body to match. See [Body matching](#body-matching). |
+| `@json.field.path` | matcher value | none | Require a field of a JSON request body to match; `@json.roles.* = admin` matches any array element. See [Body matching](#body-matching). |
+| `@form.name` | matcher value | none | Require a field of a URL-encoded form body to match. See [Body matching](#body-matching). |
+
+The removed `@status` and `@file` names are load errors that point to their
+replacements (`### [204] Name` and `< path`).
 
 Every other variable is only used through `{{name}}` references. `mock` warns
 at load time about variables that nothing references.
+
+### Variables from the command line
+
+`-v NAME=VALUE` (`--var`) sets `@NAME` in every request file. It overrides
+file and method definitions of that name, and supplies a value for
+`{{NAME}}` references that no `@NAME` defines. Repeat it for more variables:
+
+```sh
+mock -v host=http://localhost:9000 -v token=dev-token api.http
+```
+
+The value is used as written (no backslash escapes) and may reference other
+variables or placeholders. Special variables can be set too, so
+`-v delay=0s` removes every file-level and section `@delay`. Request matchers
+(`@header.*`, `@query.*`, `@path.*`, `@body`, `@json.*`, `@form.*`) cannot be
+set this way. Reloads keep the command-line values.
+
+To read the server's environment instead, use `{{$env.NAME}}` in a body,
+response header, `< path` or variable value:
+
+```http
+@token = {{$env.API_TOKEN | default dev-token}}
+
+### Profile
+GET /me
+X-Token: {{token}}
+
+{"token": "{{$env.API_TOKEN}}"}
+```
+
+`{{$env.NAME}}` is read when the response is rendered and never comes from the
+request. An unset variable leaves the placeholder literal and warns at load
+time, unless it has a `| default` filter. Anything a route renders is visible
+to whoever can reach the mock port, so only reference variables you are
+willing to serve.
 
 ## Placeholders
 
@@ -486,6 +624,8 @@ a namespace:
 - `{{$path.id}}` reads only the `:id` path parameter.
 - `{{$query.id}}` reads only the `id` query parameter (its first value).
 - `{{$header.X-Request-Id}}` reads a request header (case-insensitive).
+- `{{$env.API_TOKEN}}` reads an environment variable of the `mock` process
+  (see [Variables from the command line](#variables-from-the-command-line)).
 
 A namespaced value that the request lacks leaves the placeholder literal.
 `{{$path.name}}` warns at load time when the route has no `:name` parameter. A missing body field leaves the
@@ -539,7 +679,8 @@ These REST Client–style generators take arguments:
 Unknown placeholders are left as written (for example `{{$nope}}`) and
 produce a load-time warning. Other REST Client dynamic variables, such as
 `{{$processEnv}}`, `{{$dotenv}}` and `{{$aadToken}}`, are not supported and are
-treated as unknown placeholders.
+treated as unknown placeholders; use `{{$env.NAME}}` in place of
+`{{$processEnv NAME}}`.
 
 ### Filters
 
@@ -972,6 +1113,10 @@ the order they are given. The first route that matches answers. Put specific
 routes before general ones, and finish with a catch-all if unmatched requests
 should get something other than a `404`.
 
+A `HEAD` request tries the `HEAD` routes first. If none matches, it is answered
+by the first matching `GET` route, with that route's status and headers
+(including the `Content-Length` its body would have) and no body.
+
 ```http
 ### [201] Create user
 @json.email = ~[^@\s]+@[^@\s]+
@@ -988,10 +1133,23 @@ Content-Type: application/json
 ```
 
 A route that can never answer gets a load-time warning, and `mock validate
--strict` fails on it. That happens when an earlier route has the same method,
-port and path, and all of its matchers are also on the later route. Two
-identical routes are the common case. Earlier versions of `mock` rotated
-through such duplicates; they now always return the first.
+-strict` fails on it. That happens when an earlier route has the same method
+and port, its path matches every path the later route's does, and all of its
+matchers are also on the later route. Paths are compared segment by segment: a
+`:param` segment covers any segment (whatever the parameter is called), and a
+trailing `*` covers the rest of the path. So each of these later routes is
+reported:
+
+- a second, identical route;
+- `GET /api/users/:id` after a catch-all `GET /api/*`;
+- `GET /users/me` after `GET /users/:id` (put the literal path first);
+- `GET /users/:userId` after `GET /users/:id`.
+
+A `@path.name` matcher on the earlier route narrows what it covers:
+`GET /users/:id` with `@path.id = ~[0-9]+` hides a later `/users/42`, but not
+`/users/me`. The check errs towards silence, so a route it does not report may
+still be unreachable. Earlier versions of `mock` rotated through duplicate
+routes; they now always return the first.
 
 ## Passing unmatched requests to a real API
 
@@ -1069,6 +1227,169 @@ kill "$mock_pid"     # SIGTERM
 wait "$mock_pid"   # fails the job if any request went unmatched
 ```
 
+## Recipes
+
+These combine features documented above for needs that come up often.
+
+### GraphQL operations
+
+GraphQL clients send every query to one URL, so match on the operation name in
+the JSON body. Routes are tried in order, so a fallback without a matcher goes
+last:
+
+```http
+### Get user
+@json.operationName = GetUser
+POST /graphql
+Content-Type: application/json
+
+{"data": {"user": {"id": "{{$json.variables.id}}", "name": "{{$name}}"}}}
+
+### List orders
+@json.operationName = ListOrders
+POST /graphql
+Content-Type: application/json
+
+{"data": {"orders": []}}
+
+### [400] Unknown operation
+POST /graphql
+Content-Type: application/json
+
+{"errors": [{"message": "unknown operation"}]}
+```
+
+### Content negotiation
+
+Match the `Accept` header with a regex. Regexes are anchored, so wrap the media
+type in `.*`, and start with `(?i)` because clients differ in case:
+
+```http
+### Report as CSV
+@header.Accept = ~(?i).*text/csv.*
+GET /report
+Content-Type: text/csv
+
+id,total
+1,9.99
+
+### Report as JSON
+GET /report
+Content-Type: application/json
+
+[{"id": 1, "total": 9.99}]
+```
+
+### Case-insensitive values
+
+`(?i)` works in every `~regex` matcher, including query parameters and body
+fields. `@query.sort = ~(?i)asc|desc` accepts `sort=ASC` and `sort=desc` but
+not `sort=up`.
+
+### Different responses per test
+
+To give each test its own answer from one mock, have the test send a header
+that names the scenario, and put the default route last:
+
+```http
+### Empty cart
+@header.X-Test = empty-cart
+GET /cart
+Content-Type: application/json
+
+{"items": []}
+
+### [503] Cart service down
+@header.X-Test = cart-down
+GET /cart
+Content-Type: application/json
+
+{"error": "unavailable"}
+
+### Cart
+GET /cart
+Content-Type: application/json
+
+{"items": [{"sku": "A1", "qty": 2}]}
+```
+
+`curl -H 'X-Test: cart-down' localhost:8080/cart` gets the `503`; a request
+without the header gets the full cart. In Go tests, [`mocktest`](#using-mock-in-go-tests)
+starts a fresh server per test instead.
+
+### Waiting until mock is ready
+
+`mock` binds every port and loads every route before it answers on the admin
+port, so a successful `GET /state` means it is ready. In a CI script:
+
+```sh
+mock -i 1s api.http &
+until curl -fs -o /dev/null http://127.0.0.1:8081/state; do sleep 0.2; done
+```
+
+The Docker image is based on Alpine, which has `wget` but not `curl`. In
+Docker Compose:
+
+```yaml
+services:
+  api:
+    image: mock
+    command: ["-b", "0.0.0.0", "-i", "1s", "/mock/api.http"]
+    volumes:
+      - ./mocks:/mock:ro
+    ports: ["8080:8080", "8081:8081"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/state"]
+      interval: 2s
+      retries: 10
+  app:
+    depends_on:
+      api:
+        condition: service_healthy
+```
+
+## Using mock in Go tests
+
+The `mocktest` package runs a mock server inside a Go test, from the same
+`.http` files, and asserts on what the code under test sent:
+
+```go
+import "github.com/sspencer/mock/mocktest"
+
+func TestSignup(t *testing.T) {
+	api := mocktest.Start(t, "testdata/api.http")
+	client := NewClient(api.URL)
+
+	if err := client.Signup("avery"); err != nil {
+		t.Fatal(err)
+	}
+
+	api.AssertCalled(t, "POST /users", 1)
+	api.AssertNotCalled(t, "DELETE /users/1")
+	api.AssertAllMatched(t)
+}
+```
+
+- `Start(t, files...)` loads request files and `StartSource(t, text)` loads
+  `.http` text; `StartWith(t, mocktest.Options{...})` takes both plus `Vars`
+  (as `-v` sets them). A file that fails to load fails the test. Load
+  warnings are written with `t.Log`; set `Quiet` to drop them.
+- The server listens on a random local port, given by `URL`, and closes when
+  the test ends. Every route answers on that port; ports in request targets
+  and `@port` are ignored.
+- A call is a method and path, `"POST /users"`, which matches that exact URL
+  path whatever the query (add `?page=2` to require that exact query too), or
+  a route name, `"Create user"`, which counts the requests that route
+  answered.
+- `AssertCalled(t, call, n)`, `AssertNotCalled(t, call)` and
+  `AssertAllMatched(t)` report failures with `t.Errorf` and list every request
+  received. `Calls(call)` and `Requests(filter)` return the request events to
+  check bodies and headers yourself, `Clear()` forgets requests received so
+  far, and `Mock` is the underlying `mockhttp.Server`.
+
+From other languages, read the same data from [`/requests`](#reading-the-request-log)
+on the admin port.
+
 ## Admin UI And API
 
 The UI is served at the root of the admin port (`-a`, default `8081`):
@@ -1078,8 +1399,10 @@ The UI is served at the root of the admin port (`-a`, default `8081`):
 | `/` | Request log UI |
 | `/events` | Server-sent events stream (with event `id` / `Last-Event-ID`) |
 | `/clear` | `POST` clears stored events |
+| `/reload` | `POST` reloads the request files now and returns the new state (see [Reloading](#reloading)) |
 | `/state` | `GET` active revision, route count, last successful reload, and reload error |
 | `/routes` | `GET` route configuration, including source location, port, matchers, status, delay, body preview, and `hits` (requests answered) |
+| `/requests` | `GET` the request log as JSON, optionally filtered (see below) |
 
 Selecting a route shows a sample `curl` command for that route's port (the
 default mock port when the route declares none), ready to paste
@@ -1096,8 +1419,33 @@ UI features: theme toggle, filter, pause stream, clear log,
 HAR export, a Help dialog, and a routes panel that refreshes after hot-reload.
 When `mock` listens on more than one port, the request table shows each
 request's host and port, and routes are labeled with their port.
-The `/clear` POST endpoint requires an `X-Requested-With` header or a JSON
-`Content-Type`, and reject cross-origin and cross-site requests.
+The `/clear` and `/reload` POST endpoints require an `X-Requested-With` header
+or a JSON `Content-Type`, and reject cross-origin and cross-site requests.
+
+### Reading the request log
+
+`GET /requests` returns the request log as a JSON array, oldest first: the
+same events the UI shows, with the request, the response, and the route that
+answered (`match.route`, or `null`). It holds the latest 1,000 requests since
+`mock` started or the log was last cleared. Query parameters narrow it, and
+combine:
+
+| Parameter | Keeps requests |
+|-----------|----------------|
+| `method=POST` | with this method (any case) |
+| `path=/users/7` | whose URL path is exactly this, ignoring the query string |
+| `route=Create user` | answered by the route with this name |
+| `matched=true` / `matched=false` | a route answered, or none did (requests forwarded with `--upstream` count as unmatched) |
+| `since=42` | with an event `id` greater than this |
+
+```sh
+curl -s 'http://127.0.0.1:8081/requests?method=POST&path=/users' | jq length
+curl -s 'http://127.0.0.1:8081/requests?matched=false' | jq -r '.[].request.url'
+```
+
+A test can assert what its code under test sent: `POST /clear` (with
+`X-Requested-With`) before the test, then read `/requests` after it. An
+invalid `matched` or `since` value returns `400`.
 
 ### Resizing and mobile navigation
 
@@ -1164,7 +1512,10 @@ time is measured, so individual network timing phases remain unknown.
 `mock` serves plain HTTP only; put a TLS-terminating proxy in front of it if a
 client needs HTTPS. It is meant to be called by HTTP clients such as curl, test suites, and
 backend services, not by web pages in a browser, so it adds no CORS headers.
-`OPTIONS` requests are matched against routes like any other method. The admin
+`OPTIONS` requests are matched against routes like any other method. `HEAD`
+requests fall back to `GET` routes when no `HEAD` route matches (see
+[Route order](#route-order)), so health and link checkers work without extra
+routes. The admin
 UI rejects cross-origin clear requests.
 
 Binding to all interfaces (`-b 0.0.0.0`) prints a warning: the admin UI is

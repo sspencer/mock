@@ -27,6 +27,8 @@ func NewHandler(mockServer *mockhttp.Server, assets fs.FS, cfg Config) http.Hand
 	mux := http.NewServeMux()
 	mux.HandleFunc("/events", mockServer.ServeEvents)
 	mux.HandleFunc("/clear", mockServer.ServeClear)
+	mux.HandleFunc("/reload", mockServer.ServeReload)
+	mux.HandleFunc("/requests", mockServer.ServeRequests)
 	mux.HandleFunc("/routes", mockServer.ServeRoutes)
 	mux.HandleFunc("/state", mockServer.ServeState)
 	mux.Handle("/", fileServer(assets, cfg))

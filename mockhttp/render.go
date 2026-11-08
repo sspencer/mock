@@ -47,7 +47,14 @@ type renderer struct {
 	root   *renderScope
 	// active holds the {{name}} variables being expanded, to stop cycles.
 	active map[string]bool
+	// sample, set when linting, fills placeholders nothing resolves (request
+	// values, unset environment variables) with sampleValue.
+	sample bool
 }
+
+// sampleValue stands in for request values when a body is rendered without a
+// request. It is valid JSON on its own and inside a string.
+const sampleValue = "1"
 
 // renderScope is the top level of a response or one copy of a repeat block.
 type renderScope struct {
@@ -269,6 +276,8 @@ func (r *renderer) render(nodes []templateNode, scope *renderScope, out *templat
 		case placeholderNode:
 			if value, ok := r.resolve(node, scope); ok {
 				out.value(value)
+			} else if r.sample {
+				out.value(sampleValue)
 			} else {
 				out.buf = append(out.buf, node.text...)
 			}

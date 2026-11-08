@@ -94,7 +94,7 @@ func TestEndToEndReloadServesNewRoutes(t *testing.T) {
 
 	changed := make(chan struct{}, 1)
 	closer, err := watchFiles([]string{path}, func() {
-		reloadMockFiles(server, []string{path}, nil, logger, io.Discard, io.Discard)
+		reloadMockFiles(server, inputSource{Files: []string{path}}, restclient.Options{}, nil, logger, io.Discard, io.Discard)
 		select {
 		case changed <- struct{}{}:
 		default:

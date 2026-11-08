@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -57,23 +58,37 @@ func (s *Server) findMethod(r *http.Request, body requestBody) (*restclient.Meth
 
 	facts := newRequestFacts(r, body)
 	if facts.queryErr == nil {
-		for i := range methods {
-			method := &methods[i]
-			if values, ok := facts.match(method); ok {
-				route := describeRoute(*method, i, revision)
-				route.Hits = hits[i].Add(1)
-				path, _ := matchPath(routePattern(*method), r.URL.EscapedPath())
-				return method, templateValues{values: values, path: path, facts: facts}, MatchInfo{Route: &route, Revision: revision}, true
+		// HEAD tries explicit HEAD routes first, then answers from a GET route
+		// (the body is dropped when the response is written).
+		requestMethods := []string{r.Method}
+		if r.Method == http.MethodHead {
+			requestMethods = append(requestMethods, http.MethodGet)
+		}
+		for _, requestMethod := range requestMethods {
+			for i := range methods {
+				method := &methods[i]
+				if values, ok := facts.match(method, requestMethod); ok {
+					route := describeRoute(*method, i, revision)
+					route.Hits = hits[i].Add(1)
+					path, _ := matchPath(routePattern(*method), r.URL.EscapedPath())
+					return method, templateValues{values: values, path: path, facts: facts}, MatchInfo{Route: &route, Revision: revision}, true
+				}
 			}
 		}
 	}
 	return nil, templateValues{}, MatchInfo{Revision: revision, Candidates: closestRoutes(methods, facts)}, false
 }
 
-// match reports whether method accepts the request and returns the path and
-// query values available to its templates.
-func (f *requestFacts) match(method *restclient.Method) (map[string]string, bool) {
-	if method.Method != f.r.Method || !portMatches(method.Port, f.localPort) {
+// methodAnswers reports whether a route declared for routeMethod can answer a
+// request with requestMethod: the same method, or a GET route for HEAD.
+func methodAnswers(routeMethod, requestMethod string) bool {
+	return routeMethod == requestMethod || requestMethod == http.MethodHead && routeMethod == http.MethodGet
+}
+
+// match reports whether method accepts the request, treated as requestMethod,
+// and returns the path and query values available to its templates.
+func (f *requestFacts) match(method *restclient.Method, requestMethod string) (map[string]string, bool) {
+	if method.Method != requestMethod || !portMatches(method.Port, f.localPort) {
 		return nil, false
 	}
 	values, ok := matchPath(routePattern(*method), f.r.URL.EscapedPath())
@@ -184,10 +199,14 @@ func (f *requestFacts) formValues(name string) ([]string, error) {
 	return f.form[name], nil
 }
 
-// lookup resolves a {{$name}} placeholder: path, capture and query values
-// first, then the explicit namespaces $path.name, $query.name and
-// $header.Name, then $json.field.path and $form.name from the request body.
+// lookup resolves a {{$name}} placeholder: $env.NAME from the server's
+// environment (never from the request), then path, capture and query values,
+// then the explicit namespaces $path.name, $query.name and $header.Name, then
+// $json.field.path and $form.name from the request body.
 func (v templateValues) lookup(key string) (string, bool) {
+	if name, ok := strings.CutPrefix(key, "env."); ok && name != "" {
+		return os.LookupEnv(name)
+	}
 	if value, ok := v.values[key]; ok {
 		return value, true
 	}

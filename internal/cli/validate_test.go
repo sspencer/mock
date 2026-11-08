@@ -132,3 +132,21 @@ func TestRunDispatchesValidateSubcommand(t *testing.T) {
 		t.Fatalf("run validate: err = %v, output = %q", err, out.String())
 	}
 }
+
+func TestValidateVarSuppliesVariable(t *testing.T) {
+	path := writeValidateFile(t, "### Users\nGET /users\nX-Token: {{token}}\n\nok\n")
+	if out, err := runValidateArgs(t, "-strict", path); err == nil {
+		t.Fatalf("missing variable should warn under -strict:\n%s", out)
+	}
+	if out, err := runValidateArgs(t, "-strict", "-var", "token=abc", path); err != nil {
+		t.Fatalf("validate -var failed: %v\n%s", err, out)
+	}
+}
+
+func TestValidateReportsInvalidJSONBody(t *testing.T) {
+	path := writeValidateFile(t, "### Users\nGET /users\nContent-Type: application/json\n\n[{\"id\": {{$query.id}}},]\n")
+	out, err := runValidateArgs(t, "-strict", path)
+	if err == nil || !strings.Contains(out, "response body is not valid JSON") {
+		t.Fatalf("validate should report the trailing comma (err %v):\n%s", err, out)
+	}
+}

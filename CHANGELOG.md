@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- Docs: the README has a table of contents, one directive reference table for every `@` directive (values, defaults, effect), and a Recipes section: GraphQL operations, content negotiation, case-insensitive matchers, per-test routing with an `X-Test` header, and readiness checks for CI and Docker Compose.
+
+- Add three ways to reload request files when file change events do not arrive (Docker Desktop bind mounts, network filesystems): `-i` / `--poll INTERVAL` checks file sizes and modification times on an interval, `SIGHUP` reloads at once, and `POST /reload` on the admin port reloads and returns the new state (`422` if the reload failed). `/reload` has the same cross-site protections as `/clear`.
+
+- Add `-d` / `--dir DIR` to load every `.http` file under a directory, after any file arguments and in lexical path order. The directory tree is watched, so added, removed or renamed request files and new subdirectories are picked up on reload. `mock validate` also accepts directories. A positional directory still serves static files.
+
+- Warn at load time, and in `mock validate`, when a route with a JSON `Content-Type` has a body that does not parse once rendered with sample request values, naming the route and the line within the body.
+
+- Add the `mocktest` Go package for running a mock server from `.http` files inside a Go test: `mocktest.Start(t, "api.http")` serves on a random port, and `AssertCalled(t, "POST /users", 1)`, `AssertNotCalled` and `AssertAllMatched` check the requests it received.
+
+- `GET /requests` on the admin port returns the request log as JSON, filtered
+  by `method`, `path`, `route`, `matched` and `since`.
+
+- Shadowed-route warnings now compare paths segment by segment, so they also catch a later route hidden by an earlier catch-all (`/api/*` before `/api/users/:id`), by a parameter (`/users/:id` before `/users/me`), or by the same path with a renamed parameter. `@path.*` matchers on the earlier route are taken into account.
+
+- Add `-v` / `--var NAME=VALUE` (and `mock validate -var`) to set a variable in every request file from the command line. It overrides file and section definitions, supplies values for `{{name}}` references with no definition, and can set special variables such as `@delay`; it cannot set request matchers.
+- Add `{{$env.NAME}}` placeholders, which read an environment variable of the `mock` process when the response is rendered. A request can never supply the value. An unset variable stays literal and warns at load time unless the placeholder has a `| default`.
+
+- Answer `HEAD` requests from `GET` routes. When no `HEAD` route matches, the first matching `GET` route answers with its status and headers and no body, so health checkers, link checkers and clients that probe with `HEAD` no longer get a `404`. Explicit `HEAD` routes still win.
+
 - Add any-element matching to `@json` paths: a `*` segment selects every element of an array, so `@json.roles.* = admin` matches when any role is `admin` and `@json.items.*.sku = ~A[0-9]+` checks every item. With a wildcard, `*` requires at least one non-blank element and `!` requires none. Mismatch reasons quote at most five received values. The admin UI's sample request for such a route puts the value in the first element.
 
 - Add `-s` / `--strict`. At shutdown, `mock` writes a report to stderr listing requests no route matched (including ones forwarded with `--upstream`) and routes that never matched a request, and exits `1` if any request was unmatched, so a call to an unmocked endpoint can fail a CI run.

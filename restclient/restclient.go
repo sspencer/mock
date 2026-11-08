@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -132,7 +133,40 @@ type pendingSection struct {
 	nameLine      int
 }
 
+// Options adjust how request files are parsed. The zero value parses files
+// as written.
+type Options struct {
+	// Vars override @name definitions, file- or section-scoped, in every file,
+	// and supply values for {{name}} references that no @name defines. Names
+	// must pass CheckVariableOverride.
+	Vars map[string]string
+}
+
+// CheckVariableOverride reports whether name can be set with Options.Vars:
+// a variable name that is not a request matcher (@header.*, @query.*,
+// @path.*, @body, @json.*, @form.*).
+func CheckVariableOverride(name string) error {
+	if !variableNamePattern.MatchString(name) {
+		return fmt.Errorf("invalid variable name %q (use letters, digits, _, . and -, starting with a letter or _)", name)
+	}
+	if isMatcherName(name) {
+		return fmt.Errorf("@%s is a request matcher, not a variable, and cannot be set from the command line", name)
+	}
+	return nil
+}
+
+// Load parses the request files in order.
 func Load(paths []string) ([]Method, error) {
+	return Options{}.Load(paths)
+}
+
+// Parse parses one request file read from r; source names it in errors.
+func Parse(source string, r io.Reader) ([]Method, error) {
+	return Options{}.Parse(source, r)
+}
+
+// Load parses the request files in order with these options.
+func (o Options) Load(paths []string) ([]Method, error) {
 	var methods []Method
 	for _, path := range paths {
 		file, err := os.Open(path)
@@ -140,7 +174,7 @@ func Load(paths []string) ([]Method, error) {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
 
-		parsed, err := Parse(path, file)
+		parsed, err := o.Parse(path, file)
 		closeErr := file.Close()
 		if err != nil {
 			return nil, err
@@ -153,7 +187,8 @@ func Load(paths []string) ([]Method, error) {
 	return methods, nil
 }
 
-func Parse(source string, r io.Reader) ([]Method, error) {
+// Parse parses one request file with these options.
+func (o Options) Parse(source string, r io.Reader) ([]Method, error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	// ending is the terminator of the line just scanned ("\n", "\r\n" or ""
@@ -272,7 +307,7 @@ func Parse(source string, r io.Reader) ([]Method, error) {
 
 	var methods []Method
 	for _, pending := range sections {
-		method, err := parseSection(pending, fileDefs, source)
+		method, err := parseSection(pending, fileDefs, o.Vars, source)
 		if err != nil {
 			return nil, err
 		}
@@ -391,7 +426,10 @@ var valueEscapes = map[byte]byte{'n': '\n', 'r': '\r', 't': '\t', '\\': '\\'}
 // scopeDefinitions merges file-scoped and method-scoped definitions. A later
 // definition replaces an earlier one with the same name (header matcher names
 // compare case-insensitively), so a method overrides its file.
-func scopeDefinitions(fileDefs, methodDefs []definition) []definition {
+// scopeDefinitions merges file and section definitions (later ones win) and
+// then applies command-line overrides. An override keeps the line of the
+// definition it replaces; one with no definition gets line 0.
+func scopeDefinitions(fileDefs, methodDefs []definition, overrides map[string]string) []definition {
 	var merged []definition
 	index := make(map[string]int)
 	for _, def := range slices.Concat(fileDefs, methodDefs) {
@@ -406,10 +444,17 @@ func scopeDefinitions(fileDefs, methodDefs []definition) []definition {
 		index[key] = len(merged)
 		merged = append(merged, def)
 	}
+	for _, name := range slices.Sorted(maps.Keys(overrides)) {
+		if i, ok := index[name]; ok {
+			merged[i].value = overrides[name]
+			continue
+		}
+		merged = append(merged, definition{name: name, value: overrides[name]})
+	}
 	return merged
 }
 
-func parseSection(pending pendingSection, fileDefs []definition, source string) (Method, error) {
+func parseSection(pending pendingSection, fileDefs []definition, overrides map[string]string, source string) (Method, error) {
 	method := pending.method
 	lines := pending.lines
 	sectionNameLine := pending.nameLine
@@ -429,7 +474,7 @@ func parseSection(pending pendingSection, fileDefs []definition, source string) 
 	method.Comments = pending.directives.comments
 	i := pending.directives.next
 
-	defs := scopeDefinitions(fileDefs, pending.directives.defs)
+	defs := scopeDefinitions(fileDefs, pending.directives.defs, overrides)
 	for _, def := range defs {
 		if isMatcherName(def.name) {
 			continue
@@ -990,7 +1035,9 @@ func UnusedVariables(methods []Method) []UnusedVariable {
 			collectPlaceholders(value, referenced)
 		}
 		for name, line := range method.VariableLines {
-			if _, ok := controlVariables[name]; ok {
+			if _, ok := controlVariables[name]; ok || line == 0 {
+				// Line 0 is a command-line variable with no definition in
+				// the file; it need not be used by every file.
 				continue
 			}
 			key := site{method.Source, line}

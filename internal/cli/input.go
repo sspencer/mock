@@ -3,7 +3,9 @@ package cli
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -11,13 +13,76 @@ import (
 )
 
 type inputSource struct {
-	Methods    []restclient.Method
-	StaticDir  string
-	WatchFiles []string
+	Methods   []restclient.Method
+	StaticDir string
+	// Files are the request files given as arguments, and Dirs the --dir
+	// directories whose .http files are loaded after them.
+	Files, Dirs []string
 }
 
-func loadInput(args []string, stdin io.Reader) (inputSource, error) {
-	if len(args) == 1 {
+// watched reports whether the input came from files that can be watched.
+func (s inputSource) watched() bool { return len(s.Files) > 0 || len(s.Dirs) > 0 }
+
+// requestFiles lists the request files to load: the file arguments, then the
+// .http files under each directory in lexical path order.
+func (s inputSource) requestFiles() ([]string, error) {
+	files := append([]string(nil), s.Files...)
+	for _, dir := range s.Dirs {
+		found, err := findRequestFiles(dir)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, found...)
+	}
+	return files, nil
+}
+
+// findRequestFiles walks dir for .http files, skipping hidden files and
+// directories such as .git.
+func findRequestFiles(dir string) ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path != dir && hiddenName(d.Name()) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !d.IsDir() && isRequestFile(path) {
+			files = append(files, path)
+		}
+		return nil
+	})
+	return files, err
+}
+
+func hiddenName(name string) bool { return strings.HasPrefix(name, ".") }
+
+func isRequestFile(path string) bool { return strings.EqualFold(filepath.Ext(path), ".http") }
+
+// describe names the input for messages: the files and directories, or stdin.
+func (s inputSource) describe() string {
+	names := append(append([]string(nil), s.Files...), s.Dirs...)
+	if len(names) == 0 {
+		return "stdin"
+	}
+	return strings.Join(names, ", ")
+}
+
+func loadInput(args, dirs []string, stdin io.Reader, opts restclient.Options) (inputSource, error) {
+	for _, dir := range dirs {
+		info, err := os.Stat(dir)
+		if err != nil {
+			return inputSource{}, err
+		}
+		if !info.IsDir() {
+			return inputSource{}, fmt.Errorf("--dir %q is not a directory", dir)
+		}
+	}
+	if len(args) == 1 && len(dirs) == 0 {
 		info, err := os.Stat(args[0])
 		if err != nil {
 			return inputSource{}, err
@@ -35,31 +100,33 @@ func loadInput(args []string, stdin io.Reader) (inputSource, error) {
 			return inputSource{}, fmt.Errorf("cannot mix static directory %q with other request inputs", arg)
 		}
 	}
-	methods, err := loadMethods(args, stdin)
+	src := inputSource{Files: append([]string(nil), args...), Dirs: append([]string(nil), dirs...)}
+	methods, err := src.load(stdin, opts)
 	if err != nil {
 		return inputSource{}, err
 	}
-	src := inputSource{Methods: methods}
-	if len(args) > 0 {
-		src.WatchFiles = append([]string(nil), args...)
-	}
+	src.Methods = methods
 	return src, nil
 }
 
-func loadMethods(args []string, stdin io.Reader) ([]restclient.Method, error) {
-	if len(args) > 0 {
-		return restclient.Load(args)
+// load parses the request files, or stdin when there are none.
+func (s inputSource) load(stdin io.Reader, opts restclient.Options) ([]restclient.Method, error) {
+	if !s.watched() {
+		return opts.Parse("<stdin>", stdin)
 	}
-	return restclient.Parse("<stdin>", stdin)
+	files, err := s.requestFiles()
+	if err != nil {
+		return nil, err
+	}
+	if len(files) == 0 {
+		return nil, nil
+	}
+	return opts.Load(files)
 }
 
-func validateMethods(methods []restclient.Method, args []string) error {
+func validateMethods(methods []restclient.Method, source string) error {
 	if len(methods) > 0 {
 		return nil
-	}
-	source := "stdin"
-	if len(args) > 0 {
-		source = strings.Join(args, ", ")
 	}
 	return fmt.Errorf("no mock requests found in %s; add at least one request section starting with ### followed by an HTTP request line", source)
 }

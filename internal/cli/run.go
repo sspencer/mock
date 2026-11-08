@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/sspencer/mock/internal/ui"
@@ -36,12 +37,12 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		fmt.Fprintln(stdout, currentVersion())
 		return nil
 	}
-	if len(cfg.Args) == 0 {
+	if len(cfg.Args) == 0 && len(cfg.Dirs) == 0 {
 		if f, ok := stdin.(*os.File); ok && stdinIsTerminal(f) {
-			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-u url] [-s] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
+			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-u url] [-s] [-v name=value] [-d dir] [-i 1s] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
 		}
 	}
-	input, err := loadInput(cfg.Args, stdin)
+	input, err := loadInput(cfg.Args, cfg.Dirs, stdin, cfg.Vars.options())
 	if err != nil {
 		return runError("%v", err)
 	}
@@ -51,6 +52,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	var watchCloser io.Closer
 	var mockListeners []net.Listener
 	var plan *portPlan
+	var reloads *reloader
 	closeAll := func() {
 		if watchCloser != nil {
 			_ = watchCloser.Close()
@@ -67,6 +69,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if input.StaticDir != "" && cfg.Upstream != nil {
 		return usageError("-u (--upstream) needs request files; a directory argument serves static files only")
 	}
+	if cfg.Poll > 0 && (input.StaticDir != "" || !input.watched()) {
+		return usageError("-i (--poll) needs request files; stdin and a static directory cannot be reloaded")
+	}
 	if input.StaticDir != "" && cfg.Strict {
 		return usageError("-s (--strict) needs request files; a directory argument serves static files only")
 	}
@@ -78,7 +83,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		mockListeners = []net.Listener{ln}
 	} else {
-		if err := validateMethods(input.Methods, cfg.Args); err != nil {
+		if err := validateMethods(input.Methods, input.describe()); err != nil {
 			return runError("%v", err)
 		}
 		staticFS, err = ui.Assets()
@@ -98,18 +103,16 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		mockServer = mockhttp.New(input.Methods, logger)
 		mockServer.SetUpstream(cfg.Upstream)
 		handler = mockServer
-		if files := input.WatchFiles; len(files) > 0 {
-			var watcher *fileWatcher
-			ready := make(chan struct{})
-			reload := func() {
-				<-ready
-				reloadMockFiles(mockServer, files, plan, logger, stdout, stderr)
-				if err := watcher.Reconcile(resolveWatchPaths(files, mockServer.Methods())); err != nil {
-					logger.Error("failed to update dependency watches", "error", err)
-				}
-			}
-			watcher, err = watchFiles(resolveWatchPaths(files, input.Methods), reload, logger)
-			close(ready)
+		if input.watched() {
+			reloads = &reloader{server: mockServer, input: input, opts: cfg.Vars.options(), plan: plan, logger: logger, out: stdout, err: stderr}
+			// Holding the lock until the watcher is assigned keeps an early
+			// file event from reloading before the reloader is complete.
+			reloads.mu.Lock()
+			paths := reloads.watchPaths()
+			reloads.snapshot = snapshotFiles(paths)
+			watcher, err := watchFiles(paths, reloads.reload, logger, input.Dirs...)
+			reloads.watcher = watcher
+			reloads.mu.Unlock()
 			if watcher != nil {
 				watchCloser = watcher
 			}
@@ -117,6 +120,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 				closeAll()
 				return runError("failed to watch request files: %v", err)
 			}
+			mockServer.SetReloader(reloads.reload)
 		}
 	}
 	var servers []*http.Server
@@ -156,10 +160,29 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		if cfg.Upstream != nil {
 			fmt.Fprintf(stdout, "forwarding unmatched requests to %s\n", cfg.Upstream)
 		}
-		if watchCloser != nil {
+		if watchCloser != nil && cfg.Poll > 0 {
+			fmt.Fprintf(stdout, "watching request files for changes (and polling every %s)\n", cfg.Poll)
+		} else if watchCloser != nil {
 			fmt.Fprintln(stdout, "watching request files for changes")
 		}
 		printMethods(stdout, input.Methods)
+	}
+
+	// stopTriggers stops polling and SIGHUP reloads and waits for one in
+	// progress, so none runs after the watcher closes or Run returns.
+	stopTriggers := func() {}
+	if reloads != nil {
+		runCtx, stopReloads := context.WithCancel(ctx)
+		var triggers sync.WaitGroup
+		stopTriggers = func() {
+			stopReloads()
+			triggers.Wait()
+		}
+		defer stopTriggers()
+		if cfg.Poll > 0 {
+			triggers.Go(func() { reloads.poll(runCtx, cfg.Poll) })
+		}
+		triggers.Go(func() { reloadOnHangup(runCtx, reloads.reload, logger) })
 	}
 
 	errCh := make(chan error, len(servers))
@@ -169,6 +192,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	select {
 	case <-ctx.Done():
 		logger.Info("shutting down")
+		stopTriggers()
 		if err := shutdownHTTPServers(servers, 400*time.Millisecond); err != nil {
 			closeWatcher()
 			return runError("server shutdown failed: %v", err)
@@ -182,6 +206,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		return nil
 	case err := <-errCh:
+		stopTriggers()
 		closeWatcher()
 		_ = shutdownHTTPServers(servers, 400*time.Millisecond)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {

@@ -304,3 +304,24 @@ func TestParseConfigUpstream(t *testing.T) {
 		}
 	}
 }
+
+func TestParseConfigVars(t *testing.T) {
+	cfg, err := parseConfig([]string{"-v", "host=http://localhost:9000", "--var", "@token=a=b", "-v", "empty=", "api.http"})
+	if err != nil {
+		t.Fatalf("parseConfig() error = %v", err)
+	}
+	want := map[string]string{"host": "http://localhost:9000", "token": "a=b", "empty": ""}
+	if len(cfg.Vars) != len(want) {
+		t.Fatalf("Vars = %v, want %v", cfg.Vars, want)
+	}
+	for name, value := range want {
+		if cfg.Vars[name] != value {
+			t.Errorf("Vars[%q] = %q, want %q", name, cfg.Vars[name], value)
+		}
+	}
+	for _, bad := range []string{"novalue", "header.Authorization=x", "1x=y", "=y"} {
+		if _, err := parseConfig([]string{"-v", bad, "api.http"}); ExitCode(err) != 2 {
+			t.Errorf("-v %q: error = %v, want usage error", bad, err)
+		}
+	}
+}

@@ -23,7 +23,12 @@ go run . examples/user.http
 ```
 
 The request log is at <http://localhost:8081/>. Example files live in
-`examples/`.
+`examples/`. Tests load every example with `mock validate -strict` checks and
+replay `examples/matching/requests.sh` against an in-process server, so when
+you add or change a scenario there, update `matchingScenarios` in
+`mockhttp/examples_test.go` with its expected status and route. An example
+that warns on purpose goes in `knownExampleWarnings` in
+`internal/cli/examples_test.go`.
 
 ## Pull requests
 
