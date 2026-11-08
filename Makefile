@@ -18,7 +18,7 @@ all: verify build
 verify: fmt-check vet test test-ui
 
 fmt-check:
-	@files="$$(git ls-files '*.go' | xargs gofmt -l)"; if [ -n "$$files" ]; then printf '%s\n' "$$files"; exit 1; fi
+	@files="$$(git ls-files --cached --others --exclude-standard '*.go' | xargs gofmt -l)"; if [ -n "$$files" ]; then printf '%s\n' "$$files"; exit 1; fi
 
 test-ui:
 	node --test internal/ui/tests/*.test.mjs
