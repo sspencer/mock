@@ -51,6 +51,8 @@ type requestFacts struct {
 	xmlDone bool
 	xml     *xmlNode
 	xmlErr  error
+
+	request any
 }
 
 func newRequestFacts(r *http.Request, body requestBody) *requestFacts {

@@ -481,6 +481,9 @@ func (r *renderer) evaluate(node templateNode, scope *renderScope) (string, bool
 	if path, ok := fixturePath(node.name); ok {
 		return r.fixtureValue(path)
 	}
+	if path, ok := requestEchoPath(node.name); ok && r.values.facts != nil {
+		return r.values.facts.requestValue(path)
+	}
 	if path, ok := itemPath(node.name); ok {
 		if item, found := scope.currentItem(); found {
 			for _, value := range selectJSONNodes(item, path) {

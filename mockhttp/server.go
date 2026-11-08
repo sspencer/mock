@@ -702,6 +702,9 @@ func (s *Server) clearLocked() {
 // ($query.name, $header.Name, $cookie.name, $json.field.path, $xml.path or $form.name). Its value
 // depends on each request, so it is never reported as unknown.
 func isRequestPlaceholder(key string) bool {
+	if _, ok := requestEchoPath(key); ok {
+		return true
+	}
 	for _, prefix := range []string{"query.", "header.", "cookie.", "json.", "xml.", "form."} {
 		if name, ok := strings.CutPrefix(key, prefix); ok && name != "" {
 			return true

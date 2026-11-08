@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add a `{{$request}}` placeholder, which inserts the request (method, URL, path, query, host, headers, body and decoded JSON body) as a JSON object, for echo routes. `{{$request.headers.Accept.0}}` and other paths read one part.
+
 - Add `{{#each $json.path}} ... {{/each}}` blocks, which render once per element of a request body array (or a `$fixture` or `$item` array), with `{{$item}}`, `{{$item.field}}` and `{{$index}}` inside. JSON responses get commas between copies.
 
 - Add `@fixture = data.json` and `{{$fixture.path}}` placeholders, which read values from a JSON data file using the same paths as `{{$json.*}}`. The file is re-read for each response and watched for reloads.

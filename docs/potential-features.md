@@ -35,9 +35,6 @@ and with the items above done they are the next thing to revisit.
 
 ### Responses and templating
 
-- **Echo the request** (S): a `{{$request}}` placeholder (or a `| json`-ready
-  object) with the method, path, query, headers and body, for an
-  httpbin-style `/echo` route that shows a client exactly what it sent.
 - **Range requests for file bodies** (S–M): `< path` bodies that are not
   templated could be served with `http.ServeContent`, giving `Accept-Ranges`,
   `206 Partial Content` and `If-Range`, so download-resume and media clients
@@ -167,6 +164,8 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Echo the request:** `{{$request}}` inserts the request as a JSON object,
+  and `{{$request.path}}` reads one part of it.
 - **Iterate over request arrays:** `{{#each $json.items}} ... {{/each}}` with
   `{{$item.*}}` and `{{$index}}`, also over `$fixture` and nested `$item` arrays.
 - **Fixture namespace:** `@fixture = data.json` and `{{$fixture.path}}`

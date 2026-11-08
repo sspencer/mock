@@ -634,6 +634,8 @@ a namespace:
   (see [Variables from the command line](#variables-from-the-command-line)).
 - `{{$fixture.users.0.name}}` reads a value from the route's `@fixture` JSON
   file (see [Fixture data](#fixture-data)).
+- `{{$request}}` is the whole request as a JSON object (see
+  [Echoing the request](#echoing-the-request)).
 
 A namespaced value that the request lacks leaves the placeholder literal.
 `{{$path.name}}` warns at load time when the route has no `:name` parameter. A missing body field leaves the
@@ -718,7 +720,36 @@ Content-Type: application/json
 - Path segments are literal, so a fixture can't be indexed by a request value
   such as `{{$path.id}}`.
 
-### Filters
+### Echoing the request
+
+`{{$request}}` inserts the request as a JSON object, for an httpbin-style
+route that shows a client exactly what it sent:
+
+```http
+### Echo
+POST /echo
+Content-Type: application/json
+
+{{$request}}
+```
+
+A `POST /echo?a=1` with a JSON body answers:
+
+```json
+{"body":"{\"sku\":\"A1\"}","headers":{"Content-Type":["application/json"],"User-Agent":["curl/8.7.1"]},"host":"localhost:8080","json":{"sku":"A1"},"method":"POST","path":"/echo","query":{"a":["1"]},"url":"/echo?a=1"}
+```
+
+- `method`, `url` (path and query as sent), `path` (decoded), `host` and
+  `body` (as text) are strings. `query` and `headers` map each name to an array
+  of values, since both can repeat. `json` is the decoded body, present only
+  when the body is JSON. A body over 1 MiB has `"body":null` and
+  `"bodyUnavailable":true`.
+- A path reads one part, using [`@json.*`](#body-matching) paths:
+  `{{$request.method}}`, `{{$request.headers.User-Agent.0}}`,
+  `{{$request.json.items.0.sku}}`.
+- Outside a JSON string the object is inserted as JSON; inside one it is
+  escaped, as for any value.
+
 
 A placeholder can pipe its value through filters, applied left to right:
 
