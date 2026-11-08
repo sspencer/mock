@@ -314,6 +314,13 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 				logger.Warn("invalid @delay will be ignored", "delay", raw, "method", method.Name, "source", method.Source, "error", err)
 			}
 		}
+		var fixture any
+		if method.Fixture != "" {
+			var err error
+			if fixture, err = loadFixture(&method); err != nil {
+				logger.Warn("{{$fixture.*}} placeholders will stay literal", "method", method.Name, "source", method.Source, "line", method.Line, "error", err)
+			}
+		}
 		if method.Proxy != "" && (method.Body != "" || method.File != "" || len(method.Headers) > 0 || method.Stream > 0 || method.Fault != "") {
 			logger.Warn("@proxy forwards the request, so this section's response body, file, headers, @stream and @fault are ignored", "method", method.Name, "source", method.Source, "line", method.Line)
 		}
@@ -324,7 +331,7 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 				checked.Body = string(body)
 			}
 		}
-		warnUnknownPlaceholders(logger, checked)
+		warnUnknownPlaceholders(logger, checked, fixture)
 		checkedMethods = append(checkedMethods, checked)
 		warnIncomingHeadersUsedAsResponse(logger, method)
 		warnInvalidJSONBody(logger, method)
@@ -556,7 +563,9 @@ func cloneMethods(methods []restclient.Method) []restclient.Method {
 	return out
 }
 
-func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method) {
+// fixture is the route's decoded @fixture file, or nil when it has none or
+// it failed to load.
+func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method, fixture any) {
 	if method.Template == "off" {
 		return
 	}
@@ -620,6 +629,15 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method) {
 			if name, ok := strings.CutPrefix(key, "path."); ok {
 				if !pathParams[name] {
 					warn("unresolved placeholder preserved literally (the route path has no :"+name+" parameter)", key)
+				}
+				continue
+			}
+			if path, ok := fixturePath(key); ok {
+				switch {
+				case method.Fixture == "":
+					warn("unresolved placeholder preserved literally (no @fixture file is set)", key)
+				case fixture != nil && len(selectJSON(fixture, path)) == 0:
+					warn("unresolved placeholder preserved literally (@fixture "+method.Fixture+" has no value at "+path+")", key)
 				}
 				continue
 			}

@@ -35,9 +35,6 @@ and with the items above done they are the next thing to revisit.
 
 ### Responses and templating
 
-- **Fixture namespace:** `{{$fixture.*}}` values read from a data file, left
-  over from the template namespaces item. Filters, `{{#repeat}}`, and explicit
-  `$path`/`$query`/`$header` namespaces exist.
 - **Iterate over request arrays** (M): `{{#each $json.items}} ... {{/each}}`
   with `{{$item.sku}}` inside, for batch endpoints that answer one entry per
   submitted item. `{{#repeat}}` only produces generated copies, and
@@ -174,6 +171,8 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Fixture namespace:** `@fixture = data.json` and `{{$fixture.path}}`
+  placeholders read values from a JSON data file.
 - **Per-route proxying:** `@proxy = URL` forwards the requests a section
   matches; a URL with placeholders rewrites the target path.
 - **XML body matchers:** `@xml.element.path` matchers and

@@ -50,6 +50,10 @@ type renderer struct {
 	// sample, set when linting, fills placeholders nothing resolves (request
 	// values, unset environment variables) with sampleValue.
 	sample bool
+	// fixture is the decoded @fixture file, loaded on first use.
+	fixture     any
+	fixtureErr  error
+	fixtureDone bool
 }
 
 // sampleValue stands in for request values when a body is rendered without a
@@ -398,6 +402,9 @@ func (r *renderer) evaluate(node templateNode, scope *renderScope) (string, bool
 				return strconv.Itoa(s.index), true
 			}
 		}
+	}
+	if path, ok := fixturePath(node.name); ok {
+		return r.fixtureValue(path)
 	}
 	if value, ok := r.values.lookup(node.name); ok {
 		return value, true

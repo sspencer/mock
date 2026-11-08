@@ -164,6 +164,10 @@ test('formatRoute shows the proxy target instead of a response', () => {
     assert.ok(!text.includes('Response: 200'), text);
 });
 
+test('formatRoute names the fixture file', () => {
+    assert.ok(formatRoute({ method: 'GET', path: '/x', status: 200, fixture: 'data/users.json' }).includes('Fixture: data/users.json'));
+});
+
 test('formatRoute lists XML requirements', () => {
     const text = formatRoute({ method: 'POST', path: '/soap', matchXml: { 'Envelope.Body.GetQuote.symbol': '*', 'order["@id"]': '!draft' } });
     assert.ok(text.includes('xml Envelope.Body.GetQuote.symbol: '), text);

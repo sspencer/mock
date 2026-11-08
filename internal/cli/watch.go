@@ -238,8 +238,11 @@ func resolveWatchPaths(httpFiles []string, methods []restclient.Method) []string
 		add(file)
 	}
 	for _, method := range methods {
-		if method.File != "" {
-			for _, path := range restclient.BodyFilePaths(method.Source, method.File) {
+		for _, raw := range []string{method.File, method.Fixture} {
+			if raw == "" {
+				continue
+			}
+			for _, path := range restclient.BodyFilePaths(method.Source, raw) {
 				add(path)
 			}
 		}

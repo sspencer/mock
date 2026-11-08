@@ -85,6 +85,9 @@ type Method struct {
 	// Proxy is the @proxy URL that matching requests are forwarded to. It may
 	// hold request placeholders in its path and query.
 	Proxy string
+	// Fixture is the @fixture JSON file that {{$fixture.path}} placeholders
+	// read, as written. Locate it with ResolveFile.
+	Fixture string
 }
 
 // legacyVariablePattern matches the removed "# $name=value" comment variables.
@@ -860,6 +863,12 @@ func applyControlVariable(method *Method, def definition, source string) error {
 		if strings.TrimSpace(value) == "" {
 			return parseErrorf(source, def.line, `section %q: @seed needs a value, such as "@seed = 42"`, method.Name)
 		}
+	case "fixture":
+		fixture := strings.TrimSpace(value)
+		if fixture == "" || strings.Contains(fixture, "{{") {
+			return parseErrorf(source, def.line, `section %q: @fixture needs a JSON file path without placeholders, such as "@fixture = data/users.json"`, method.Name)
+		}
+		method.Fixture = fixture
 	case "proxy":
 		proxy := strings.TrimSpace(value)
 		if err := ValidateProxy(proxy); err != nil {
@@ -1008,6 +1017,7 @@ var controlVariables = map[string]struct{}{
 	"template": {},
 	"trim":     {},
 	"proxy":    {},
+	"fixture":  {},
 }
 
 // PlaceholderPattern matches {{name}}, {{%name}} and {{$name args}} placeholders

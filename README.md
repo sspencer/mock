@@ -552,6 +552,7 @@ in the file, or in a section, where it replaces the file value.
 | `@seed` | any non-empty text | random | Make generated values reproducible per request. See [Reproducible data](#reproducible-data). |
 | `@template` | `auto`, `on` or `off` | `auto` | Whether placeholders are expanded in the body. See [External response bodies](#external-response-bodies). |
 | `@trim` | `on` or `off` | `on` | With `off` the inline body keeps its exact text and line endings. See [Supported dialect](#supported-dialect). |
+| `@fixture` | JSON file path | none | Data file that `{{$fixture.path}}` placeholders read. See [Fixture data](#fixture-data). |
 | `@proxy` | `http` or `https` URL | none | Forward the requests this section matches to the URL instead of answering. See [Per-route proxying](#per-route-proxying). |
 | `@port` | port number | `-p` (`8080`) | Serve the section on this port. A port in the request URL takes precedence. See [Multiple ports](#multiple-ports). |
 | `@header.Name` | [matcher value](#matcher-values): `text`, `*`, `!`, `~regex`, `!text` or `!~regex` | none | Require the incoming request header to match. A section's header matcher replaces a file one of the same name. See [Header matching](#header-matching). |
@@ -631,6 +632,8 @@ a namespace:
 - `{{$cookie.session}}` reads a request cookie (case-sensitive).
 - `{{$env.API_TOKEN}}` reads an environment variable of the `mock` process
   (see [Variables from the command line](#variables-from-the-command-line)).
+- `{{$fixture.users.0.name}}` reads a value from the route's `@fixture` JSON
+  file (see [Fixture data](#fixture-data)).
 
 A namespaced value that the request lacks leaves the placeholder literal.
 `{{$path.name}}` warns at load time when the route has no `:name` parameter. A missing body field leaves the
@@ -686,6 +689,34 @@ produce a load-time warning. Other REST Client dynamic variables, such as
 `{{$processEnv}}`, `{{$dotenv}}` and `{{$aadToken}}`, are not supported and are
 treated as unknown placeholders; use `{{$env.NAME}}` in place of
 `{{$processEnv NAME}}`.
+
+### Fixture data
+
+`@fixture = path` names a JSON file whose values `{{$fixture.path}}`
+placeholders read, so canned data can live in one file and be reused across
+routes. The path is relative to the `.http` file, like a `< path` body. Set it
+at file scope for every section, or in a section to override it:
+
+```http
+@fixture = data/catalog.json
+
+### Product
+GET /products/featured
+Content-Type: application/json
+
+{"name":"{{$fixture.featured.name}}","price":{{$fixture.featured.price}},"tags":{{$fixture.featured.tags}}}
+```
+
+- Paths work like [`@json.*`](#body-matching) paths: dot-separated fields,
+  numeric array indexes, and `["key"]` for keys with dots
+  (`{{$fixture["site.name"]}}`). A string is inserted as its text, and other
+  values as compact JSON, so `{{$fixture.featured.tags}}` copies an array.
+- The file is read for each response that uses it, so edits apply to the next
+  request. `mock` also watches it and reports problems on reload.
+- A missing file, invalid JSON or a path with no value warns at load time and
+  leaves the placeholder literal unless it has a `| default`.
+- Path segments are literal, so a fixture can't be indexed by a request value
+  such as `{{$path.id}}`.
 
 ### Filters
 

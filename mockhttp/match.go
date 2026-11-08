@@ -387,11 +387,18 @@ func (f *requestFacts) jsonValues(path string) ([]string, error) {
 	if f.jsonErr != nil {
 		return nil, f.jsonErr
 	}
+	return selectJSON(f.json, path), nil
+}
+
+// selectJSON returns the values at path in a decoded JSON document: strings as
+// their text, and numbers, booleans, objects and arrays as compact JSON.
+// Missing values and null are left out.
+func selectJSON(root any, path string) []string {
 	segments, err := restclient.ParseJSONPath(path)
 	if err != nil {
-		return nil, nil
+		return nil
 	}
-	nodes := []any{f.json}
+	nodes := []any{root}
 	for _, segment := range segments {
 		var next []any
 		for _, node := range nodes {
@@ -425,7 +432,7 @@ func (f *requestFacts) jsonValues(path string) ([]string, error) {
 			}
 		}
 	}
-	return values, nil
+	return values
 }
 
 var (
