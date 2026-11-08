@@ -3,6 +3,7 @@ package restclient
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMatcherMatch(t *testing.T) {
@@ -184,6 +185,141 @@ func TestMatcherMatchAny(t *testing.T) {
 	for _, tt := range tests {
 		if got := MustMatcher(tt.raw).MatchAny(tt.values); got != tt.want {
 			t.Errorf("MustMatcher(%q).MatchAny(%q) = %v, want %v", tt.raw, tt.values, got, tt.want)
+		}
+	}
+}
+
+func TestNegatedMatchers(t *testing.T) {
+	tests := []struct {
+		raw    string
+		values []string
+		want   bool
+	}{
+		{"!guest", []string{"admin"}, true},
+		{"!guest", []string{"guest"}, false},
+		{"!guest", []string{"admin", "guest"}, false}, // no value may be excluded
+		{"!guest", nil, false},                        // present but not X needs a value
+		{"!guest", []string{" "}, false},
+		{"!~test-.*", []string{"prod-1"}, true},
+		{"!~test-.*", []string{"test-1"}, false},
+		{"!~test-.*", nil, false},
+		{"!~test-.*", []string{"xtest-1"}, true}, // anchored like ~pattern
+	}
+	for _, tt := range tests {
+		m, err := ParseMatcher(tt.raw)
+		if err != nil {
+			t.Fatalf("ParseMatcher(%q) error = %v", tt.raw, err)
+		}
+		if !m.Negated() {
+			t.Fatalf("ParseMatcher(%q) is not negated: %+v", tt.raw, m)
+		}
+		if got := m.Match(tt.values); got != tt.want {
+			t.Errorf("ParseMatcher(%q).Match(%q) = %v, want %v", tt.raw, tt.values, got, tt.want)
+		}
+		if got := m.MatchAny(tt.values); got != tt.want {
+			t.Errorf("ParseMatcher(%q).MatchAny(%q) = %v, want %v", tt.raw, tt.values, got, tt.want)
+		}
+	}
+	if _, err := ParseMatcher("!~("); err == nil {
+		t.Fatal("invalid negated regexp parsed")
+	}
+	if _, err := ParseMatcher("!~"); err == nil {
+		t.Fatal("empty negated regexp parsed")
+	}
+	if m := MustBodyMatcher("!~.*secret.*"); m.Match([]string{"a\nsecret\nb"}) || !m.Match([]string{"a\nb"}) {
+		t.Fatal("negated body matcher should let . match newlines")
+	}
+}
+
+func TestParseCookieMatcher(t *testing.T) {
+	methods, err := Parse("test.http", strings.NewReader("@cookie.consent = yes\n\n### Me\n@cookie.session = *\nGET /me\n\nok\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := methods[0].MatchCookies; got.Get("session") != "*" || got.Get("consent") != "yes" {
+		t.Fatalf("MatchCookies = %v", got)
+	}
+	if _, err := Parse("test.http", strings.NewReader("### Me\n@cookie. = *\nGET /me\n")); err == nil || !strings.Contains(err.Error(), "requires a cookie name") {
+		t.Fatalf("error = %v", err)
+	}
+	if err := CheckVariableOverride("cookie.session"); err == nil {
+		t.Fatal("cookie matcher accepted as a --var override")
+	}
+}
+
+func TestParseXMLMatcher(t *testing.T) {
+	methods, err := Parse("test.http", strings.NewReader("### Order\n@xml.order.item = pen\n@xml.order[\"@id\"] = ~[0-9]+\nPOST /o\n\nok\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := methods[0].MatchXML; got["order.item"] != "pen" || got[`order["@id"]`] != "~[0-9]+" {
+		t.Fatalf("MatchXML = %v", got)
+	}
+	for _, bad := range []string{`@xml.order["@id"].x = 1`, `@xml.order["@"] = 1`, `@xml.a..b = 1`} {
+		if _, err := Parse("test.http", strings.NewReader("### Bad\n"+bad+"\nPOST /o\n")); err == nil {
+			t.Errorf("%s parsed", bad)
+		}
+	}
+}
+
+func TestParseProxy(t *testing.T) {
+	methods, err := Parse("test.http", strings.NewReader("@base = https://api.example.com\n### P\n@proxy = {{base}}/v1/{{$path.rest}}\nGET /p/*rest\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := methods[0].Proxy; got != "https://api.example.com/v1/{{$path.rest}}" {
+		t.Fatalf("Proxy = %q", got)
+	}
+	for _, bad := range []string{"api.example.com", "ftp://x", "https://", "https://{{$query.h}}/x", "https://x/#y", "https://u:p@x"} {
+		if _, err := Parse("test.http", strings.NewReader("### P\n@proxy = "+bad+"\nGET /p\n")); err == nil || !strings.Contains(err.Error(), "@proxy") {
+			t.Errorf("@proxy = %s: err = %v", bad, err)
+		}
+	}
+}
+
+func TestParseCompress(t *testing.T) {
+	for value, want := range map[string]string{"gzip": "gzip", "GZIP": "gzip", "auto": "auto", "deflate": "deflate", "off": ""} {
+		methods, err := Parse("t.http", strings.NewReader("### C\n@compress = "+value+"\nGET /c\n"))
+		if err != nil || methods[0].Compress != want {
+			t.Errorf("@compress = %s: %q, %v", value, methods[0].Compress, err)
+		}
+	}
+	if _, err := Parse("t.http", strings.NewReader("### C\n@compress = br\nGET /c\n")); err == nil {
+		t.Error("@compress = br parsed")
+	}
+}
+
+func TestParseCallback(t *testing.T) {
+	methods, err := Parse("t.http", strings.NewReader(`@host = https://hooks.example.com
+### C
+@callback = PUT {{host}}/done/{{$json.id}}
+@callback.delay = 1s
+@callback.header.X-Token = abc
+@callback.body = {"id": "{{$json.id}}"}
+POST /c
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := methods[0].Callback
+	if c == nil || c.Method != "PUT" || c.URL != "https://hooks.example.com/done/{{$json.id}}" || c.Delay != time.Second ||
+		c.Headers.Get("X-Token") != "abc" || c.Body != `{"id": "{{$json.id}}"}` {
+		t.Fatalf("callback = %+v", c)
+	}
+	if unused := UnusedVariables(methods); len(unused) != 0 {
+		t.Errorf("unused = %+v", unused)
+	}
+	for _, bad := range []string{
+		"@callback = https://example.com",
+		"@callback = FETCH https://example.com",
+		"@callback = POST ftp://example.com",
+		"@callback = POST https://user:pw@example.com",
+		"@callback = POST https://example.com\n@callback.delay = soon",
+		"@callback = POST https://example.com\n@callback.retries = 3",
+		"@callback.body = {}",
+	} {
+		if _, err := Parse("t.http", strings.NewReader("### C\n"+bad+"\nPOST /c\n")); err == nil {
+			t.Errorf("%q parsed", bad)
 		}
 	}
 }

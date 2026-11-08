@@ -3,6 +3,7 @@ package restclient
 import (
 	"bufio"
 	"cmp"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -23,8 +24,8 @@ import (
 // Headers on the Method are response headers. Use MatchHeaders (from
 // @header.Name = value variables) to require request headers when matching.
 // MatchQuery (@query.name), MatchPath (@path.name), MatchBody (@body) and
-// MatchJSON (@json.field.path) and MatchForm (@form.name) add further request
-// matchers. Matcher values
+// MatchJSON (@json.field.path), MatchXML (@xml.element.path), MatchForm
+// (@form.name) and MatchCookies (@cookie.name) add further request matchers. Matcher values
 // are kept as written; see ParseMatcher and ParseBodyMatcher.
 //
 // Target is the request target as written, with any {{name}} references
@@ -65,7 +66,9 @@ type Method struct {
 	MatchPath     map[string]string
 	MatchBody     string
 	MatchJSON     map[string]string
+	MatchXML      map[string]string
 	MatchForm     url.Values
+	MatchCookies  url.Values
 	Headers       http.Header
 	Body          string
 	File          string
@@ -79,6 +82,29 @@ type Method struct {
 	FaultRate     float64
 	Template      string
 	Port          int
+	// Proxy is the @proxy URL that matching requests are forwarded to. It may
+	// hold request placeholders in its path and query.
+	Proxy string
+	// Fixture is the @fixture JSON file that {{$fixture.path}} placeholders
+	// read, as written. Locate it with ResolveFile.
+	Fixture string
+	// Compress is the @compress mode: "" (off), "gzip", "deflate" or
+	// "auto" (chosen from the request's Accept-Encoding).
+	Compress string
+	// Callback is the @callback request sent after the response, if any.
+	Callback *Callback
+}
+
+// Callback is an outbound request a route sends after it responds, set by
+// @callback = METHOD URL and the @callback.delay, @callback.header.Name and
+// @callback.body directives. URL, header values and Body are templates
+// rendered against the triggering request.
+type Callback struct {
+	Method  string
+	URL     string
+	Delay   time.Duration
+	Headers http.Header
+	Body    string
 }
 
 // legacyVariablePattern matches the removed "# $name=value" comment variables.
@@ -86,24 +112,20 @@ var legacyVariablePattern = regexp.MustCompile(`^\$([A-Za-z_][A-Za-z0-9_.-]*)\s*
 
 var variableNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*$`)
 
-// jsonWildcardName reports whether name is a @json matcher path whose "*"
-// segments select every element of an array, as in json.roles.*. Only whole
-// segments may be "*"; the rest of the name follows the usual rule.
-func jsonWildcardName(name string) bool {
+// jsonMatcherName reports whether name is a @json or @xml matcher whose path
+// uses "*" segments or ["key"] segments, which the usual name rule rejects.
+// The path must start with a plain field so the name still starts like a
+// variable name.
+func jsonMatcherName(name string) bool {
 	path, ok := strings.CutPrefix(name, "json.")
 	if !ok {
+		path, ok = strings.CutPrefix(name, "xml.")
+	}
+	if !ok || path == "" || path[0] == '[' {
 		return false
 	}
-	segments := strings.Split(path, ".")
-	if !slices.Contains(segments, "*") {
-		return false
-	}
-	for i, segment := range segments {
-		if segment == "*" {
-			segments[i] = "x"
-		}
-	}
-	return variableNamePattern.MatchString("json." + strings.Join(segments, "."))
+	_, err := ParseJSONPath(path)
+	return err == nil
 }
 
 // definition is one "@name = value" line. The value is trimmed and unescaped
@@ -144,7 +166,7 @@ type Options struct {
 
 // CheckVariableOverride reports whether name can be set with Options.Vars:
 // a variable name that is not a request matcher (@header.*, @query.*,
-// @path.*, @body, @json.*, @form.*).
+// @path.*, @body, @json.*, @xml.*, @form.*, @cookie.*).
 func CheckVariableOverride(name string) error {
 	if !variableNamePattern.MatchString(name) {
 		return fmt.Errorf("invalid variable name %q (use letters, digits, _, . and -, starting with a letter or _)", name)
@@ -261,7 +283,9 @@ func (o Options) Parse(source string, r io.Reader) ([]Method, error) {
 				MatchQuery:    make(url.Values),
 				MatchPath:     make(map[string]string),
 				MatchJSON:     make(map[string]string),
+				MatchXML:      make(map[string]string),
 				MatchForm:     make(url.Values),
+				MatchCookies:  make(url.Values),
 				Headers:       make(http.Header),
 				Source:        source,
 				Line:          lineNumber,
@@ -396,7 +420,7 @@ func parseDefinition(line, source string, lineNumber int) (definition, error) {
 	case strings.ContainsFunc(name, unicode.IsSpace):
 		return definition{}, parseErrorf(source, lineNumber,
 			"invalid variable name %q (names cannot contain spaces)", name)
-	case !variableNamePattern.MatchString(name) && !jsonWildcardName(name):
+	case !variableNamePattern.MatchString(name) && !jsonMatcherName(name):
 		return definition{}, parseErrorf(source, lineNumber,
 			"invalid variable name %q (use letters, digits, '_', '.', '-', starting with a letter or '_')", name)
 	}
@@ -482,10 +506,18 @@ func parseSection(pending pendingSection, fileDefs []definition, overrides map[s
 		method.Variables[def.name] = def.value
 		method.VariableLines[def.name] = def.line
 	}
+	var callbackLine int
 	for _, def := range defs {
 		if err := applyControlVariable(&method, def, source); err != nil {
 			return method, err
 		}
+		if strings.HasPrefix(def.name, "callback.") && callbackLine == 0 {
+			callbackLine = def.line
+		}
+	}
+	if method.Callback != nil && method.Callback.Method == "" {
+		return method, parseErrorf(source, callbackLine,
+			`section %q: @callback.* directives need "@callback = METHOD URL" (example: "@callback = POST {{$json.callbackUrl}}")`, method.Name)
 	}
 
 	if i >= len(lines) {
@@ -628,13 +660,13 @@ func parseSection(pending pendingSection, fileDefs []definition, overrides map[s
 const fileVariableRemoved = `$file and @file are no longer supported; start the response body with "< path" instead (example: "< ./users.json")`
 
 // isMatcherName reports whether a variable name is a request matcher
-// (@header.Name, @query.name, @path.name, @body, @json.path or @form.name)
-// rather than a {{name}} variable.
+// (@header.Name, @query.name, @path.name, @body, @json.path, @xml.path,
+// @form.name or @cookie.name) rather than a {{name}} variable.
 func isMatcherName(name string) bool {
 	if name == "body" {
 		return true
 	}
-	for _, prefix := range []string{"header.", "query.", "path.", "json.", "form."} {
+	for _, prefix := range []string{"header.", "query.", "path.", "json.", "xml.", "form.", "cookie."} {
 		if strings.HasPrefix(name, prefix) {
 			return true
 		}
@@ -749,14 +781,33 @@ func applyControlVariable(method *Method, def definition, source string) error {
 		return nil
 	}
 	if path, ok := strings.CutPrefix(def.name, "json."); ok {
-		if path == "" || slices.Contains(strings.Split(path, "."), "") {
+		if _, err := ParseJSONPath(path); err != nil || path == "" {
 			return parseErrorf(source, def.line,
-				`section %q: @%s needs a dot-separated JSON field path (example: "@json.user.name = alice")`, method.Name, def.name)
+				`section %q: @%s needs a dot-separated JSON field path (example: "@json.user.name = alice", or @json.meta["user.id"] for a key with dots)`, method.Name, def.name)
 		}
 		if err := parseMatcherValue(method, def, value, source); err != nil {
 			return err
 		}
 		method.MatchJSON[path] = value
+		return nil
+	}
+	if path, ok := strings.CutPrefix(def.name, "xml."); ok {
+		segments, err := ParseJSONPath(path)
+		if err == nil {
+			for i, segment := range segments {
+				if segment.Quoted && strings.HasPrefix(segment.Name, "@") && (i != len(segments)-1 || len(segment.Name) == 1) {
+					err = fmt.Errorf("attribute must be the last segment")
+				}
+			}
+		}
+		if err != nil || path == "" {
+			return parseErrorf(source, def.line,
+				`section %q: @%s needs a dot-separated XML element path starting at the root element (example: "@xml.order.customer.id = 42", or @xml.order["@id"] for an attribute)`, method.Name, def.name)
+		}
+		if err := parseMatcherValue(method, def, value, source); err != nil {
+			return err
+		}
+		method.MatchXML[path] = value
 		return nil
 	}
 	if name, ok := strings.CutPrefix(def.name, "form."); ok {
@@ -769,6 +820,20 @@ func applyControlVariable(method *Method, def definition, source string) error {
 		}
 		method.MatchForm.Set(name, value)
 		return nil
+	}
+	if name, ok := strings.CutPrefix(def.name, "cookie."); ok {
+		if name == "" {
+			return parseErrorf(source, def.line,
+				`section %q: @cookie. requires a cookie name (example: "@cookie.session = *")`, method.Name)
+		}
+		if err := parseMatcherValue(method, def, value, source); err != nil {
+			return err
+		}
+		method.MatchCookies.Set(name, value)
+		return nil
+	}
+	if key, ok := strings.CutPrefix(def.name, "callback."); ok {
+		return applyCallbackDirective(method, def, key, value, source)
 	}
 	if name, ok := strings.CutPrefix(def.name, "path."); ok {
 		if name == "" {
@@ -826,12 +891,136 @@ func applyControlVariable(method *Method, def definition, source string) error {
 		if strings.TrimSpace(value) == "" {
 			return parseErrorf(source, def.line, `section %q: @seed needs a value, such as "@seed = 42"`, method.Name)
 		}
+	case "compress":
+		switch mode := strings.ToLower(strings.TrimSpace(value)); mode {
+		case "off":
+			method.Compress = ""
+		case "gzip", "deflate", "auto":
+			method.Compress = mode
+		default:
+			return parseErrorf(source, def.line, `section %q: @compress must be gzip, deflate, auto or off`, method.Name)
+		}
+	case "fixture":
+		fixture := strings.TrimSpace(value)
+		if fixture == "" || strings.Contains(fixture, "{{") {
+			return parseErrorf(source, def.line, `section %q: @fixture needs a JSON file path without placeholders, such as "@fixture = data/users.json"`, method.Name)
+		}
+		method.Fixture = fixture
+	case "callback":
+		callbackMethod, target, err := ParseCallback(value)
+		if err != nil {
+			return parseErrorf(source, def.line, "section %q: @callback %v", method.Name, err)
+		}
+		callback := method.callback()
+		callback.Method, callback.URL = callbackMethod, target
+	case "proxy":
+		proxy := strings.TrimSpace(value)
+		if err := ValidateProxy(proxy); err != nil {
+			return parseErrorf(source, def.line, "section %q: @proxy %v", method.Name, err)
+		}
+		method.Proxy = proxy
 	case "port":
 		port, err := parsePort(value)
 		if err != nil {
 			return parseErrorf(source, def.line, "section %q: @port %v", method.Name, err)
 		}
 		method.Port = port
+	}
+	return nil
+}
+
+// callback returns the method's Callback, creating it for the first
+// @callback directive.
+func (m *Method) callback() *Callback {
+	if m.Callback == nil {
+		m.Callback = &Callback{Headers: make(http.Header)}
+	}
+	return m.Callback
+}
+
+// applyCallbackDirective handles @callback.delay, @callback.header.Name and
+// @callback.body.
+func applyCallbackDirective(method *Method, def definition, key, value, source string) error {
+	callback := method.callback()
+	switch {
+	case key == "delay":
+		delay, err := time.ParseDuration(strings.TrimSpace(value))
+		if err != nil || delay < 0 {
+			return parseErrorf(source, def.line, `section %q: @callback.delay must be a non-negative duration, such as "500ms"`, method.Name)
+		}
+		callback.Delay = delay
+	case key == "body":
+		callback.Body = value
+	case strings.HasPrefix(key, "header."):
+		name := strings.TrimPrefix(key, "header.")
+		if !ValidHeaderName(name) {
+			return parseErrorf(source, def.line, `section %q: @callback.header. needs a valid header name (example: "@callback.header.Content-Type = application/json")`, method.Name)
+		}
+		callback.Headers.Set(name, value)
+	default:
+		return parseErrorf(source, def.line, `section %q: unknown directive @%s (use @callback.delay, @callback.header.Name or @callback.body)`, method.Name, def.name)
+	}
+	return nil
+}
+
+// ParseCallback parses an @callback value, "METHOD URL", such as
+// "POST {{$json.callbackUrl}}". The URL may be entirely a placeholder, so
+// only a literal URL is checked here: it must be an absolute http or https
+// URL. A placeholder URL is checked when the callback is sent.
+func ParseCallback(raw string) (method, target string, err error) {
+	const usage = `must be "METHOD URL", such as "POST https://example.com/webhook" or "POST {{$json.callbackUrl}}"`
+	method, target, ok := strings.Cut(strings.TrimSpace(raw), " ")
+	target = strings.TrimSpace(target)
+	if !ok || target == "" || !isHTTPMethod(method) || method == http.MethodConnect {
+		return "", "", errors.New(usage)
+	}
+	if !PlaceholderPattern.MatchString(target) {
+		if err := ValidateCallbackURL(target); err != nil {
+			return "", "", err
+		}
+	}
+	return method, target, nil
+}
+
+// ValidateCallbackURL checks a callback target: an absolute http or https URL
+// without credentials.
+func ValidateCallbackURL(raw string) error {
+	target, err := url.Parse(raw)
+	if err != nil || (target.Scheme != "http" && target.Scheme != "https") || target.Hostname() == "" {
+		return fmt.Errorf("URL %q must be an absolute http or https URL", raw)
+	}
+	if target.User != nil {
+		return fmt.Errorf("URL %q must not include user credentials", raw)
+	}
+	return nil
+}
+
+// ValidateProxy checks an @proxy value: an absolute http or https URL whose
+// scheme and host are literal. Request placeholders such as {{$path.rest}}
+// may appear in the path and query.
+func ValidateProxy(raw string) error {
+	const usage = `must be an http or https URL, such as "https://api.example.com" or "https://api.example.com/v2/{{$path.rest}}"`
+	scheme, rest, ok := strings.Cut(raw, "://")
+	if !ok || (!strings.EqualFold(scheme, "http") && !strings.EqualFold(scheme, "https")) {
+		return errors.New(usage)
+	}
+	hostEnd := strings.IndexAny(rest, "/?#")
+	if hostEnd < 0 {
+		hostEnd = len(rest)
+	}
+	if strings.Contains(raw[:len(scheme)+3+hostEnd], "{{") {
+		return errors.New("placeholders may appear only in the path and query, not in the scheme or host")
+	}
+	sample := PlaceholderPattern.ReplaceAllString(raw, "x")
+	target, err := url.Parse(sample)
+	if err != nil || target.Host == "" || target.Hostname() == "" {
+		return errors.New(usage)
+	}
+	if target.Fragment != "" || strings.Contains(sample, "#") {
+		return errors.New("must not have a #fragment")
+	}
+	if target.User != nil {
+		return errors.New("must not include user credentials")
 	}
 	return nil
 }
@@ -937,13 +1126,17 @@ var controlVariables = map[string]struct{}{
 	"seed":     {},
 	"template": {},
 	"trim":     {},
+	"proxy":    {},
+	"fixture":  {},
+	"compress": {},
+	"callback": {},
 }
 
 // PlaceholderPattern matches {{name}}, {{%name}} and {{$name args}} placeholders
 // in bodies and headers. Submatch 1 is the optional "%" (percent-encode) or "$"
 // (request parameter or generated value) prefix; submatch 2 is the name;
 // submatch 3 is the space-separated arguments, which only {{$name}} accepts.
-var PlaceholderPattern = regexp.MustCompile(`\{\{([%$]?)([A-Za-z_][A-Za-z0-9_.-]*)(?:[ \t]+([^{}]*?))?[ \t]*}}`)
+var PlaceholderPattern = regexp.MustCompile(`\{\{([%$]?)([A-Za-z_](?:[A-Za-z0-9_.-]|\["[^"\s{}]+"\])*)(?:[ \t]+([^{}]*?))?[ \t]*}}`)
 
 // Expand replaces placeholders in input. {{name}} and {{%name}} (percent-encoded)
 // resolve from vars, whose values may themselves hold placeholders; a variable
@@ -1035,7 +1228,7 @@ func UnusedVariables(methods []Method) []UnusedVariable {
 			collectPlaceholders(value, referenced)
 		}
 		for name, line := range method.VariableLines {
-			if _, ok := controlVariables[name]; ok || line == 0 {
+			if _, ok := controlVariables[name]; ok || line == 0 || strings.HasPrefix(name, "callback.") {
 				// Line 0 is a command-line variable with no definition in
 				// the file; it need not be used by every file.
 				continue

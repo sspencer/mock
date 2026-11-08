@@ -27,8 +27,22 @@ export function streamLabel(connected, paused, pending, dropped) {
 
 // requestHost is the host and port shown before a request's path. It is empty
 // unless mock listens on more than one port, where it tells the services apart.
-export function requestHost(request, multiPort) {
-    return (multiPort && request?.host) || '';
+export function requestHost(request, multiPort, callback = false) {
+    // A callback goes to another server, so its host always matters.
+    return ((multiPort || callback) && request?.host) || '';
+}
+
+// eventBadge labels a request-log row that the mock did not simply answer:
+// an outbound @callback, or a request forwarded to an upstream. Returns
+// { text, title } or null.
+export function eventBadge(event) {
+    if (event?.callback) {
+        const route = event.match?.route?.name || 'a route';
+        const outcome = event.callback.error ? ` · failed: ${event.callback.error}` : '';
+        return { text: 'callback', title: `Sent by ${route} after request #${event.callback.trigger}${outcome}` };
+    }
+    if (event?.match?.upstream) return { text: 'proxied', title: `Forwarded to ${event.match.upstream}` };
+    return null;
 }
 
 // TrafficStream is the request-log stream client's state machine. Two

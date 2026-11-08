@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"maps"
+	"mime"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/url"
@@ -41,6 +44,15 @@ type requestFacts struct {
 	formDone bool
 	form     url.Values
 	formErr  error
+
+	cookiesDone bool
+	cookies     map[string][]string
+
+	xmlDone bool
+	xml     *xmlNode
+	xmlErr  error
+
+	request any
 }
 
 func newRequestFacts(r *http.Request, body requestBody) *requestFacts {
@@ -98,11 +110,23 @@ func (f *requestFacts) match(method *restclient.Method, requestMethod string) (m
 	if !pathMatcherMatches(method.MatchPath, values) || !headerMatches(method.MatchHeaders, f.headers) {
 		return nil, false
 	}
+	for name, expectedValues := range method.MatchCookies {
+		for _, expected := range expectedValues {
+			if !restclient.MustMatcher(expected).Match(f.cookieValues(name)) {
+				return nil, false
+			}
+		}
+	}
 	if method.MatchBody != "" && !f.bodyMatches(method.MatchBody) {
 		return nil, false
 	}
 	for path, expected := range method.MatchJSON {
 		if !f.jsonMatches(path, expected) {
+			return nil, false
+		}
+	}
+	for path, expected := range method.MatchXML {
+		if !f.xmlMatches(path, expected) {
 			return nil, false
 		}
 	}
@@ -132,7 +156,8 @@ func (f *requestFacts) match(method *restclient.Method, requestMethod string) (m
 
 // captures collects named regexp groups from a matched route's matchers.
 // Later matchers win when two groups share a name: path, query, headers,
-// body, JSON fields, then form fields, each in name order.
+// cookies, body, JSON fields, XML fields, then form fields, each in name
+// order.
 func (f *requestFacts) captures(method *restclient.Method) map[string]string {
 	out := make(map[string]string)
 	add := func(m restclient.Matcher, values []string) {
@@ -154,12 +179,21 @@ func (f *requestFacts) captures(method *restclient.Method) map[string]string {
 			add(restclient.MustMatcher(raw), f.headers.Values(name))
 		}
 	}
+	for _, name := range slices.Sorted(maps.Keys(method.MatchCookies)) {
+		for _, raw := range method.MatchCookies[name] {
+			add(restclient.MustMatcher(raw), f.cookieValues(name))
+		}
+	}
 	if method.MatchBody != "" {
 		add(restclient.MustBodyMatcher(method.MatchBody), f.bodyValues())
 	}
 	for _, path := range slices.Sorted(maps.Keys(method.MatchJSON)) {
 		values, _ := f.jsonValues(path)
 		add(restclient.MustMatcher(method.MatchJSON[path]), values)
+	}
+	for _, path := range slices.Sorted(maps.Keys(method.MatchXML)) {
+		values, _ := f.xmlValues(path)
+		add(restclient.MustMatcher(method.MatchXML[path]), values)
 	}
 	for _, name := range slices.Sorted(maps.Keys(method.MatchForm)) {
 		values, _ := f.formValues(name)
@@ -170,14 +204,71 @@ func (f *requestFacts) captures(method *restclient.Method) map[string]string {
 	return out
 }
 
+// cookieValues returns the values of every request cookie with that name, in
+// the order the Cookie headers list them.
+func (f *requestFacts) cookieValues(name string) []string {
+	if !f.cookiesDone {
+		f.cookiesDone = true
+		f.cookies = make(map[string][]string)
+		for _, cookie := range f.r.Cookies() {
+			f.cookies[cookie.Name] = append(f.cookies[cookie.Name], cookie.Value)
+		}
+	}
+	return f.cookies[name]
+}
+
+// multipartBoundary returns the boundary of a multipart/form-data content
+// type.
+func multipartBoundary(contentType string) (string, bool) {
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if err != nil || mediaType != "multipart/form-data" || params["boundary"] == "" {
+		return "", false
+	}
+	return params["boundary"], true
+}
+
+// parseMultipartForm reads the fields of a multipart/form-data body. A text
+// part's value is its content; a file part (one with a filename) contributes
+// its file name, so @form.avatar = ~.*\.png matches an upload by name. A
+// blank body has no fields.
+func parseMultipartForm(body []byte, boundary string) (url.Values, error) {
+	form := url.Values{}
+	if len(bytes.TrimSpace(body)) == 0 {
+		return form, nil
+	}
+	reader := multipart.NewReader(bytes.NewReader(body), boundary)
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			return form, nil
+		}
+		if err != nil {
+			return nil, errBodyNotMultipart
+		}
+		name := part.FormName()
+		if name == "" {
+			continue
+		}
+		if filename := part.FileName(); filename != "" {
+			form.Add(name, filename)
+			continue
+		}
+		value, err := io.ReadAll(part)
+		if err != nil {
+			return nil, errBodyNotMultipart
+		}
+		form.Add(name, string(value))
+	}
+}
+
 func (f *requestFacts) formMatches(name, expected string) bool {
 	values, err := f.formValues(name)
 	return err == nil && restclient.MustMatcher(expected).Match(values)
 }
 
-// formValues returns a field of a URL-encoded body. A blank body has no
-// fields; a body that does not parse is an error, and then no @form matcher
-// matches.
+// formValues returns a field of a URL-encoded or multipart/form-data body.
+// A blank body has no fields; a body that does not parse is an error, and
+// then no @form matcher matches.
 func (f *requestFacts) formValues(name string) ([]string, error) {
 	if f.body.unavailable {
 		return nil, errBodyUnavailable
@@ -185,7 +276,9 @@ func (f *requestFacts) formValues(name string) ([]string, error) {
 	if !f.formDone {
 		f.formDone = true
 		f.form, f.formErr = url.Values{}, nil
-		if text := strings.TrimSpace(string(f.body.data)); text != "" {
+		if boundary, ok := multipartBoundary(f.r.Header.Get("Content-Type")); ok {
+			f.form, f.formErr = parseMultipartForm(f.body.data, boundary)
+		} else if text := strings.TrimSpace(string(f.body.data)); text != "" {
 			if form, err := url.ParseQuery(text); err != nil {
 				f.formErr = errBodyNotForm
 			} else {
@@ -201,8 +294,9 @@ func (f *requestFacts) formValues(name string) ([]string, error) {
 
 // lookup resolves a {{$name}} placeholder: $env.NAME from the server's
 // environment (never from the request), then path, capture and query values,
-// then the explicit namespaces $path.name, $query.name and $header.Name, then
-// $json.field.path and $form.name from the request body.
+// then the explicit namespaces $path.name, $query.name, $header.Name and
+// $cookie.name, then $json.field.path, $xml.element.path and $form.name from
+// the request body.
 func (v templateValues) lookup(key string) (string, bool) {
 	if name, ok := strings.CutPrefix(key, "env."); ok && name != "" {
 		return os.LookupEnv(name)
@@ -222,8 +316,12 @@ func (v templateValues) lookup(key string) (string, bool) {
 		values = v.facts.query[name]
 	} else if name, ok := strings.CutPrefix(key, "header."); ok && name != "" {
 		values = v.facts.headers.Values(name)
+	} else if name, ok := strings.CutPrefix(key, "cookie."); ok && name != "" {
+		values = v.facts.cookieValues(name)
 	} else if path, ok := strings.CutPrefix(key, "json."); ok && path != "" {
 		values, _ = v.facts.jsonValues(path)
+	} else if path, ok := strings.CutPrefix(key, "xml."); ok && path != "" {
+		values, _ = v.facts.xmlValues(path)
 	} else if name, ok := strings.CutPrefix(key, "form."); ok && name != "" {
 		values, _ = v.facts.formValues(name)
 	}
@@ -266,12 +364,22 @@ func (f *requestFacts) jsonMatches(path, expected string) bool {
 }
 
 // jsonValues looks up a dot-separated field path in the JSON body. Numeric
-// segments index arrays, and a "*" segment selects every element of an array,
+// segments index arrays, ["key"] segments name object keys that may hold
+// dots, and a "*" segment selects every element of an array,
 // so a path can name many values, in document order. A missing field or null
 // is no value; strings are their text; other values are compact JSON. A blank
 // body has no fields; any other body that is not JSON is an error, and then no
 // @json matcher matches.
 func (f *requestFacts) jsonValues(path string) ([]string, error) {
+	root, err := f.jsonDocument()
+	if err != nil {
+		return nil, err
+	}
+	return selectJSON(root, path), nil
+}
+
+// jsonDocument decodes the request body as JSON once. A blank body is nil.
+func (f *requestFacts) jsonDocument() (any, error) {
 	if f.body.unavailable {
 		return nil, errBodyUnavailable
 	}
@@ -287,47 +395,75 @@ func (f *requestFacts) jsonValues(path string) ([]string, error) {
 			}
 		}
 	}
-	if f.jsonErr != nil {
-		return nil, f.jsonErr
+	return f.json, f.jsonErr
+}
+
+// selectJSON returns the values at path in a decoded JSON document: strings as
+// their text, and numbers, booleans, objects and arrays as compact JSON.
+// Missing values and null are left out.
+func selectJSON(root any, path string) []string {
+	var values []string
+	for _, node := range selectJSONNodes(root, path) {
+		if text, ok := jsonText(node); ok {
+			values = append(values, text)
+		}
 	}
-	nodes := []any{f.json}
-	for _, segment := range strings.Split(path, ".") {
+	return values
+}
+
+// jsonText is a decoded JSON value as placeholder text. ok is false for null.
+func jsonText(node any) (string, bool) {
+	switch node := node.(type) {
+	case nil:
+		return "", false
+	case string:
+		return node, true
+	default:
+		text, err := json.Marshal(node)
+		return string(text), err == nil
+	}
+}
+
+// selectJSONNodes returns the decoded values at path. An empty path selects
+// root itself.
+func selectJSONNodes(root any, path string) []any {
+	nodes := []any{root}
+	if path == "" {
+		return nodes
+	}
+	segments, err := restclient.ParseJSONPath(path)
+	if err != nil {
+		return nil
+	}
+	for _, segment := range segments {
 		var next []any
 		for _, node := range nodes {
 			switch node := node.(type) {
 			case map[string]any:
-				if child, ok := node[segment]; ok {
+				if child, ok := node[segment.Name]; ok && !segment.Any {
 					next = append(next, child)
 				}
 			case []any:
-				if segment == "*" {
+				if segment.Quoted {
+					continue
+				}
+				if segment.Any {
 					next = append(next, node...)
-				} else if index, err := strconv.Atoi(segment); err == nil && index >= 0 && index < len(node) {
+				} else if index, err := strconv.Atoi(segment.Name); err == nil && index >= 0 && index < len(node) {
 					next = append(next, node[index])
 				}
 			}
 		}
 		nodes = next
 	}
-	var values []string
-	for _, node := range nodes {
-		switch node := node.(type) {
-		case nil:
-		case string:
-			values = append(values, node)
-		default:
-			if text, err := json.Marshal(node); err == nil {
-				values = append(values, string(text))
-			}
-		}
-	}
-	return values, nil
+	return nodes
 }
 
 var (
-	errBodyUnavailable = errors.New("request body is larger than 1 MiB or could not be read")
-	errBodyNotJSON     = errors.New("request body is not valid JSON")
-	errBodyNotForm     = errors.New("request body is not valid URL-encoded form data")
+	errBodyUnavailable  = errors.New("request body is larger than 1 MiB or could not be read")
+	errBodyNotJSON      = errors.New("request body is not valid JSON")
+	errBodyNotForm      = errors.New("request body is not valid URL-encoded form data")
+	errBodyNotMultipart = errors.New("request body is not valid multipart/form-data")
 )
 
 // requestLocalPort returns the port of the listener that accepted r, or 0 when

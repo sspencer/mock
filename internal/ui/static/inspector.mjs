@@ -53,10 +53,34 @@ export function sampleParam(name) {
 
 // Builds a curl command for the mock listener that can be pasted into a shell.
 // `origin` is the scheme, host, and port the mock routes are served from.
-// Matcher values: "*" (present), "!" (absent), "~pattern" (regexp), else exact.
-// A sample request uses exact values as written and a placeholder otherwise;
-// a placeholder may not satisfy a regexp.
-const isSampleExact = value => value !== '*' && value !== '!' && !value.startsWith('~');
+// Matcher values: "*" (present), "!" (absent), "~pattern" (regexp),
+// "!text" and "!~pattern" (present but not that), else exact. A sample
+// request uses exact values as written and a placeholder otherwise; a
+// placeholder may not satisfy a regexp.
+export const isSampleExact = value => value !== '*' && !value.startsWith('!') && !value.startsWith('~');
+
+// Describes a matcher value for the route details panel.
+export function describeMatcher(value) {
+    if (value === '!') return '! (must be absent)';
+    if (value.startsWith('!~')) return `${value} (present, not matching the regular expression)`;
+    if (value.startsWith('!')) return `${value} (present, not ${value.slice(1)})`;
+    if (value.startsWith('~')) return `${value} (regular expression)`;
+    return value;
+}
+
+// Splits a @json path such as items.*.sku or meta["user.id"] into
+// { name, any, quoted } segments, like restclient.ParseJSONPath. Returns null
+// for a malformed path.
+export function jsonPathSegments(path) {
+    const segments = [];
+    const pattern = /\.?\["([^"\s]+)"\]|(?:^|\.)([A-Za-z0-9_-]+|\*)/y;
+    let match;
+    while (pattern.lastIndex < path.length && (match = pattern.exec(path))) {
+        if (match[1] !== undefined) segments.push({ name: match[1], any: false, quoted: true });
+        else segments.push({ name: match[2], any: match[2] === '*', quoted: false });
+    }
+    return segments.length && pattern.lastIndex === path.length ? segments : null;
+}
 
 // Builds a sample JSON body from @json matchers. Exact values are used as
 // written (JSON literals such as 42 or true stay unquoted); "*" and regexp
@@ -74,14 +98,17 @@ export function sampleJSONBody(matchJson) {
     try {
         for (const [path, value] of entries) {
             // A "*" segment accepts any element, so the sample puts the value first.
-            const segments = path.split('.').map(segment => segment === '*' ? '0' : segment);
-            if (root === undefined) root = isIndex(segments[0]) ? [] : {};
+            const parsed = jsonPathSegments(path);
+            if (!parsed) throw new Error('bad path');
+            const segments = parsed.map(({ name, any }) => any ? '0' : name);
+            const index = i => !parsed[i].quoted && isIndex(segments[i]);
+            if (root === undefined) root = index(0) ? [] : {};
             let node = root;
             segments.forEach((segment, i) => {
                 const last = i === segments.length - 1;
-                if (Array.isArray(node) !== isIndex(segment)) throw new Error('conflict');
+                if (Array.isArray(node) !== index(i)) throw new Error('conflict');
                 if (last) { node[segment] = literal(value); return; }
-                const child = node[segment] ?? (isIndex(segments[i + 1]) ? [] : {});
+                const child = node[segment] ?? (index(i + 1) ? [] : {});
                 if (typeof child !== 'object' || child === null) throw new Error('conflict');
                 node[segment] = child;
                 node = child;
@@ -129,6 +156,9 @@ export function buildRouteCurl(route, origin) {
             if (value !== '!') parts.push('--header', shellQuote(`${name}: ${isSampleExact(value) ? value : 'example'}`));
         }
     }
+    const cookies = Object.entries(route.matchCookies || {}).flatMap(([name, values]) =>
+        values.filter(value => value !== '!').map(value => `${name}=${isSampleExact(value) ? value : 'example'}`));
+    if (cookies.length) parts.push('--cookie', shellQuote(cookies.join('; ')));
     const json = sampleJSONBody(route.matchJson);
     const form = sampleFormBody(route.matchForm);
     const body = json || form || (route.matchBody && isSampleExact(route.matchBody) ? route.matchBody : '');
@@ -148,13 +178,15 @@ export function hitsLabel(hits = 0) {
 
 export function formatRoute(route, sampleCurl = '') {
     const responseHeaders = Object.entries(route.headers || {}).flatMap(([name, values]) => values.map(value => `${name}: ${value}`)).join('\n');
-    const describe = value => value === '!' ? '! (must be absent)' : value.startsWith('~') ? `${value} (regular expression)` : value;
+    const describe = describeMatcher;
     const matchHeaders = Object.entries(route.matchHeaders || {}).flatMap(([name, values]) => values.map(value => `${name}: ${describe(value)}`)).join('\n');
     const matchQuery = Object.entries(route.matchQuery || {}).flatMap(([name, values]) => values.map(value => `${name}: ${describe(value)}`)).join('\n');
     const matchPath = Object.entries(route.matchPath || {}).map(([name, value]) => `:${name}: ${describe(value)}`).join('\n');
+    const matchCookies = Object.entries(route.matchCookies || {}).flatMap(([name, values]) => values.map(value => `${name}: ${describe(value)}`)).join('\n');
     const matchBody = [
         route.matchBody ? `body: ${describe(route.matchBody)}` : '',
         ...Object.entries(route.matchJson || {}).map(([path, value]) => `json ${path}: ${describe(value)}`),
+        ...Object.entries(route.matchXml || {}).map(([path, value]) => `xml ${path}: ${describe(value)}`),
         ...Object.entries(route.matchForm || {}).flatMap(([name, values]) => values.map(value => `form ${name}: ${describe(value)}`)),
     ].filter(Boolean).join('\n');
     const variables = Object.entries(route.variables || {}).map(([key, value]) => `@${key} = ${value}`).join('\n');
@@ -164,10 +196,13 @@ export function formatRoute(route, sampleCurl = '') {
         `Source: ${route.source || '(unknown)'}:${route.line || '?'} · revision ${route.revision}`,
         `Matched: ${hitsLabel(route.hits)}`,
         route.port ? `Port: ${route.port}` : '',
-        `Response: ${route.status} · delay ${route.delay || '0s'}${route.stream ? ` · stream ${route.stream}` : ''}${route.fault ? ` · fault ${route.fault}` : ''}`,
+        route.proxy ? `Proxy: ${route.proxy}${route.delay && route.delay !== '0s' ? ` · delay ${route.delay}` : ''}` : `Response: ${route.status} · delay ${route.delay || '0s'}${route.stream ? ` · stream ${route.stream}` : ''}${route.fault ? ` · fault ${route.fault}` : ''}${route.compress ? ` · compress ${route.compress}` : ''}`,
+        route.fixture ? `Fixture: ${route.fixture}` : '',
+        route.callback ? `Callback: ${route.callback}` : '',
         `Request header requirements\n${matchHeaders || '(none)'}`,
         matchQuery ? `Query requirements\n${matchQuery}` : '',
         matchPath ? `Path parameter requirements\n${matchPath}` : '',
+        matchCookies ? `Cookie requirements\n${matchCookies}` : '',
         matchBody ? `Body requirements\n${matchBody}` : '',
         `Response headers\n${responseHeaders || '(automatic)'}`,
         `Variables\n${variables || '(none)'}`,

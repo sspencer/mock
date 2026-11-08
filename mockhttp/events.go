@@ -23,6 +23,9 @@ type RequestEvent struct {
 	Request  EventRequest  `json:"request"`
 	Response EventResponse `json:"response"`
 	Match    MatchInfo     `json:"match"`
+	// Callback is set on an outbound @callback request; Match.Route is the
+	// route that sent it.
+	Callback *CallbackInfo `json:"callback,omitempty"`
 }
 
 type EventRequest struct {
@@ -215,7 +218,7 @@ func (s *Server) unsubscribe(subscriber chan RequestEvent) {
 	delete(s.subscribers, subscriber)
 }
 
-func (s *Server) publishRequest(event RequestEvent) {
+func (s *Server) publishRequest(event RequestEvent) uint64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	event.ID = s.nextEventID.Add(1)
@@ -234,6 +237,7 @@ func (s *Server) publishRequest(event RequestEvent) {
 			delete(s.subscribers, subscriber)
 		}
 	}
+	return event.ID
 }
 
 func writeEvent(w io.Writer, event RequestEvent) bool {

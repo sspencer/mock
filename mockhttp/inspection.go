@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/sspencer/mock/restclient"
@@ -29,6 +30,15 @@ type RouteInfo struct {
 	Delay string `json:"delay"`
 	// Stream is the @stream pause between body chunks, when set.
 	Stream string `json:"stream,omitempty"`
+	// Compress is the @compress mode, when set.
+	Compress string `json:"compress,omitempty"`
+	// Fixture is the @fixture data file, as written, when set.
+	Fixture string `json:"fixture,omitempty"`
+	// Callback describes the @callback, such as "POST {{$json.callbackUrl}}
+	// after 1s", when set.
+	Callback string `json:"callback,omitempty"`
+	// Proxy is the @proxy URL matching requests are forwarded to, when set.
+	Proxy string `json:"proxy,omitempty"`
 	// Fault is the @fault, such as "reset" or "truncate 25%", when set.
 	Fault         string            `json:"fault,omitempty"`
 	File          string            `json:"file,omitempty"`
@@ -38,7 +48,9 @@ type RouteInfo struct {
 	MatchPath     map[string]string `json:"matchPath,omitempty"`
 	MatchBody     string            `json:"matchBody,omitempty"`
 	MatchJSON     map[string]string `json:"matchJson,omitempty"`
+	MatchXML      map[string]string `json:"matchXml,omitempty"`
 	MatchForm     url.Values        `json:"matchForm,omitempty"`
+	MatchCookies  url.Values        `json:"matchCookies,omitempty"`
 	Variables     map[string]string `json:"variables"`
 	Body          string            `json:"body"`
 	BodyTruncated bool              `json:"bodyTruncated"`
@@ -51,7 +63,8 @@ type MatchInfo struct {
 	Route      *RouteInfo      `json:"route,omitempty"`
 	Revision   uint64          `json:"revision"`
 	Candidates []RouteMismatch `json:"candidates,omitempty"`
-	// Upstream is the base URL an unmatched request was forwarded to (--upstream).
+	// Upstream is where the request was forwarded: the --upstream base URL for
+	// an unmatched request, or the @proxy target of the matched route.
 	Upstream string `json:"upstream,omitempty"`
 }
 
@@ -83,9 +96,9 @@ func describeRoute(method restclient.Method, index int, revision uint64) RouteIn
 	}
 	return RouteInfo{ID: fmt.Sprintf("%d:%d", revision, index), Revision: revision, Name: method.Name, Method: method.Method,
 		Path: (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath(), Query: method.Query.Encode(), Port: method.Port, Source: method.Source, Line: method.Line, Status: method.Status,
-		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
+		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), Proxy: method.Proxy, Fixture: method.Fixture, Compress: method.Compress, Callback: describeCallback(method), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
 		MatchQuery: cloneValues(method.MatchQuery), MatchPath: cloneOptional(method.MatchPath),
-		MatchBody: method.MatchBody, MatchJSON: cloneOptional(method.MatchJSON), MatchForm: cloneValues(method.MatchForm),
+		MatchBody: method.MatchBody, MatchJSON: cloneOptional(method.MatchJSON), MatchXML: cloneOptional(method.MatchXML), MatchForm: cloneValues(method.MatchForm), MatchCookies: cloneValues(method.MatchCookies),
 		Variables: cloneVariables(method.Variables), Body: body, BodyTruncated: truncated}
 }
 
@@ -227,6 +240,18 @@ func mismatch(method restclient.Method, facts *requestFacts) RouteMismatch {
 			result.score++
 		}
 	}
+	for _, name := range sortedKeys(method.MatchCookies) {
+		for _, expected := range method.MatchCookies[name] {
+			matcher := restclient.MustMatcher(expected)
+			actualValues := facts.cookieValues(name)
+			if matcher.Match(actualValues) {
+				continue
+			}
+			// Cookies often carry sessions; describe the requirement, not the value.
+			result.Reasons = append(result.Reasons, "Cookie "+name+": "+matcherReason(matcher, actualValues, false))
+			result.score++
+		}
+	}
 	if method.MatchBody != "" && !facts.bodyMatches(method.MatchBody) {
 		reason := "Body: "
 		if facts.body.unavailable {
@@ -248,6 +273,20 @@ func mismatch(method restclient.Method, facts *requestFacts) RouteMismatch {
 			reason += err.Error()
 		} else {
 			reason += matcherReason(restclient.MustMatcher(method.MatchJSON[path]), values, true)
+		}
+		result.Reasons = append(result.Reasons, reason)
+		result.score++
+	}
+	for _, path := range slices.Sorted(maps.Keys(method.MatchXML)) {
+		if facts.xmlMatches(path, method.MatchXML[path]) {
+			continue
+		}
+		values, err := facts.xmlValues(path)
+		reason := "XML " + path + ": "
+		if err != nil {
+			reason += err.Error()
+		} else {
+			reason += matcherReason(restclient.MustMatcher(method.MatchXML[path]), values, true)
 		}
 		result.Reasons = append(result.Reasons, reason)
 		result.score++
@@ -292,7 +331,20 @@ func matcherReason(matcher restclient.Matcher, actual []string, showValues bool)
 	case len(actual) == 0:
 		return "required value is missing"
 	case matcher.Kind == restclient.MatchRegexp:
-		return fmt.Sprintf("does not match pattern %q", matcher.Raw[1:]) + received
+		return fmt.Sprintf("does not match pattern %q", matcher.Pattern()) + received
+	case matcher.Kind == restclient.MatchNotRegexp:
+		if strings.TrimSpace(strings.Join(actual, "")) == "" {
+			return "must not be blank"
+		}
+		return fmt.Sprintf("must not match pattern %q", matcher.Pattern()) + received
+	case matcher.Kind == restclient.MatchNotExact:
+		if strings.TrimSpace(strings.Join(actual, "")) == "" {
+			return "must not be blank"
+		}
+		if showValues {
+			return fmt.Sprintf("must not be %q", matcher.Raw[1:]) + received
+		}
+		return "value is excluded"
 	case matcher.Kind == restclient.MatchPresent:
 		return "must not be blank"
 	}

@@ -22,6 +22,9 @@ type RequestFilter struct {
 	Matched *bool
 	// Since keeps only events with an ID greater than it.
 	Since uint64
+	// Callbacks selects the outbound @callback requests instead of the
+	// requests the mock received.
+	Callbacks bool
 }
 
 // Requests returns the retained request events that pass the filter, oldest
@@ -40,7 +43,7 @@ func (s *Server) Requests(filter RequestFilter) []RequestEvent {
 }
 
 func (f RequestFilter) accepts(event RequestEvent) bool {
-	if event.ID <= f.Since {
+	if event.ID <= f.Since || f.Callbacks != (event.Callback != nil) {
 		return false
 	}
 	if f.Method != "" && !strings.EqualFold(f.Method, event.Request.Method) {
@@ -70,7 +73,8 @@ func requestPath(uri string) string {
 }
 
 // ServeRequests handles GET /requests: the request log as a JSON array,
-// narrowed by the method, path, route, matched and since query parameters.
+// narrowed by the method, path, route, matched, callbacks and since query
+// parameters.
 func (s *Server) ServeRequests(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
@@ -107,6 +111,13 @@ func parseRequestFilter(query url.Values) (RequestFilter, error) {
 			return RequestFilter{}, fmt.Errorf("invalid matched %q: use true or false", raw)
 		}
 		filter.Matched = &matched
+	}
+	if raw := query.Get("callbacks"); raw != "" {
+		callbacks, err := strconv.ParseBool(raw)
+		if err != nil {
+			return RequestFilter{}, fmt.Errorf("invalid callbacks %q: use true or false", raw)
+		}
+		filter.Callbacks = callbacks
 	}
 	if raw := query.Get("since"); raw != "" {
 		since, err := strconv.ParseUint(raw, 10, 64)

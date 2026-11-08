@@ -185,6 +185,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		triggers.Go(func() { reloadOnHangup(runCtx, reloads.reload, logger) })
 	}
 
+	if mockServer != nil {
+		defer mockServer.Close() // Cancel @callback requests still waiting.
+	}
 	errCh := make(chan error, len(servers))
 	for i, server := range servers {
 		go func() { errCh <- server.Serve(listeners[i]) }()

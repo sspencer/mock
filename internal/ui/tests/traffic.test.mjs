@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PendingTraffic, TrafficStream, streamLabel, requestHost } from '../static/traffic.mjs';
+import { PendingTraffic, TrafficStream, streamLabel, requestHost, eventBadge } from '../static/traffic.mjs';
 test('pause retains bounded traffic and reports overflow', () => {
  const pending=new PendingTraffic(2);
  for(let id=1;id<=3;id++)pending.add({id});
@@ -63,4 +63,14 @@ test('reset explains history gaps and a later clear removes the notice', () => {
  assert.match(stream.label(),/History gap/);
  stream.reset({session:'two',reason:'server-restarted'});assert.equal(stream.label(),'Listening');
  stream.reset({session:'two',reason:'history-gap'});stream.cleared({session:'two',id:1});assert.equal(stream.label(),'Listening');
+});
+
+test('callback rows always show their host and get a badge', () => {
+    assert.equal(requestHost({ host: 'hooks.example.com' }, false, true), 'hooks.example.com');
+    const callback = { callback: { trigger: 7 }, match: { route: { name: 'Pay' } } };
+    assert.deepEqual(eventBadge(callback), { text: 'callback', title: 'Sent by Pay after request #7' });
+    const failed = { callback: { trigger: 7, error: 'timed out after 10s' }, match: { route: { name: 'Pay' } } };
+    assert.equal(eventBadge(failed).title, 'Sent by Pay after request #7 · failed: timed out after 10s');
+    assert.deepEqual(eventBadge({ match: { upstream: 'http://api' } }), { text: 'proxied', title: 'Forwarded to http://api' });
+    assert.equal(eventBadge({ match: {} }), null);
 });

@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- Add `@callback = METHOD URL` webhook callbacks, with `@callback.delay`, `@callback.header.Name` and `@callback.body` templates rendered from the triggering request. Each callback is sent once after the response, times out after 10 seconds, and is logged in the admin UI marked **callback**. `GET /requests?callbacks=true` and `RequestFilter.Callbacks` list them.
+
+- Add `@compress = gzip | deflate | auto | off` to compress response bodies. `gzip` and `deflate` always compress; `auto` follows the request's `Accept-Encoding` and adds `Vary: Accept-Encoding`.
+
+- `< path` response files served unchanged to `GET` and `HEAD` with a `200` status now support `Range`, `If-Range` and `If-Modified-Since` (via `http.ServeContent`): they answer `206`, `416` and `304` and send `Accept-Ranges` and `Last-Modified`.
+
+- Add a `{{$request}}` placeholder, which inserts the request (method, URL, path, query, host, headers, body and decoded JSON body) as a JSON object, for echo routes. `{{$request.headers.Accept.0}}` and other paths read one part.
+
+- Add `{{#each $json.path}} ... {{/each}}` blocks, which render once per element of a request body array (or a `$fixture` or `$item` array), with `{{$item}}`, `{{$item.field}}` and `{{$index}}` inside. JSON responses get commas between copies.
+
+- Add `@fixture = data.json` and `{{$fixture.path}}` placeholders, which read values from a JSON data file using the same paths as `{{$json.*}}`. The file is re-read for each response and watched for reloads.
+
+- Add `@proxy = URL`, which forwards the requests a section matches to a real service. A plain URL gets the request path appended, like `--upstream`; a URL with placeholders, such as `https://api.example.com/v2/{{$path.rest}}`, rewrites the path. Proxied requests count as matched and are marked **proxied** in the admin UI.
+
+- Add `@xml.element.path` request matchers and `{{$xml.element.path}}` placeholders for XML bodies. Paths start at the root element, ignore namespace prefixes, accept `*` for any child, and end in `["@name"]` to read an attribute.
+
+- `@form.name` matchers and `{{$form.name}}` placeholders read `multipart/form-data` bodies: text parts by content, file parts by file name.
+
+- `@json` matchers and `{{$json.*}}` placeholders accept `["key"]` segments for object keys that contain dots or other punctuation, such as `@json.labels["app.kubernetes.io/name"] = web`.
+
+- Add `@cookie.name` request matchers and `{{$cookie.name}}` placeholders, which read one cookie from the `Cookie` header. The admin UI's sample `curl` sends required cookies, and mismatch explanations never show cookie values.
+
+- Add "present but not X" matcher values: `!text` and `!~regex` accept a present, non-blank value that is not `text` (or does not match `regex`), for every matcher type. **Breaking:** a matcher value that starts with `!`, such as `@header.X = !draft`, used to be an exact match for that text; write `~!draft` for that now.
+
 - Docs: the README has a table of contents, one directive reference table for every `@` directive (values, defaults, effect), and a Recipes section: GraphQL operations, content negotiation, case-insensitive matchers, per-test routing with an `X-Test` header, and readiness checks for CI and Docker Compose.
 
 - Add three ways to reload request files when file change events do not arrive (Docker Desktop bind mounts, network filesystems): `-i` / `--poll INTERVAL` checks file sizes and modification times on an interval, `SIGHUP` reloads at once, and `POST /reload` on the admin port reloads and returns the new state (`422` if the reload failed). `/reload` has the same cross-site protections as `/clear`.

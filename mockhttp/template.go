@@ -14,8 +14,8 @@ import (
 )
 
 // A response template is text with placeholders ({{name}}, {{%name}},
-// {{$name args | filter ...}}) and repeat blocks ({{#repeat n}} ...
-// {{/repeat}}). It is parsed into nodes once per render.
+// {{$name args | filter ...}}), repeat blocks ({{#repeat n}} ...
+// {{/repeat}}) and each blocks ({{#each $json.items}} ... {{/each}}). It is parsed into nodes once per render.
 
 const (
 	// maxRepeat caps one {{#repeat}} block's count.
@@ -27,10 +27,11 @@ const (
 
 var errRenderedTooLarge = fmt.Errorf("rendered body is larger than %d MiB", maxRenderedBytes>>20)
 
-// templateTagPattern matches repeat tags and placeholders. Submatch 1 is the
-// repeat count, when the match is an opening tag; submatches 2-4 are
-// restclient.PlaceholderPattern's prefix, name and arguments.
-var templateTagPattern = regexp.MustCompile(`\{\{#repeat(?:[ \t]+([^{}]*?))?[ \t]*}}|\{\{/repeat[ \t]*}}|` + restclient.PlaceholderPattern.String())
+// templateTagPattern matches block tags and placeholders. Submatches 1 and 2
+// are an opening tag's block name and argument, submatch 3 is a closing tag's
+// block name, and submatches 4-6 are restclient.PlaceholderPattern's prefix,
+// name and arguments.
+var templateTagPattern = regexp.MustCompile(`\{\{#(repeat|each)(?:[ \t]+([^{}]*?))?[ \t]*}}|\{\{/(repeat|each)[ \t]*}}|` + restclient.PlaceholderPattern.String())
 
 type nodeKind int
 
@@ -38,6 +39,8 @@ const (
 	textNode nodeKind = iota
 	placeholderNode
 	repeatNode
+	// eachNode renders its children once per element of the array at source.
+	eachNode
 )
 
 type templateNode struct {
@@ -51,7 +54,18 @@ type templateNode struct {
 	filters []templateFilter
 
 	min, max int
+	// source is an each block's array, such as "json.items" or
+	// "fixture.users".
+	source   string
 	children []templateNode
+}
+
+// blockName is the tag name of a block node.
+func (n templateNode) blockName() string {
+	if n.kind == eachNode {
+		return "each"
+	}
+	return "repeat"
 }
 
 type templateFilter struct {
@@ -91,7 +105,7 @@ func parseTemplate(input string) (nodes []templateNode, problems []templateProbl
 	for _, loc := range templateTagPattern.FindAllStringSubmatchIndex(input, -1) {
 		start, end := loc[0], loc[1]
 		tag := input[start:end]
-		isOpen, isClose := strings.HasPrefix(tag, "{{#repeat"), strings.HasPrefix(tag, "{{/repeat")
+		isOpen, isClose := loc[2] >= 0, loc[6] >= 0
 		if isOpen || isClose {
 			// A tag alone on its line takes the whole line with it, so block
 			// tags do not leave blank lines in the output.
@@ -101,21 +115,18 @@ func parseTemplate(input string) (nodes []templateNode, problems []templateProbl
 		previous = end
 		switch {
 		case isOpen:
-			countText := ""
-			if loc[2] >= 0 {
-				countText = input[loc[2]:loc[3]]
-			}
-			low, high, err := parseRepeatCount(countText)
+			node, err := parseBlockTag(tag, input[loc[2]:loc[3]], submatch(input, loc, 4))
 			if err != nil {
 				problems = append(problems, templateProblem{tag, err.Error()})
 				appendText(input[start:end])
 				continue
 			}
-			stack = append(stack, frame{node: templateNode{kind: repeatNode, text: tag, min: low, max: high}, opener: input[start:end], parent: current})
+			stack = append(stack, frame{node: node, opener: input[start:end], parent: current})
 			current = nil
 		case isClose:
-			if len(stack) == 0 {
-				problems = append(problems, templateProblem{tag, "{{/repeat}} has no matching {{#repeat}}"})
+			name := input[loc[6]:loc[7]]
+			if len(stack) == 0 || stack[len(stack)-1].node.blockName() != name {
+				problems = append(problems, templateProblem{tag, "{{/" + name + "}} has no matching {{#" + name + "}}"})
 				appendText(input[start:end])
 				continue
 			}
@@ -124,7 +135,7 @@ func parseTemplate(input string) (nodes []templateNode, problems []templateProbl
 			top.node.children = current
 			current = append(top.parent, top.node)
 		default:
-			node, err := parsePlaceholder(tag, input[loc[4]:loc[5]], input[loc[6]:loc[7]], submatch(input, loc, 8))
+			node, err := parsePlaceholder(tag, input[loc[8]:loc[9]], input[loc[10]:loc[11]], submatch(input, loc, 12))
 			if err != nil {
 				problems = append(problems, templateProblem{tag, err.Error()})
 			}
@@ -136,7 +147,8 @@ func parseTemplate(input string) (nodes []templateNode, problems []templateProbl
 	for len(stack) > 0 {
 		top := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
-		problems = append(problems, templateProblem{top.node.text, "{{#repeat}} has no matching {{/repeat}}"})
+		name := top.node.blockName()
+		problems = append(problems, templateProblem{top.node.text, "{{#" + name + "}} has no matching {{/" + name + "}}"})
 		children := current
 		current = top.parent
 		appendText(top.opener)
@@ -181,6 +193,37 @@ func standaloneLine(input string, start, end, floor int) (int, int) {
 	default:
 		return start, end
 	}
+}
+
+// parseBlockTag parses an opening {{#repeat count}} or {{#each $source}} tag.
+func parseBlockTag(tag, name, arg string) (templateNode, error) {
+	if name == "repeat" {
+		low, high, err := parseRepeatCount(arg)
+		if err != nil {
+			return templateNode{}, err
+		}
+		return templateNode{kind: repeatNode, text: tag, min: low, max: high}, nil
+	}
+	source, ok := strings.CutPrefix(strings.TrimSpace(arg), "$")
+	if ok && !strings.ContainsAny(source, " \t") {
+		if path, isJSON := strings.CutPrefix(source, "json."); isJSON && path != "" {
+			if _, err := restclient.ParseJSONPath(path); err == nil {
+				return templateNode{kind: eachNode, text: tag, source: source}, nil
+			}
+		} else if path, isFixture := fixturePath(source); isFixture {
+			if _, err := restclient.ParseJSONPath(path); err == nil {
+				return templateNode{kind: eachNode, text: tag, source: source}, nil
+			}
+		} else if path, isItem := itemPath(source); isItem {
+			if path == "" {
+				return templateNode{kind: eachNode, text: tag, source: source}, nil
+			}
+			if _, err := restclient.ParseJSONPath(path); err == nil {
+				return templateNode{kind: eachNode, text: tag, source: source}, nil
+			}
+		}
+	}
+	return templateNode{}, errors.New(`{{#each}} needs a JSON array, such as {{#each $json.items}}, {{#each $fixture.users}} or {{#each $item.tags}}`)
 }
 
 // parseRepeatCount parses "n" or "min max" (both inclusive).

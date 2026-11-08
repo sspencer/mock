@@ -31,45 +31,11 @@ and with the items above done they are the next thing to revisit.
 
 ### Matching and routing
 
-- **Richer matching:** JSON paths with dotted keys,
-  cookies (`@cookie.name`), "present but not X" predicates, and multipart or
-  XML bodies. Current matching covers methods, encoded paths and path
-  parameters, declared query values, and exact, present (`*`), absent (`!`) and
-  regex (`~regex`) matchers on headers, query and path parameters, the raw body,
-  JSON fields and form fields, plus trailing `*` path wildcards. The first
-  matching route in load order wins, so catch-alls go last; shadowed routes get
-  a load warning.
-- **Per-route proxying** (M): `@proxy = https://api.example.com` on a section
-  forwards requests that match it to that URL, optionally rewriting the path.
-  `--upstream` is all or nothing for unmatched requests; this lets one file
-  send `/payments/*` to a sandbox while mocking everything else, and lets
-  matchers decide which requests go to the real service.
+(All matching and routing ideas are implemented; see below.)
 
 ### Responses and templating
 
-- **Fixture namespace:** `{{$fixture.*}}` values read from a data file, left
-  over from the template namespaces item. Filters, `{{#repeat}}`, and explicit
-  `$path`/`$query`/`$header` namespaces exist.
-- **Iterate over request arrays** (M): `{{#each $json.items}} ... {{/each}}`
-  with `{{$item.sku}}` inside, for batch endpoints that answer one entry per
-  submitted item. `{{#repeat}}` only produces generated copies, and
-  `{{$json.items}}` can only copy the whole array back unchanged.
-- **Echo the request** (S): a `{{$request}}` placeholder (or a `| json`-ready
-  object) with the method, path, query, headers and body, for an
-  httpbin-style `/echo` route that shows a client exactly what it sent.
-- **Range requests for file bodies** (S–M): `< path` bodies that are not
-  templated could be served with `http.ServeContent`, giving `Accept-Ranges`,
-  `206 Partial Content` and `If-Range`, so download-resume and media clients
-  can be tested. The directory mode already gets this from `http.FileServer`.
-- **Compressed responses** (S): `@compress = gzip` (or honoring
-  `Accept-Encoding`) to test client decompression and `Content-Encoding`
-  handling. Today a body is always sent as written.
-- **Webhook callbacks** (M–L): `@callback = POST {{$json.callbackUrl}}` with a
-  body template and delay, sent after the response, for flows where the real
-  service calls back (payments, async jobs). Declarative, so it stays clear of
-  the rejected scripted responses, but it is the first outbound traffic
-  `mock` would originate: it needs its own events in the admin UI, timeouts,
-  and no retries by default.
+(All response and templating ideas are implemented; see below.)
 
 ### Testing and CI
 
@@ -186,6 +152,33 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Webhook callbacks:** `@callback = POST {{$json.callbackUrl}}` with
+  `@callback.delay`, `.header.*` and `.body`, sent once after the response
+  and logged in the admin UI.
+- **Compressed responses:** `@compress = gzip | deflate | auto` compresses
+  bodies; `auto` honors `Accept-Encoding`.
+- **Range requests for file bodies:** unchanged `< path` files answer
+  `Range`, `If-Range` and `If-Modified-Since` through `http.ServeContent`.
+- **Echo the request:** `{{$request}}` inserts the request as a JSON object,
+  and `{{$request.path}}` reads one part of it.
+- **Iterate over request arrays:** `{{#each $json.items}} ... {{/each}}` with
+  `{{$item.*}}` and `{{$index}}`, also over `$fixture` and nested `$item` arrays.
+- **Fixture namespace:** `@fixture = data.json` and `{{$fixture.path}}`
+  placeholders read values from a JSON data file.
+- **Per-route proxying:** `@proxy = URL` forwards the requests a section
+  matches; a URL with placeholders rewrites the target path.
+- **XML body matchers:** `@xml.element.path` matchers and
+  `{{$xml.element.path}}` placeholders, starting at the root element, ignoring
+  namespace prefixes, with `*` for any child and `["@name"]` for attributes.
+- **Multipart bodies:** `@form.name` and `{{$form.name}}` read
+  `multipart/form-data` parts (file parts by file name).
+- **JSON paths with dotted keys:** `["key"]` segments in `@json` matchers and
+  `{{$json.*}}` placeholders, such as `labels["app.kubernetes.io/name"]`.
+- **Cookie matchers:** `@cookie.name` matchers and `{{$cookie.name}}`
+  placeholders read one cookie from the `Cookie` header.
+- **"Present but not X" matchers:** `!text` and `!~regex` accept a present,
+  non-blank value other than `text` (or not matching `regex`), for every
+  matcher type. A value starting with `!` is no longer an exact match.
 - **Directive reference and recipes:** a README table of contents, one
   reference table of every `@` directive, and recipes for GraphQL operations,
   content negotiation, case-insensitive matchers, per-test `X-Test` routing

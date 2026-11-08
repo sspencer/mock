@@ -39,6 +39,13 @@ type Server struct {
 	upstream       atomic.Pointer[upstreamProxy]
 	// reloader re-reads the request files for POST /reload.
 	reloader func()
+	// callbacks tracks @callback requests in flight; callbackCtx is cancelled
+	// by Close.
+	callbacks       sync.WaitGroup
+	callbackCtx     context.Context
+	cancelCallbacks context.CancelFunc
+	callbackMu      sync.Mutex
+	closed          bool
 }
 
 func New(methods []restclient.Method, logger *slog.Logger) *Server {
@@ -49,6 +56,7 @@ func New(methods []restclient.Method, logger *slog.Logger) *Server {
 		logger:      logger,
 		subscribers: make(map[chan RequestEvent]struct{}),
 	}
+	s.callbackCtx, s.cancelCallbacks = context.WithCancel(context.Background())
 	s.config = ConfigState{Revision: 1, RouteCount: len(methods), LastSuccess: time.Now().UTC().Format(time.RFC3339Nano)}
 	warnMethodConfig(logger, methods)
 	return s
@@ -100,7 +108,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.recordUnmatched(r, up != nil)
 		if up != nil {
 			capture.match.Upstream = up.target.String()
-			up.serve(capture, r)
+			s.serveUpstream(up, capture, r)
 		} else {
 			http.NotFound(capture, r)
 		}
@@ -115,6 +123,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	status = method.Status
 	render := newRenderer(method, values)
+	if method.Proxy != "" {
+		target, exact, err := proxyTarget(method, render)
+		if err != nil {
+			s.logResponseRenderError(err)
+			http.Error(capture, "mock: "+err.Error(), http.StatusBadGateway)
+		} else {
+			capture.match.Upstream = target.String()
+			s.serveRouteProxy(capture, r, target, exact)
+		}
+		s.logRequest(r, requestBody, capture, capture.statusCode(), method.Name, arrivedAt, time.Since(arrivedAt))
+		return
+	}
 	file, hasFile, err := render.file()
 	var body []byte
 	var headers http.Header
@@ -156,13 +176,33 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if capture.Header().Get("Date") == "" {
 		capture.Header().Set("Date", time.Now().UTC().Format(http.TimeFormat))
 	}
+	if method.Compress == "auto" && method.Stream == 0 {
+		capture.Header().Add("Vary", "Accept-Encoding")
+	}
+	if encoding := responseEncoding(method, r); encoding != "" && method.Stream == 0 && len(body) > 0 && statusAllowsBody(status) && capture.Header().Get("Content-Encoding") == "" {
+		// Type the body before it is compressed, or sniffing sees gzip bytes.
+		if capture.Header().Get("Content-Type") == "" {
+			capture.Header().Set("Content-Type", http.DetectContentType(body))
+		}
+		body = compressBody(encoding, body)
+		capture.Header().Set("Content-Encoding", encoding)
+		render.verbatim = false // Ranges would apply to the compressed bytes.
+	}
+	if render.verbatim && status == http.StatusOK && method.Stream == 0 && method.Fault == "" &&
+		(r.Method == http.MethodGet || r.Method == http.MethodHead) {
+		s.serveFileContent(capture, r, file.path, body)
+		id := s.logRequest(r, requestBody, capture, capture.statusCode(), method.Name, arrivedAt, time.Since(arrivedAt))
+		s.scheduleCallback(r, method, render, id, capture.match)
+		return
+	}
 	sendsBody := r.Method != http.MethodHead && len(body) > 0 && statusAllowsBody(status)
 	fault := chooseFault(method, sendsBody)
 	if fault == "reset" {
 		// Log first: the handler does not return normally after a reset.
 		capture.fault = fault
 		capture.headers = http.Header{}
-		s.logRequest(r, requestBody, capture, 0, method.Name, arrivedAt, time.Since(arrivedAt))
+		id := s.logRequest(r, requestBody, capture, 0, method.Name, arrivedAt, time.Since(arrivedAt))
+		s.scheduleCallback(r, method, render, id, capture.match)
 		resetConnection(capture)
 		return
 	}
@@ -195,7 +235,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = capture.Write(body)
 	}
 
-	s.logRequest(r, requestBody, capture, status, method.Name, arrivedAt, time.Since(arrivedAt))
+	id := s.logRequest(r, requestBody, capture, status, method.Name, arrivedAt, time.Since(arrivedAt))
+	s.scheduleCallback(r, method, render, id, capture.match)
 	if fault == "truncate" {
 		_ = controller.Flush()
 		panic(http.ErrAbortHandler)
@@ -302,6 +343,22 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 				logger.Warn("invalid @delay will be ignored", "delay", raw, "method", method.Name, "source", method.Source, "error", err)
 			}
 		}
+		if method.Compress != "" && method.Stream > 0 {
+			logger.Warn("@compress is ignored for a section with @stream, which sends its body in readable pieces", "method", method.Name, "source", method.Source, "line", method.Line)
+		}
+		var fixture any
+		if method.Fixture != "" {
+			var err error
+			if fixture, err = loadFixture(&method); err != nil {
+				logger.Warn("{{$fixture.*}} placeholders will stay literal", "method", method.Name, "source", method.Source, "line", method.Line, "error", err)
+			}
+		}
+		if method.Proxy != "" && method.Callback != nil {
+			logger.Warn("@callback is ignored for a section with @proxy", "method", method.Name, "source", method.Source, "line", method.Line)
+		}
+		if method.Proxy != "" && (method.Body != "" || method.File != "" || len(method.Headers) > 0 || method.Stream > 0 || method.Fault != "") {
+			logger.Warn("@proxy forwards the request, so this section's response body, file, headers, @stream and @fault are ignored", "method", method.Name, "source", method.Source, "line", method.Line)
+		}
 		checked := method
 		if method.File != "" && method.Body == "" && !restclient.FileIsTemplate(method.File) {
 			path := restclient.ResolveFile(method.Source, method.File)
@@ -309,7 +366,7 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 				checked.Body = string(body)
 			}
 		}
-		warnUnknownPlaceholders(logger, checked)
+		warnUnknownPlaceholders(logger, checked, fixture)
 		checkedMethods = append(checkedMethods, checked)
 		warnIncomingHeadersUsedAsResponse(logger, method)
 		warnInvalidJSONBody(logger, method)
@@ -371,7 +428,7 @@ func shadows(a, b restclient.Method) bool {
 			}
 		}
 	}
-	for _, pair := range [][2]url.Values{{a.MatchQuery, b.MatchQuery}, {a.MatchForm, b.MatchForm}} {
+	for _, pair := range [][2]url.Values{{a.MatchQuery, b.MatchQuery}, {a.MatchForm, b.MatchForm}, {a.MatchCookies, b.MatchCookies}} {
 		for key, values := range pair[0] {
 			for _, value := range values {
 				if !slices.Contains(pair[1][key], value) {
@@ -394,7 +451,7 @@ func shadows(a, b restclient.Method) bool {
 			return false
 		}
 	}
-	return subsetMap(a.MatchJSON, b.MatchJSON)
+	return subsetMap(a.MatchJSON, b.MatchJSON) && subsetMap(a.MatchXML, b.MatchXML)
 }
 
 // pathCovers reports whether every request path that pattern b matches is
@@ -524,13 +581,20 @@ func cloneMethods(methods []restclient.Method) []restclient.Method {
 		out[i].MatchQuery = cloneValues(methods[i].MatchQuery)
 		out[i].MatchPath = maps.Clone(methods[i].MatchPath)
 		out[i].MatchJSON = maps.Clone(methods[i].MatchJSON)
+		out[i].MatchXML = maps.Clone(methods[i].MatchXML)
 		out[i].MatchForm = cloneValues(methods[i].MatchForm)
+		out[i].MatchCookies = cloneValues(methods[i].MatchCookies)
 		out[i].Comments = append([]string(nil), methods[i].Comments...)
 		out[i].Variables = make(map[string]string, len(methods[i].Variables))
 		for k, v := range methods[i].Variables {
 			out[i].Variables[k] = v
 		}
 		out[i].VariableLines = maps.Clone(methods[i].VariableLines)
+		if c := methods[i].Callback; c != nil {
+			callback := *c
+			callback.Headers = c.Headers.Clone()
+			out[i].Callback = &callback
+		}
 		out[i].Query = make(map[string][]string, len(methods[i].Query))
 		for k, v := range methods[i].Query {
 			out[i].Query[k] = append([]string(nil), v...)
@@ -539,7 +603,9 @@ func cloneMethods(methods []restclient.Method) []restclient.Method {
 	return out
 }
 
-func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method) {
+// fixture is the route's decoded @fixture file, or nil when it has none or
+// it failed to load.
+func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method, fixture any) {
 	if method.Template == "off" {
 		return
 	}
@@ -581,6 +647,9 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method) {
 			case repeatNode:
 				check(node.children, true)
 				continue
+			case eachNode:
+				check(node.children, true)
+				continue
 			case textNode:
 				continue
 			}
@@ -606,6 +675,15 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method) {
 				}
 				continue
 			}
+			if path, ok := fixturePath(key); ok {
+				switch {
+				case method.Fixture == "":
+					warn("unresolved placeholder preserved literally (no @fixture file is set)", key)
+				case fixture != nil && len(selectJSON(fixture, path)) == 0:
+					warn("unresolved placeholder preserved literally (@fixture "+method.Fixture+" has no value at "+path+")", key)
+				}
+				continue
+			}
 			if name, ok := strings.CutPrefix(key, "env."); ok && name != "" {
 				if _, set := os.LookupEnv(name); !set {
 					warn("unresolved placeholder preserved literally (environment variable "+name+" is not set)", key)
@@ -613,6 +691,9 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method) {
 				continue
 			}
 			if key == "index" && inRepeat {
+				continue
+			}
+			if _, ok := itemPath(key); ok && inRepeat {
 				continue
 			}
 			if known[key] || isGeneratedKey(key) || isRequestPlaceholder(key) {
@@ -658,10 +739,13 @@ func (s *Server) clearLocked() {
 }
 
 // isRequestPlaceholder reports whether key reads the request at render time
-// ($query.name, $header.Name, $json.field.path or $form.name). Its value
+// ($query.name, $header.Name, $cookie.name, $json.field.path, $xml.path or $form.name). Its value
 // depends on each request, so it is never reported as unknown.
 func isRequestPlaceholder(key string) bool {
-	for _, prefix := range []string{"query.", "header.", "json.", "form."} {
+	if _, ok := requestEchoPath(key); ok {
+		return true
+	}
+	for _, prefix := range []string{"query.", "header.", "cookie.", "json.", "xml.", "form."} {
 		if name, ok := strings.CutPrefix(key, prefix); ok && name != "" {
 			return true
 		}
@@ -682,14 +766,36 @@ func matcherValues(method restclient.Method) []string {
 	for _, values := range method.MatchForm {
 		out = append(out, values...)
 	}
+	for _, values := range method.MatchCookies {
+		out = append(out, values...)
+	}
 	for _, value := range method.MatchPath {
 		out = append(out, value)
 	}
 	for _, value := range method.MatchJSON {
 		out = append(out, value)
 	}
+	for _, value := range method.MatchXML {
+		out = append(out, value)
+	}
 	if method.MatchBody != "" {
 		out = append(out, method.MatchBody)
 	}
 	return out
+}
+
+// serveFileContent sends an unchanged response file with http.ServeContent,
+// which answers Range, If-Range and If-Modified-Since requests (206, 416 and
+// 304) and sets Accept-Ranges and Last-Modified from the file.
+func (s *Server) serveFileContent(w http.ResponseWriter, r *http.Request, path string, body []byte) {
+	var modTime time.Time
+	if info, err := os.Stat(path); err == nil {
+		modTime = info.ModTime()
+	}
+	w.Header().Del("Content-Length")
+	w.Header().Del("Transfer-Encoding")
+	if w.Header().Get("Content-Type") == "" && len(body) > 0 {
+		w.Header().Set("Content-Type", http.DetectContentType(body))
+	}
+	http.ServeContent(w, r, "", modTime, bytes.NewReader(body))
 }

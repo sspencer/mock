@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sampleFormBody, sampleJSONBody, buildCurl, buildRouteCurl, formatMessage, formatRoute, bodyNotice, sampleParam } from '../static/inspector.mjs';
+import { sampleFormBody, sampleJSONBody, buildCurl, buildRouteCurl, formatMessage, formatRoute, bodyNotice, sampleParam, describeMatcher, isSampleExact, jsonPathSegments } from '../static/inspector.mjs';
 import { attachSplitter, clampPercent, alignedTrafficHeight } from '../static/layout.mjs';
 
 const message = {
@@ -148,4 +148,45 @@ test('Route cURL fills wildcards and sends form bodies', () => {
     assert.equal(sampleFormBody({}), '');
     const text = formatRoute({ method: 'POST', path: '/token', source: 't.http', line: 1, revision: 1, status: 200, matchForm: { grant_type: ['client_credentials'] } });
     assert.ok(text.includes('Body requirements\nform grant_type: client_credentials'), text);
+});
+
+test('describeMatcher explains negated matchers', () => {
+    assert.equal(describeMatcher('!'), '! (must be absent)');
+    assert.equal(describeMatcher('!guest'), '!guest (present, not guest)');
+    assert.equal(describeMatcher('!~test-.*'), '!~test-.* (present, not matching the regular expression)');
+    assert.equal(describeMatcher('~x'), '~x (regular expression)');
+    assert.equal(isSampleExact('!guest'), false);
+});
+
+test('formatRoute shows the proxy target instead of a response', () => {
+    const text = formatRoute({ method: 'GET', path: '/x', status: 200, delay: '50ms', proxy: 'https://api.example.com/v1' });
+    assert.ok(text.includes('Proxy: https://api.example.com/v1 · delay 50ms'), text);
+    assert.ok(!text.includes('Response: 200'), text);
+});
+
+test('formatRoute names the fixture file', () => {
+    assert.ok(formatRoute({ method: 'GET', path: '/x', status: 200, fixture: 'data/users.json' }).includes('Fixture: data/users.json'));
+});
+
+test('formatRoute lists XML requirements', () => {
+    const text = formatRoute({ method: 'POST', path: '/soap', matchXml: { 'Envelope.Body.GetQuote.symbol': '*', 'order["@id"]': '!draft' } });
+    assert.ok(text.includes('xml Envelope.Body.GetQuote.symbol: '), text);
+    assert.ok(text.includes('xml order["@id"]: '), text);
+});
+
+test('route curl sends required cookies', () => {
+    const route = { method: 'GET', path: '/me', matchCookies: { session: ['*'], theme: ['dark'], debug: ['!'] } };
+    assert.equal(buildRouteCurl(route, 'http://localhost:8080'), "curl --cookie 'session=example; theme=dark' 'http://localhost:8080/me'");
+    assert.match(formatRoute(route), /Cookie requirements\nsession: \*\ntheme: dark\ndebug: ! \(must be absent\)/);
+});
+
+test('JSON paths with quoted keys', () => {
+    assert.deepEqual(jsonPathSegments('meta["user.id"].x'), [
+        { name: 'meta', any: false, quoted: false },
+        { name: 'user.id', any: false, quoted: true },
+        { name: 'x', any: false, quoted: false },
+    ]);
+    assert.equal(jsonPathSegments('a..b'), null);
+    assert.equal(sampleJSONBody({ 'labels["app.name"]': 'web', 'items.*.sku': 'A1', 'm["0"]': 'z' }),
+        '{"labels":{"app.name":"web"},"items":[{"sku":"A1"}],"m":{"0":"z"}}');
 });

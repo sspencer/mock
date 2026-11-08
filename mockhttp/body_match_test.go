@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -334,5 +335,94 @@ c
 	_ = New(ordered, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
 	if strings.Contains(buf.String(), "route can never match") {
 		t.Fatalf("specific-first routes warned:\n%s", buf.String())
+	}
+}
+
+func TestJSONMatcherQuotedKeys(t *testing.T) {
+	s := newTestServer(t, `### Dotted
+@json.labels["app.kubernetes.io/name"] = web
+POST /deploy
+Content-Type: application/json
+
+{"name": "{{$json.labels["app.kubernetes.io/name"]}}"}
+
+### Literal star key
+@json.stats["*"] = 1
+POST /deploy
+
+star
+
+### Fallback
+POST /deploy
+
+fallback
+`)
+	tests := []struct{ body, want string }{
+		{`{"labels":{"app.kubernetes.io/name":"web"}}`, `{"name": "web"}`},
+		{`{"labels":{"app":{"kubernetes":"web"}}}`, "fallback"},
+		{`{"stats":{"*":1}}`, "star"},
+		{`{"stats":[1]}`, "fallback"}, // a quoted "*" never selects array elements
+	}
+	for _, tt := range tests {
+		if _, got := serveBody(t, s, "/deploy", tt.body); got != tt.want {
+			t.Errorf("body %s: got %q, want %q", tt.body, got, tt.want)
+		}
+	}
+}
+
+func TestFormMatchersReadMultipartBodies(t *testing.T) {
+	s := newTestServer(t, `### Image upload
+@form.kind = avatar
+@form.file = ~.*\.png
+POST /upload
+
+stored {{$form.file}} for {{$form.user}}
+
+### Other upload
+@form.kind = *
+POST /upload
+
+other
+
+### No form
+POST /upload
+
+none
+`)
+	multipartBody := func(fields map[string]string, filename string) (string, string) {
+		var buf bytes.Buffer
+		w := multipart.NewWriter(&buf)
+		for _, name := range []string{"kind", "user"} {
+			if value, ok := fields[name]; ok {
+				_ = w.WriteField(name, value)
+			}
+		}
+		if filename != "" {
+			part, _ := w.CreateFormFile("file", filename)
+			_, _ = part.Write([]byte("\x89PNG..."))
+		}
+		_ = w.Close()
+		return buf.String(), w.FormDataContentType()
+	}
+	send := func(body, contentType string) string {
+		req := httptest.NewRequest("POST", "/upload", strings.NewReader(body))
+		req.Header.Set("Content-Type", contentType)
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+		return strings.TrimSpace(rec.Body.String())
+	}
+	body, contentType := multipartBody(map[string]string{"kind": "avatar", "user": "alice"}, "me.png")
+	if got := send(body, contentType); got != "stored me.png for alice" {
+		t.Errorf("png upload: %q", got)
+	}
+	body, contentType = multipartBody(map[string]string{"kind": "avatar"}, "me.gif")
+	if got := send(body, contentType); got != "other" {
+		t.Errorf("gif upload: %q", got)
+	}
+	if got := send("kind=avatar", "application/x-www-form-urlencoded"); got != "other" {
+		t.Errorf("url-encoded body: %q", got)
+	}
+	if got := send("--broken", "multipart/form-data; boundary=xyz"); got != "none" {
+		t.Errorf("malformed multipart: %q", got)
 	}
 }
