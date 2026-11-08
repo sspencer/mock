@@ -1,5 +1,5 @@
 import { formatMessage, bodyNotice, buildCurl, buildRouteCurl, formatRoute, hitsLabel } from './inspector.mjs';
-import { buildRouteDraft } from './draft.mjs';
+import { buildRouteDraft, buildRouteDrafts } from './draft.mjs';
 import { attachSplitter, alignedTrafficHeight } from './layout.mjs';
 import { buildHAR } from './har.mjs';
 import { TrafficStream, requestHost, eventBadge } from './traffic.mjs';
@@ -50,6 +50,7 @@ const routeDetails = document.getElementById('routeDetails');
 const copyNotice = document.getElementById('copyNotice');
 const copyCurlButton = document.getElementById('copyCurlButton');
 const copyRouteDraftButton = document.getElementById('copyRouteDraftButton');
+const copyUnmatchedButton = document.getElementById('copyUnmatchedButton');
 const mismatchPanel = document.getElementById('mismatchPanel');
 const mismatchDetails = document.getElementById('mismatchDetails');
 const backToList = document.getElementById('backToList');
@@ -637,6 +638,25 @@ copyCurlButton.addEventListener('click', () => {
 copyRouteDraftButton.addEventListener('click', () => {
     try { copyText(buildRouteDraft(eventsById.get(selectedRequestId(selection)), { mockPort: MOCK_CONFIG.mockPort })); }
     catch (error) { copyNotice.textContent = error.message; }
+});
+copyUnmatchedButton.addEventListener('click', async () => {
+    const events = [...eventOrder].reverse().map(id => eventsById.get(id)).filter(Boolean);
+    const { text, count } = buildRouteDrafts(events, { mockPort: MOCK_CONFIG.mockPort });
+    clearError.hidden = true;
+    if (!count) {
+        clearError.textContent = 'No unmatched requests in the log.';
+        clearError.hidden = false;
+        return;
+    }
+    try {
+        if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable.');
+        await navigator.clipboard.writeText(text);
+        copyUnmatchedButton.textContent = `Copied ${count} route${count === 1 ? '' : 's'}`;
+        setTimeout(() => { copyUnmatchedButton.textContent = 'Copy unmatched as routes'; }, 2000);
+    } catch (error) {
+        clearError.textContent = error.message || 'Copy failed.';
+        clearError.hidden = false;
+    }
 });
 copyRouteCurlButton.addEventListener('click', () => {
     const route = selectedRoute(selection);

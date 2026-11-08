@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add **Copy unmatched as routes** to the admin UI's traffic panel. It copies one draft `.http` section (the same draft as **Copy as route**) per distinct method and path among the unmatched requests in the log, preferring proxied requests' upstream responses.
+
 - Add `mock check -upstream URL <files>`, a drift check: it sends each route's sample request to the mock and to the real API and reports differences in status, `Content-Type` and top-level JSON fields. Only safe methods are sent unless `-all` is given; `-header` adds credentials and `-json` prints a machine-readable report. It exits `1` on drift.
 
 - Add benchmarks for matching against 3,000 routes, template rendering, `ServeHTTP` and parsing (`make bench`).

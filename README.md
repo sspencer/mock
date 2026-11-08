@@ -1916,6 +1916,12 @@ On narrow screens, selecting traffic or a route opens the inspector; use
   proxied with `--upstream`, whose real status, `Content-Type` and body are
   used when the body can be pasted inline (with `@template = off` if it
   contains `{{`).
+- **Copy unmatched as routes**, above the traffic list, copies one draft
+  section per distinct method and path among every unmatched request in the
+  log, oldest first, so a session of traffic becomes a starting request file.
+  Query strings don't split a path into separate sections, and a proxied
+  request with a usable upstream response is preferred over one without.
+  Callbacks and requests a route answered are skipped.
 - The routes list shows how many requests each route has answered; dimmed `0`s
   are routes nothing has matched yet.
 - Select a configured route to inspect its match requirements, response headers,

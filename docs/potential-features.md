@@ -48,10 +48,6 @@ and with the items above done they are the next thing to revisit.
 - **Recording** (L): capture proxied traffic and write it out as `.http`
   sections to start a fixture file. Builds on `--upstream` pass-through; lower
   priority.
-- **Copy all unmatched requests as routes** (S): a UI action that drafts one
-  section per distinct method and path among unmatched (or proxied) requests,
-  using the existing Copy as route logic. A lightweight form of recording that
-  needs no new server code.
 - **HAR import** (M): `mock import traffic.har > api.http` converts a HAR file
   saved from browser devtools or a proxy into `.http` sections, so fixtures
   can be built from traffic captured anywhere. Unlike the rejected OpenAPI
@@ -130,6 +126,10 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Copy all unmatched requests as routes:** the traffic panel's **Copy
+  unmatched as routes** button drafts one section per distinct method and path
+  among unmatched (or proxied) requests, using the Copy as route logic
+  (`buildRouteDrafts` in `draft.mjs`).
 - **Drift check against the real API:** `mock check -upstream URL api.http`
   sends each route's sample request to the mock and the real service and
   reports differences in status, `Content-Type` and top-level JSON fields.
