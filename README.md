@@ -249,6 +249,7 @@ Flags:
 | `-x`, `--no-ui` | (off) | Do not start the admin UI. Cannot be combined with `-a` |
 | `-b`, `--bind` | `127.0.0.1`, or `MOCK_BIND` | Bind address. Use `0.0.0.0` to listen on all interfaces |
 | `-u`, `--upstream` | (off) | Forward requests no route matches to this `http` or `https` URL and return its response (see [Passing unmatched requests to a real API](#passing-unmatched-requests-to-a-real-api)) |
+| `-r`, `--record` | (off) | With `-u`, append a draft `.http` section to this file for each method and path the upstream answered (see [Recording forwarded requests](#recording-forwarded-requests)) |
 | `-s`, `--strict` | (off) | At shutdown, list requests no route matched and routes that never matched, and exit `1` if any request was unmatched (see [Strict mode and route coverage](#strict-mode-and-route-coverage)) |
 | `-v`, `--var` | | `NAME=VALUE`: set the `@NAME` variable in every request file, overriding its definitions. Repeat for more variables (see [Variables from the command line](#variables-from-the-command-line)) |
 | `-d`, `--dir` | | Load every `.http` file under this directory, after any file arguments, and pick up added or removed files on reload. Repeat for more directories (see [A directory of request files](#a-directory-of-request-files)) |
@@ -1546,6 +1547,47 @@ mock --upstream https://api.example.com fixtures.http
 
 The admin UI marks forwarded requests as **proxied** and shows the upstream
 URL, the real response, and the nearby routes that didn't match.
+
+### Recording forwarded requests
+
+Add `-r` (`--record`) to turn forwarded traffic into a request file. Each time
+the upstream answers a method and path that isn't recorded yet, `mock` appends
+a draft section for it, the same draft as the admin UI's **Copy as route**:
+
+```sh
+mock --upstream https://api.example.com --record recorded.http fixtures.http
+```
+
+```http
+### [200] GET /users
+@query.page = *
+@header.Authorization = *
+GET /users
+Content-Type: application/json
+
+[{"id":1,"name":"Alex"}]
+```
+
+- Only requests `--upstream` answered are recorded: not requests a route
+  answered (including `@proxy` routes), and not `mock`'s own `502` or `508`
+  answers when the upstream fails. Upstream errors such as `404` are recorded
+  like any other answer.
+- Each method and path is recorded once, from the first answer; query strings
+  don't make separate sections. Sections already in the file count as
+  recorded, so restarting with the same file only adds new routes. The file
+  must load as a request file if it already exists.
+- The section requires the query parameters, `Authorization` header and
+  top-level JSON or form fields the request had, without fixing their values,
+  and answers with the upstream's status, `Content-Type` and body. A gzip or
+  deflate response is decoded. A body that is binary, longer than the 64 KiB
+  capture limit, or can't be pasted inline becomes a placeholder `[200]` with
+  `{}`; a body containing `{{` gets `@template = off`. `@port` is set when the
+  request arrived on a port other than `-p`.
+- Review the file before using it: recorded bodies may contain real data, and
+  matchers are deliberately loose. To replay while recording, also load the
+  recorded file once it exists (`mock -u URL -r recorded.http recorded.http`):
+  hot reload picks up each new section, so the next matching request is
+  answered by the recording instead of the upstream.
 
 ### Per-route proxying
 

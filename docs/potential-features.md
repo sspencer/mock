@@ -45,9 +45,6 @@ and with the items above done they are the next thing to revisit.
 
 ### Working with real APIs
 
-- **Recording** (L): capture proxied traffic and write it out as `.http`
-  sections to start a fixture file. Builds on `--upstream` pass-through; lower
-  priority.
 - **Broader REST Client import:** unnamed sections, comments before the first
   section, HTTP versions on request lines (all currently load errors),
   environment files and request variables, and explicit request-to-response
@@ -121,6 +118,9 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Recording:** `mock -u URL -r recorded.http fixtures.http` appends a draft
+  section (the Copy as route draft, with the real response) for each method
+  and path the upstream answers, once each, through `Server.SetRequestHook`.
 - **HAR import:** `mock import -host api.example.com traffic.har > api.http`
   drafts one section per distinct method and path from a HAR file, with the
   captured responses. The Go draft logic (`internal/cli/draft.go`) is a port

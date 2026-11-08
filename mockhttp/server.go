@@ -39,6 +39,8 @@ type Server struct {
 	upstream       atomic.Pointer[upstreamProxy]
 	// defaults holds the --delay and --fault for routes that set none.
 	defaults atomic.Pointer[RouteDefaults]
+	// requestHook is called with each handled request's event.
+	requestHook atomic.Pointer[func(RequestEvent)]
 	// limiters holds the @rate-limit state of each route, by routeKey.
 	limiters map[string]*rateLimiter
 	limitMu  sync.Mutex

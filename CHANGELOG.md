@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add `-r` (`--record`) to record forwarded traffic: with `--upstream`, each method and path the upstream answers is appended to the file as a draft `.http` section with the real response (gzip and deflate decoded). Sections already in the file are not recorded again. Library users can watch requests with `Server.SetRequestHook`.
+
 - Add `mock import <file.har>`, which converts a HAR file from browser devtools, a proxy or **Export HAR** into `.http` sections on stdout, one per distinct method and path, drafted like **Copy as route** with the captured responses. `-host` and `-path` filter the requests.
 
 - Add **Copy unmatched as routes** to the admin UI's traffic panel. It copies one draft `.http` section (the same draft as **Copy as route**) per distinct method and path among the unmatched requests in the log, preferring proxied requests' upstream responses.

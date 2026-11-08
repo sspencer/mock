@@ -39,6 +39,9 @@ type config struct {
 	Args             []string
 	// Upstream receives requests no route matches (-u); nil answers 404.
 	Upstream *url.URL
+	// Record is the file that requests --upstream answered are appended to
+	// as draft sections (-r).
+	Record string
 	// Strict reports unmatched requests and unused routes at shutdown and
 	// fails the run when any request went unmatched (-s).
 	Strict bool
@@ -87,6 +90,8 @@ flags:
                        (default 127.0.0.1, or MOCK_BIND)
   -u, --upstream URL   forward requests no route matches to this http or
                        https URL and return its response
+  -r, --record FILE    with -u, append a draft section to FILE for each
+                       method and path the upstream answered
   -s, --strict         at shutdown, list requests no route matched and routes
                        that never matched, and exit 1 if any request was
                        unmatched
@@ -143,6 +148,9 @@ func parseConfig(args []string) (config, error) {
 	for _, name := range []string{"u", "upstream"} {
 		flagSet.StringVar(&upstream, name, "", "")
 	}
+	for _, name := range []string{"r", "record"} {
+		flagSet.StringVar(&cfg.Record, name, "", "")
+	}
 	for _, name := range []string{"s", "strict"} {
 		flagSet.BoolVar(&cfg.Strict, name, false, "")
 	}
@@ -177,6 +185,9 @@ func parseConfig(args []string) (config, error) {
 		if cfg.Upstream, err = parseUpstream(upstream); err != nil {
 			return config{}, err
 		}
+	}
+	if cfg.Record != "" && cfg.Upstream == nil {
+		return config{}, usageError("-r (--record) needs -u (--upstream): only forwarded requests are recorded")
 	}
 	if delay != "" {
 		if cfg.Defaults.Delay, cfg.Defaults.DelayMax, err = restclient.ParseDelay(delay); err != nil {

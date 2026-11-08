@@ -124,6 +124,14 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		mockServer = mockhttp.New(input.Methods, logger)
 		mockServer.SetRouteDefaults(cfg.Defaults)
 		mockServer.SetUpstream(cfg.Upstream)
+		if cfg.Record != "" {
+			rec, err := newRecorder(cfg.Record, cfg.Port, logger)
+			if err != nil {
+				closeAll()
+				return runError("%v", err)
+			}
+			mockServer.SetRequestHook(rec.record)
+		}
 		handler = mockServer
 		if input.watched() {
 			reloads = &reloader{server: mockServer, input: input, opts: cfg.Vars.options(), plan: plan, logger: logger, out: routesOut, err: stderr}
@@ -184,6 +192,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			}
 			if cfg.Upstream != nil {
 				fmt.Fprintf(stdout, "forwarding unmatched requests to %s\n", cfg.Upstream)
+			}
+			if cfg.Record != "" {
+				fmt.Fprintf(stdout, "recording forwarded requests to %s\n", cfg.Record)
 			}
 			if delay := cfg.Defaults.DelayString(); delay != "" {
 				fmt.Fprintf(stdout, "delaying routes without @delay by %s\n", delay)
@@ -261,6 +272,9 @@ func announceJSON(logger *slog.Logger, cfg config, mockListeners []net.Listener,
 	}
 	if cfg.Upstream != nil {
 		logger.Info("forwarding unmatched requests", "upstream", cfg.Upstream.String())
+	}
+	if cfg.Record != "" {
+		logger.Info("recording forwarded requests", "file", cfg.Record)
 	}
 	if delay := cfg.Defaults.DelayString(); delay != "" {
 		logger.Info("delaying routes without @delay", "delay", delay)
