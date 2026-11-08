@@ -477,6 +477,25 @@ bytes. Set `@template` in the section to choose instead:
 - `@template = off` never expands them. This also applies to the inline body
   and response headers, so `{{...}}` text is served exactly as written.
 
+### Range and conditional requests
+
+A file served as raw bytes (no placeholders expanded) to a `GET` or `HEAD`
+request with a `200` status supports partial and conditional downloads, as a
+static file server would:
+
+- The response has `Accept-Ranges: bytes` and a `Last-Modified` time from the
+  file.
+- `Range: bytes=0-1023` gets `206 Partial Content` with that slice, and a range
+  past the end gets `416 Range Not Satisfiable`. Multiple ranges get a
+  `multipart/byteranges` body.
+- `If-Range`, `If-Modified-Since` and `If-Unmodified-Since` are honored, so an
+  unchanged file answers `304 Not Modified`. `If-None-Match` and `If-Match`
+  are honored when the section sets an `ETag` response header.
+
+Templated files, inline bodies, other statuses, other methods, and sections
+with `@stream` or `@fault` ignore these headers and always send the whole body.
+Use `@template = off` to serve a text file this way.
+
 ### Placeholders in file paths
 
 The path can hold placeholders, so one route serves a different file per

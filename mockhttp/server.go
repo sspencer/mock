@@ -168,6 +168,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if capture.Header().Get("Date") == "" {
 		capture.Header().Set("Date", time.Now().UTC().Format(http.TimeFormat))
 	}
+	if render.verbatim && status == http.StatusOK && method.Stream == 0 && method.Fault == "" &&
+		(r.Method == http.MethodGet || r.Method == http.MethodHead) {
+		s.serveFileContent(capture, r, file.path, body)
+		s.logRequest(r, requestBody, capture, capture.statusCode(), method.Name, arrivedAt, time.Since(arrivedAt))
+		return
+	}
 	sendsBody := r.Method != http.MethodHead && len(body) > 0 && statusAllowsBody(status)
 	fault := chooseFault(method, sendsBody)
 	if fault == "reset" {
@@ -742,4 +748,20 @@ func matcherValues(method restclient.Method) []string {
 		out = append(out, method.MatchBody)
 	}
 	return out
+}
+
+// serveFileContent sends an unchanged response file with http.ServeContent,
+// which answers Range, If-Range and If-Modified-Since requests (206, 416 and
+// 304) and sets Accept-Ranges and Last-Modified from the file.
+func (s *Server) serveFileContent(w http.ResponseWriter, r *http.Request, path string, body []byte) {
+	var modTime time.Time
+	if info, err := os.Stat(path); err == nil {
+		modTime = info.ModTime()
+	}
+	w.Header().Del("Content-Length")
+	w.Header().Del("Transfer-Encoding")
+	if w.Header().Get("Content-Type") == "" && len(body) > 0 {
+		w.Header().Set("Content-Type", http.DetectContentType(body))
+	}
+	http.ServeContent(w, r, "", modTime, bytes.NewReader(body))
 }

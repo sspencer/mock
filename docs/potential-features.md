@@ -35,10 +35,6 @@ and with the items above done they are the next thing to revisit.
 
 ### Responses and templating
 
-- **Range requests for file bodies** (S–M): `< path` bodies that are not
-  templated could be served with `http.ServeContent`, giving `Accept-Ranges`,
-  `206 Partial Content` and `If-Range`, so download-resume and media clients
-  can be tested. The directory mode already gets this from `http.FileServer`.
 - **Compressed responses** (S): `@compress = gzip` (or honoring
   `Accept-Encoding`) to test client decompression and `Content-Encoding`
   handling. Today a body is always sent as written.
@@ -164,6 +160,8 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Range requests for file bodies:** unchanged `< path` files answer
+  `Range`, `If-Range` and `If-Modified-Since` through `http.ServeContent`.
 - **Echo the request:** `{{$request}}` inserts the request as a JSON object,
   and `{{$request.path}}` reads one part of it.
 - **Iterate over request arrays:** `{{#each $json.items}} ... {{/each}}` with

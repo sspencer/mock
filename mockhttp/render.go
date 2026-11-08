@@ -54,6 +54,9 @@ type renderer struct {
 	fixture     any
 	fixtureErr  error
 	fixtureDone bool
+	// verbatim is set when the body is a response file sent unchanged, so it
+	// can be served with range and conditional request support.
+	verbatim bool
 }
 
 // sampleValue stands in for request values when a body is rendered without a
@@ -189,6 +192,7 @@ func (r *renderer) body(file bodyFile, hasFile bool) ([]byte, error) {
 		return nil, fmt.Errorf("%s: %w", file.path, err)
 	}
 	if !fileIsTemplated(*r.method, file.path, body) {
+		r.verbatim = true
 		return body, nil
 	}
 	rendered, err := r.text(string(body), r.isJSON(file.path))
