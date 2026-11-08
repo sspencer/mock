@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add `-w` (`--delay`) and `-f` (`--fault`) to delay or fault every route that has no `@delay` or `@fault` of its own, such as `--delay 50ms..300ms --fault "reset 5%"`. Library users call `Server.SetRouteDefaults`.
+
 - Add `-l json` (`--log-format json`): stdout carries only JSON lines, with the startup banner and route list as records and one `http request` record per request. The request log's matched-route key is now `route` (was `mock`), and `duration` is logged as a duration value (nanoseconds in JSON).
 
 - Add `mock init [-force] [dir]`, which writes a commented starter `api.http` and the `users.json` it serves, so a new API runs in one command. It refuses to overwrite existing files without `-force`.

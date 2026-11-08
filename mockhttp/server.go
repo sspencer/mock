@@ -37,6 +37,8 @@ type Server struct {
 	mu             sync.Mutex
 	config         ConfigState
 	upstream       atomic.Pointer[upstreamProxy]
+	// defaults holds the --delay and --fault for routes that set none.
+	defaults atomic.Pointer[RouteDefaults]
 	// reloader re-reads the request files for POST /reload.
 	reloader func()
 	// callbacks tracks @callback requests in flight; callbackCtx is cancelled
@@ -116,6 +118,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.logRequest(r, requestBody, capture, status, "", arrivedAt, time.Since(arrivedAt))
 		return
 	}
+	method = s.withDefaults(method)
 	if !s.delay(r.Context(), method) {
 		return
 	}

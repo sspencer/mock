@@ -251,6 +251,8 @@ Flags:
 | `-v`, `--var` | | `NAME=VALUE`: set the `@NAME` variable in every request file, overriding its definitions. Repeat for more variables (see [Variables from the command line](#variables-from-the-command-line)) |
 | `-d`, `--dir` | | Load every `.http` file under this directory, after any file arguments, and pick up added or removed files on reload. Repeat for more directories (see [A directory of request files](#a-directory-of-request-files)) |
 | `-i`, `--poll` | (off) | Also check the request files for changes this often, such as `1s` (at least `100ms`), for filesystems that do not deliver change events (see [Reloading](#reloading)) |
+| `-w`, `--delay` | (off) | Delay every route that has no `@delay` of its own, such as `250ms` or `50ms..300ms` (see [Latency and faults for every route](#latency-and-faults-for-every-route)) |
+| `-f`, `--fault` | (off) | Inject a fault into every route that has no `@fault` of its own: `reset` or `truncate`, optionally with a share such as `"reset 5%"` |
 | `-l`, `--log-format` | `text` | `text` or `json`. With `json`, stdout carries only JSON lines (see [JSON logs](#json-logs)) |
 | `--version` | | Print version and exit |
 | `-h`, `--help` | | Print usage and exit |
@@ -965,6 +967,21 @@ any other body one line at a time. Streamed responses have no
 
 Faulted requests appear in the admin UI with the fault noted (`RST` in the
 status column for a reset).
+
+### Latency and faults for every route
+
+`-w` (`--delay`) and `-f` (`--fault`) apply a delay or fault to every route
+without editing the files, for a resilience run against the same fixtures your
+normal tests use:
+
+```sh
+mock --delay 50ms..300ms --fault "reset 5%" api.http
+```
+
+They take the same values as `@delay` and `@fault`. A route's own `@delay` or
+`@fault` takes precedence, so `@delay = 0` or `@fault = reset 0%` keeps one
+route fast and reliable. Unmatched requests (404s and `--upstream`
+forwarding) are not affected.
 
 ### Compressed responses
 

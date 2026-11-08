@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sspencer/mock/mockhttp"
 	"github.com/sspencer/mock/restclient"
 )
 
@@ -48,6 +49,9 @@ type config struct {
 	// Poll, when set, checks the request files for changes on this interval
 	// in addition to file events (-i).
 	Poll time.Duration
+	// Defaults is the latency and fault for routes that set no @delay or
+	// @fault (-w, -f).
+	Defaults mockhttp.RouteDefaults
 	// LogFormat is "text" (the default) or "json" (-l). JSON writes one
 	// object per line to stdout, including the startup banner and routes.
 	LogFormat string
@@ -92,6 +96,11 @@ flags:
   -i, --poll INTERVAL  also check request files for changes this often, such
                        as 1s, where file events do not arrive (Docker bind
                        mounts, network filesystems)
+  -w, --delay DELAY    delay every route without its own @delay, such as
+                       250ms or 50ms..300ms
+  -f, --fault FAULT    inject a fault into every route without its own
+                       @fault: reset or truncate, with an optional share
+                       such as "reset 5%"
   -l, --log-format FMT text (default) or json: one JSON object per line on
                        stdout for startup, routes and each request
       --version        print version and exit
@@ -144,6 +153,13 @@ func parseConfig(args []string) (config, error) {
 	for _, name := range []string{"i", "poll"} {
 		flagSet.DurationVar(&cfg.Poll, name, 0, "")
 	}
+	var delay, fault string
+	for _, name := range []string{"w", "delay"} {
+		flagSet.StringVar(&delay, name, "", "")
+	}
+	for _, name := range []string{"f", "fault"} {
+		flagSet.StringVar(&fault, name, "", "")
+	}
 	for _, name := range []string{"l", "log-format"} {
 		flagSet.StringVar(&cfg.LogFormat, name, "text", "")
 	}
@@ -158,6 +174,16 @@ func parseConfig(args []string) (config, error) {
 	if upstream != "" {
 		if cfg.Upstream, err = parseUpstream(upstream); err != nil {
 			return config{}, err
+		}
+	}
+	if delay != "" {
+		if cfg.Defaults.Delay, cfg.Defaults.DelayMax, err = restclient.ParseDelay(delay); err != nil {
+			return config{}, usageError("-w (--delay) %v", err)
+		}
+	}
+	if fault != "" {
+		if cfg.Defaults.Fault, cfg.Defaults.FaultRate, err = restclient.ParseFault(fault); err != nil {
+			return config{}, usageError("-f (--fault) %v", err)
 		}
 	}
 	if cfg.LogFormat != "text" && cfg.LogFormat != "json" {

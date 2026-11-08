@@ -39,10 +39,6 @@ and with the items above done they are the next thing to revisit.
 
 ### Testing and CI
 
-- **Global latency and faults** (S): `--delay 50ms..300ms` and `--fault reset
-  5%` apply to every route without editing files, for a resilience run
-  against the same fixtures the normal tests use. Route-level `@delay` and
-  `@fault` would take precedence.
 - **Drift check against the real API** (M): `mock check --upstream URL
   api.http` sends each route's sample request (the one the admin UI already
   builds) to the real service and reports differences in status,
@@ -146,6 +142,8 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Global latency and faults:** `-w` (`--delay`) and `-f` (`--fault`) apply
+  to every route without its own `@delay` or `@fault`.
 - **Structured JSON logs:** `-l json` (`--log-format json`) makes stdout pure
   JSON lines: the startup banner, one `route` record per route, and one
   `http request` record per request (method, path, status, route, duration).

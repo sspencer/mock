@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseConfigDefaultBind(t *testing.T) {
@@ -322,6 +323,22 @@ func TestParseConfigVars(t *testing.T) {
 	for _, bad := range []string{"novalue", "header.Authorization=x", "1x=y", "=y"} {
 		if _, err := parseConfig([]string{"-v", bad, "api.http"}); ExitCode(err) != 2 {
 			t.Errorf("-v %q: error = %v, want usage error", bad, err)
+		}
+	}
+}
+
+func TestParseConfigDelayAndFault(t *testing.T) {
+	cfg, err := parseConfig([]string{"--delay", "50ms..300ms", "-f", "reset 5%", "a.http"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Defaults.Delay != 50*time.Millisecond || cfg.Defaults.DelayMax != 300*time.Millisecond ||
+		cfg.Defaults.Fault != "reset" || cfg.Defaults.FaultRate != 0.05 {
+		t.Errorf("defaults = %+v", cfg.Defaults)
+	}
+	for _, args := range [][]string{{"-w", "soon", "a.http"}, {"--fault", "explode", "a.http"}} {
+		if _, err := parseConfig(args); err == nil {
+			t.Errorf("parseConfig(%q) error = nil", args)
 		}
 	}
 }

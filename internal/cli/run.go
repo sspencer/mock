@@ -51,7 +51,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	if len(cfg.Args) == 0 && len(cfg.Dirs) == 0 {
 		if f, ok := stdin.(*os.File); ok && stdinIsTerminal(f) {
-			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-u url] [-s] [-v name=value] [-d dir] [-i 1s] [-l json] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
+			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-u url] [-s] [-v name=value] [-d dir] [-i 1s] [-w delay] [-f fault] [-l json] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
 		}
 	}
 	input, err := loadInput(cfg.Args, cfg.Dirs, stdin, cfg.Vars.options())
@@ -84,6 +84,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if cfg.Poll > 0 && (input.StaticDir != "" || !input.watched()) {
 		return usageError("-i (--poll) needs request files; stdin and a static directory cannot be reloaded")
 	}
+	if input.StaticDir != "" && cfg.Defaults != (mockhttp.RouteDefaults{}) {
+		return usageError("-w (--delay) and -f (--fault) need request files; a directory argument serves static files only")
+	}
 	if input.StaticDir != "" && cfg.Strict {
 		return usageError("-s (--strict) needs request files; a directory argument serves static files only")
 	}
@@ -113,6 +116,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		input.Methods = methods
 		mockServer = mockhttp.New(input.Methods, logger)
+		mockServer.SetRouteDefaults(cfg.Defaults)
 		mockServer.SetUpstream(cfg.Upstream)
 		handler = mockServer
 		if input.watched() {
@@ -174,6 +178,12 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			}
 			if cfg.Upstream != nil {
 				fmt.Fprintf(stdout, "forwarding unmatched requests to %s\n", cfg.Upstream)
+			}
+			if delay := cfg.Defaults.DelayString(); delay != "" {
+				fmt.Fprintf(stdout, "delaying routes without @delay by %s\n", delay)
+			}
+			if fault := cfg.Defaults.FaultString(); fault != "" {
+				fmt.Fprintf(stdout, "injecting fault %s into routes without @fault\n", fault)
 			}
 			if watchCloser != nil && cfg.Poll > 0 {
 				fmt.Fprintf(stdout, "watching request files for changes (and polling every %s)\n", cfg.Poll)
@@ -245,6 +255,12 @@ func announceJSON(logger *slog.Logger, cfg config, mockListeners []net.Listener,
 	}
 	if cfg.Upstream != nil {
 		logger.Info("forwarding unmatched requests", "upstream", cfg.Upstream.String())
+	}
+	if delay := cfg.Defaults.DelayString(); delay != "" {
+		logger.Info("delaying routes without @delay", "delay", delay)
+	}
+	if fault := cfg.Defaults.FaultString(); fault != "" {
+		logger.Info("injecting fault into routes without @fault", "fault", fault)
 	}
 	if watching && cfg.Poll > 0 {
 		logger.Info("watching request files for changes", "poll", cfg.Poll.String())
