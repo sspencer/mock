@@ -139,6 +139,9 @@ export function buildRouteCurl(route, origin) {
             if (value !== '!') parts.push('--header', shellQuote(`${name}: ${isSampleExact(value) ? value : 'example'}`));
         }
     }
+    const cookies = Object.entries(route.matchCookies || {}).flatMap(([name, values]) =>
+        values.filter(value => value !== '!').map(value => `${name}=${isSampleExact(value) ? value : 'example'}`));
+    if (cookies.length) parts.push('--cookie', shellQuote(cookies.join('; ')));
     const json = sampleJSONBody(route.matchJson);
     const form = sampleFormBody(route.matchForm);
     const body = json || form || (route.matchBody && isSampleExact(route.matchBody) ? route.matchBody : '');
@@ -162,6 +165,7 @@ export function formatRoute(route, sampleCurl = '') {
     const matchHeaders = Object.entries(route.matchHeaders || {}).flatMap(([name, values]) => values.map(value => `${name}: ${describe(value)}`)).join('\n');
     const matchQuery = Object.entries(route.matchQuery || {}).flatMap(([name, values]) => values.map(value => `${name}: ${describe(value)}`)).join('\n');
     const matchPath = Object.entries(route.matchPath || {}).map(([name, value]) => `:${name}: ${describe(value)}`).join('\n');
+    const matchCookies = Object.entries(route.matchCookies || {}).flatMap(([name, values]) => values.map(value => `${name}: ${describe(value)}`)).join('\n');
     const matchBody = [
         route.matchBody ? `body: ${describe(route.matchBody)}` : '',
         ...Object.entries(route.matchJson || {}).map(([path, value]) => `json ${path}: ${describe(value)}`),
@@ -178,6 +182,7 @@ export function formatRoute(route, sampleCurl = '') {
         `Request header requirements\n${matchHeaders || '(none)'}`,
         matchQuery ? `Query requirements\n${matchQuery}` : '',
         matchPath ? `Path parameter requirements\n${matchPath}` : '',
+        matchCookies ? `Cookie requirements\n${matchCookies}` : '',
         matchBody ? `Body requirements\n${matchBody}` : '',
         `Response headers\n${responseHeaders || '(automatic)'}`,
         `Variables\n${variables || '(none)'}`,

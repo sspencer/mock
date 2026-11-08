@@ -40,6 +40,7 @@ type RouteInfo struct {
 	MatchBody     string            `json:"matchBody,omitempty"`
 	MatchJSON     map[string]string `json:"matchJson,omitempty"`
 	MatchForm     url.Values        `json:"matchForm,omitempty"`
+	MatchCookies  url.Values        `json:"matchCookies,omitempty"`
 	Variables     map[string]string `json:"variables"`
 	Body          string            `json:"body"`
 	BodyTruncated bool              `json:"bodyTruncated"`
@@ -86,7 +87,7 @@ func describeRoute(method restclient.Method, index int, revision uint64) RouteIn
 		Path: (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath(), Query: method.Query.Encode(), Port: method.Port, Source: method.Source, Line: method.Line, Status: method.Status,
 		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
 		MatchQuery: cloneValues(method.MatchQuery), MatchPath: cloneOptional(method.MatchPath),
-		MatchBody: method.MatchBody, MatchJSON: cloneOptional(method.MatchJSON), MatchForm: cloneValues(method.MatchForm),
+		MatchBody: method.MatchBody, MatchJSON: cloneOptional(method.MatchJSON), MatchForm: cloneValues(method.MatchForm), MatchCookies: cloneValues(method.MatchCookies),
 		Variables: cloneVariables(method.Variables), Body: body, BodyTruncated: truncated}
 }
 
@@ -225,6 +226,18 @@ func mismatch(method restclient.Method, facts *requestFacts) RouteMismatch {
 			}
 			// Do not repeat request header values (often credentials) in diagnostic summaries.
 			result.Reasons = append(result.Reasons, "Header "+key+": "+matcherReason(matcher, actualValues, false))
+			result.score++
+		}
+	}
+	for _, name := range sortedKeys(method.MatchCookies) {
+		for _, expected := range method.MatchCookies[name] {
+			matcher := restclient.MustMatcher(expected)
+			actualValues := facts.cookieValues(name)
+			if matcher.Match(actualValues) {
+				continue
+			}
+			// Cookies often carry sessions; describe the requirement, not the value.
+			result.Reasons = append(result.Reasons, "Cookie "+name+": "+matcherReason(matcher, actualValues, false))
 			result.score++
 		}
 	}

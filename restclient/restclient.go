@@ -23,8 +23,8 @@ import (
 // Headers on the Method are response headers. Use MatchHeaders (from
 // @header.Name = value variables) to require request headers when matching.
 // MatchQuery (@query.name), MatchPath (@path.name), MatchBody (@body) and
-// MatchJSON (@json.field.path) and MatchForm (@form.name) add further request
-// matchers. Matcher values
+// MatchJSON (@json.field.path), MatchForm (@form.name) and MatchCookies
+// (@cookie.name) add further request matchers. Matcher values
 // are kept as written; see ParseMatcher and ParseBodyMatcher.
 //
 // Target is the request target as written, with any {{name}} references
@@ -66,6 +66,7 @@ type Method struct {
 	MatchBody     string
 	MatchJSON     map[string]string
 	MatchForm     url.Values
+	MatchCookies  url.Values
 	Headers       http.Header
 	Body          string
 	File          string
@@ -144,7 +145,7 @@ type Options struct {
 
 // CheckVariableOverride reports whether name can be set with Options.Vars:
 // a variable name that is not a request matcher (@header.*, @query.*,
-// @path.*, @body, @json.*, @form.*).
+// @path.*, @body, @json.*, @form.*, @cookie.*).
 func CheckVariableOverride(name string) error {
 	if !variableNamePattern.MatchString(name) {
 		return fmt.Errorf("invalid variable name %q (use letters, digits, _, . and -, starting with a letter or _)", name)
@@ -262,6 +263,7 @@ func (o Options) Parse(source string, r io.Reader) ([]Method, error) {
 				MatchPath:     make(map[string]string),
 				MatchJSON:     make(map[string]string),
 				MatchForm:     make(url.Values),
+				MatchCookies:  make(url.Values),
 				Headers:       make(http.Header),
 				Source:        source,
 				Line:          lineNumber,
@@ -628,13 +630,13 @@ func parseSection(pending pendingSection, fileDefs []definition, overrides map[s
 const fileVariableRemoved = `$file and @file are no longer supported; start the response body with "< path" instead (example: "< ./users.json")`
 
 // isMatcherName reports whether a variable name is a request matcher
-// (@header.Name, @query.name, @path.name, @body, @json.path or @form.name)
-// rather than a {{name}} variable.
+// (@header.Name, @query.name, @path.name, @body, @json.path, @form.name or
+// @cookie.name) rather than a {{name}} variable.
 func isMatcherName(name string) bool {
 	if name == "body" {
 		return true
 	}
-	for _, prefix := range []string{"header.", "query.", "path.", "json.", "form."} {
+	for _, prefix := range []string{"header.", "query.", "path.", "json.", "form.", "cookie."} {
 		if strings.HasPrefix(name, prefix) {
 			return true
 		}
@@ -768,6 +770,17 @@ func applyControlVariable(method *Method, def definition, source string) error {
 			return err
 		}
 		method.MatchForm.Set(name, value)
+		return nil
+	}
+	if name, ok := strings.CutPrefix(def.name, "cookie."); ok {
+		if name == "" {
+			return parseErrorf(source, def.line,
+				`section %q: @cookie. requires a cookie name (example: "@cookie.session = *")`, method.Name)
+		}
+		if err := parseMatcherValue(method, def, value, source); err != nil {
+			return err
+		}
+		method.MatchCookies.Set(name, value)
 		return nil
 	}
 	if name, ok := strings.CutPrefix(def.name, "path."); ok {

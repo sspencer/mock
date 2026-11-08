@@ -418,7 +418,7 @@ only digits, such as `### [beta] Users`, stay part of the name. The old
 | `@name = value` file and method variables, `-v name=value` overrides and `{{$env.NAME}}` | Environment files / `{{env}}` from IDE |
 | Request line `METHOD /path` | Full multi-step scripts |
 | Response headers after the request line | Separate request vs response documents |
-| `@header.Name`, `@query.name`, `@path.name`, `@body`, `@json.path`, `@form.name` request matchers (exact, `*`, `!`, `~regex`, `!text`, `!~regex`) | Multipart and XML body matchers |
+| `@header.Name`, `@cookie.name`, `@query.name`, `@path.name`, `@body`, `@json.path`, `@form.name` request matchers (exact, `*`, `!`, `~regex`, `!text`, `!~regex`) | Multipart and XML body matchers |
 | `{{name}}`, `{{%name}}` and `{{$placeholder}}` in bodies, response headers and `< path` file paths, with [filters](#filters) and [`{{#repeat}}` blocks](#generated-lists) | Request variables (`{{login.response.body.token}}`) |
 | `< path` external body files | Mixing inline text and `< path` in one body; imports of other `.http` files |
 
@@ -554,6 +554,7 @@ in the file, or in a section, where it replaces the file value.
 | `@trim` | `on` or `off` | `on` | With `off` the inline body keeps its exact text and line endings. See [Supported dialect](#supported-dialect). |
 | `@port` | port number | `-p` (`8080`) | Serve the section on this port. A port in the request URL takes precedence. See [Multiple ports](#multiple-ports). |
 | `@header.Name` | [matcher value](#matcher-values): `text`, `*`, `!`, `~regex`, `!text` or `!~regex` | none | Require the incoming request header to match. A section's header matcher replaces a file one of the same name. See [Header matching](#header-matching). |
+| `@cookie.name` | matcher value | none | Require the request cookie to match. See [Cookie matching](#cookie-matching). |
 | `@query.name` | matcher value | none | Require the query parameter to match. See [Query and path parameter matching](#query-and-path-parameter-matching). |
 | `@path.name` | `text` or `~regex` | none | Require the `:name` path parameter or `*name` wildcard to match. At file scope it applies only to sections whose path has that parameter. |
 | `@body` | matcher value | none | Require the whole request body to match. See [Body matching](#body-matching). |
@@ -624,6 +625,7 @@ a namespace:
 - `{{$path.id}}` reads only the `:id` path parameter.
 - `{{$query.id}}` reads only the `id` query parameter (its first value).
 - `{{$header.X-Request-Id}}` reads a request header (case-insensitive).
+- `{{$cookie.session}}` reads a request cookie (case-sensitive).
 - `{{$env.API_TOKEN}}` reads an environment variable of the `mock` process
   (see [Variables from the command line](#variables-from-the-command-line)).
 
@@ -947,9 +949,33 @@ Content-Type: application/json
 {"ok":true}
 ```
 
+### Cookie matching
+
+An `@cookie.name = value` matcher looks at one cookie from the request's
+`Cookie` header, so it works whatever order or other cookies the client
+sends. Cookie names are case-sensitive. It takes the same
+[values](#matcher-values) as the other matchers, and a regex can capture part
+of the cookie:
+
+```http
+### Dashboard
+@cookie.session = ~(?P<user>[a-z]+)-[0-9]+
+GET /dashboard
+Content-Type: application/json
+
+{"user":"{{$user}}","theme":"{{$cookie.theme}}"}
+
+### [401] Signed out
+@cookie.session = !
+GET /dashboard
+```
+
+Mismatch explanations in the admin UI never repeat cookie values, which often
+carry sessions.
+
 ### Matcher values
 
-`@header.*`, `@query.*`, `@path.*`, `@body`, `@json.*` and `@form.*` matchers share one value syntax:
+`@header.*`, `@cookie.*`, `@query.*`, `@path.*`, `@body`, `@json.*` and `@form.*` matchers share one value syntax:
 
 | Value | Matches when |
 |-------|--------------|

@@ -41,6 +41,9 @@ type requestFacts struct {
 	formDone bool
 	form     url.Values
 	formErr  error
+
+	cookiesDone bool
+	cookies     map[string][]string
 }
 
 func newRequestFacts(r *http.Request, body requestBody) *requestFacts {
@@ -98,6 +101,13 @@ func (f *requestFacts) match(method *restclient.Method, requestMethod string) (m
 	if !pathMatcherMatches(method.MatchPath, values) || !headerMatches(method.MatchHeaders, f.headers) {
 		return nil, false
 	}
+	for name, expectedValues := range method.MatchCookies {
+		for _, expected := range expectedValues {
+			if !restclient.MustMatcher(expected).Match(f.cookieValues(name)) {
+				return nil, false
+			}
+		}
+	}
 	if method.MatchBody != "" && !f.bodyMatches(method.MatchBody) {
 		return nil, false
 	}
@@ -132,7 +142,7 @@ func (f *requestFacts) match(method *restclient.Method, requestMethod string) (m
 
 // captures collects named regexp groups from a matched route's matchers.
 // Later matchers win when two groups share a name: path, query, headers,
-// body, JSON fields, then form fields, each in name order.
+// cookies, body, JSON fields, then form fields, each in name order.
 func (f *requestFacts) captures(method *restclient.Method) map[string]string {
 	out := make(map[string]string)
 	add := func(m restclient.Matcher, values []string) {
@@ -154,6 +164,11 @@ func (f *requestFacts) captures(method *restclient.Method) map[string]string {
 			add(restclient.MustMatcher(raw), f.headers.Values(name))
 		}
 	}
+	for _, name := range slices.Sorted(maps.Keys(method.MatchCookies)) {
+		for _, raw := range method.MatchCookies[name] {
+			add(restclient.MustMatcher(raw), f.cookieValues(name))
+		}
+	}
 	if method.MatchBody != "" {
 		add(restclient.MustBodyMatcher(method.MatchBody), f.bodyValues())
 	}
@@ -168,6 +183,19 @@ func (f *requestFacts) captures(method *restclient.Method) map[string]string {
 		}
 	}
 	return out
+}
+
+// cookieValues returns the values of every request cookie with that name, in
+// the order the Cookie headers list them.
+func (f *requestFacts) cookieValues(name string) []string {
+	if !f.cookiesDone {
+		f.cookiesDone = true
+		f.cookies = make(map[string][]string)
+		for _, cookie := range f.r.Cookies() {
+			f.cookies[cookie.Name] = append(f.cookies[cookie.Name], cookie.Value)
+		}
+	}
+	return f.cookies[name]
 }
 
 func (f *requestFacts) formMatches(name, expected string) bool {
@@ -201,8 +229,8 @@ func (f *requestFacts) formValues(name string) ([]string, error) {
 
 // lookup resolves a {{$name}} placeholder: $env.NAME from the server's
 // environment (never from the request), then path, capture and query values,
-// then the explicit namespaces $path.name, $query.name and $header.Name, then
-// $json.field.path and $form.name from the request body.
+// then the explicit namespaces $path.name, $query.name, $header.Name and
+// $cookie.name, then $json.field.path and $form.name from the request body.
 func (v templateValues) lookup(key string) (string, bool) {
 	if name, ok := strings.CutPrefix(key, "env."); ok && name != "" {
 		return os.LookupEnv(name)
@@ -222,6 +250,8 @@ func (v templateValues) lookup(key string) (string, bool) {
 		values = v.facts.query[name]
 	} else if name, ok := strings.CutPrefix(key, "header."); ok && name != "" {
 		values = v.facts.headers.Values(name)
+	} else if name, ok := strings.CutPrefix(key, "cookie."); ok && name != "" {
+		values = v.facts.cookieValues(name)
 	} else if path, ok := strings.CutPrefix(key, "json."); ok && path != "" {
 		values, _ = v.facts.jsonValues(path)
 	} else if name, ok := strings.CutPrefix(key, "form."); ok && name != "" {

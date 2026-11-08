@@ -31,11 +31,10 @@ and with the items above done they are the next thing to revisit.
 
 ### Matching and routing
 
-- **Richer matching:** JSON paths with dotted keys,
-  cookies (`@cookie.name`), and multipart or
+- **Richer matching:** JSON paths with dotted keys, and multipart or
   XML bodies. Current matching covers methods, encoded paths and path
   parameters, declared query values, and exact, present (`*`), absent (`!`),
-  regex (`~regex`) and negated (`!text`, `!~regex`) matchers on headers, query and path parameters, the raw body,
+  regex (`~regex`) and negated (`!text`, `!~regex`) matchers on headers, cookies, query and path parameters, the raw body,
   JSON fields and form fields, plus trailing `*` path wildcards. The first
   matching route in load order wins, so catch-alls go last; shadowed routes get
   a load warning.
@@ -186,6 +185,8 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Cookie matchers:** `@cookie.name` matchers and `{{$cookie.name}}`
+  placeholders read one cookie from the `Cookie` header.
 - **"Present but not X" matchers:** `!text` and `!~regex` accept a present,
   non-blank value other than `text` (or not matching `regex`), for every
   matcher type. A value starting with `!` is no longer an exact match.

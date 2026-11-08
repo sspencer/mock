@@ -157,3 +157,9 @@ test('describeMatcher explains negated matchers', () => {
     assert.equal(describeMatcher('~x'), '~x (regular expression)');
     assert.equal(isSampleExact('!guest'), false);
 });
+
+test('route curl sends required cookies', () => {
+    const route = { method: 'GET', path: '/me', matchCookies: { session: ['*'], theme: ['dark'], debug: ['!'] } };
+    assert.equal(buildRouteCurl(route, 'http://localhost:8080'), "curl --cookie 'session=example; theme=dark' 'http://localhost:8080/me'");
+    assert.match(formatRoute(route), /Cookie requirements\nsession: \*\ntheme: dark\ndebug: ! \(must be absent\)/);
+});

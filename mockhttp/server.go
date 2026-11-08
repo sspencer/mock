@@ -371,7 +371,7 @@ func shadows(a, b restclient.Method) bool {
 			}
 		}
 	}
-	for _, pair := range [][2]url.Values{{a.MatchQuery, b.MatchQuery}, {a.MatchForm, b.MatchForm}} {
+	for _, pair := range [][2]url.Values{{a.MatchQuery, b.MatchQuery}, {a.MatchForm, b.MatchForm}, {a.MatchCookies, b.MatchCookies}} {
 		for key, values := range pair[0] {
 			for _, value := range values {
 				if !slices.Contains(pair[1][key], value) {
@@ -525,6 +525,7 @@ func cloneMethods(methods []restclient.Method) []restclient.Method {
 		out[i].MatchPath = maps.Clone(methods[i].MatchPath)
 		out[i].MatchJSON = maps.Clone(methods[i].MatchJSON)
 		out[i].MatchForm = cloneValues(methods[i].MatchForm)
+		out[i].MatchCookies = cloneValues(methods[i].MatchCookies)
 		out[i].Comments = append([]string(nil), methods[i].Comments...)
 		out[i].Variables = make(map[string]string, len(methods[i].Variables))
 		for k, v := range methods[i].Variables {
@@ -658,10 +659,10 @@ func (s *Server) clearLocked() {
 }
 
 // isRequestPlaceholder reports whether key reads the request at render time
-// ($query.name, $header.Name, $json.field.path or $form.name). Its value
+// ($query.name, $header.Name, $cookie.name, $json.field.path or $form.name). Its value
 // depends on each request, so it is never reported as unknown.
 func isRequestPlaceholder(key string) bool {
-	for _, prefix := range []string{"query.", "header.", "json.", "form."} {
+	for _, prefix := range []string{"query.", "header.", "cookie.", "json.", "form."} {
 		if name, ok := strings.CutPrefix(key, prefix); ok && name != "" {
 			return true
 		}
@@ -680,6 +681,9 @@ func matcherValues(method restclient.Method) []string {
 		out = append(out, values...)
 	}
 	for _, values := range method.MatchForm {
+		out = append(out, values...)
+	}
+	for _, values := range method.MatchCookies {
 		out = append(out, values...)
 	}
 	for _, value := range method.MatchPath {

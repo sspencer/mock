@@ -229,3 +229,19 @@ func TestNegatedMatchers(t *testing.T) {
 		t.Fatal("negated body matcher should let . match newlines")
 	}
 }
+
+func TestParseCookieMatcher(t *testing.T) {
+	methods, err := Parse("test.http", strings.NewReader("@cookie.consent = yes\n\n### Me\n@cookie.session = *\nGET /me\n\nok\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := methods[0].MatchCookies; got.Get("session") != "*" || got.Get("consent") != "yes" {
+		t.Fatalf("MatchCookies = %v", got)
+	}
+	if _, err := Parse("test.http", strings.NewReader("### Me\n@cookie. = *\nGET /me\n")); err == nil || !strings.Contains(err.Error(), "requires a cookie name") {
+		t.Fatalf("error = %v", err)
+	}
+	if err := CheckVariableOverride("cookie.session"); err == nil {
+		t.Fatal("cookie matcher accepted as a --var override")
+	}
+}

@@ -186,3 +186,57 @@ fallback
 		t.Errorf("missing reason = %q", reason)
 	}
 }
+
+func TestCookieMatchers(t *testing.T) {
+	s := newTestServer(t, `### Dark mode
+@cookie.session = ~(?P<user>[a-z]+)-[0-9]+
+@cookie.theme = dark
+GET /me
+
+dark {{$user}} {{$cookie.theme}}
+
+### Signed in
+@cookie.session = *
+GET /me
+
+signed in
+
+### [401] Signed out
+@cookie.session = !
+GET /me
+
+signed out
+`)
+	for _, tt := range []struct{ cookie, want string }{
+		{"session=alice-1; theme=dark", "dark alice dark"},
+		{"theme=dark; session=bob-2", "dark bob dark"},
+		{"session=alice-1; theme=light", "signed in"},
+		{"session=xyz", "signed in"},
+		{"theme=dark", "signed out"},
+		{"", "signed out"},
+	} {
+		req := httptest.NewRequest("GET", "/me", nil)
+		if tt.cookie != "" {
+			req.Header.Set("Cookie", tt.cookie)
+		}
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+		if got := strings.TrimSpace(rec.Body.String()); got != tt.want {
+			t.Errorf("Cookie %q: body = %q, want %q", tt.cookie, got, tt.want)
+		}
+	}
+}
+
+func TestCookieMismatchHidesValue(t *testing.T) {
+	s := newTestServer(t, "### Session\n@cookie.session = good\nGET /me\n\nok\n")
+	req := httptest.NewRequest("GET", "/me", nil)
+	req.Header.Set("Cookie", "session=secret-token")
+	_, _, info, ok := s.findMethod(req, requestBody{})
+	if ok || len(info.Candidates) == 0 {
+		t.Fatalf("matched = %v, candidates = %v", ok, info.Candidates)
+	}
+	reasons := strings.Join(info.Candidates[0].Reasons, "\n")
+	if !strings.Contains(reasons, "Cookie session: required value does not match") || strings.Contains(reasons, "secret-token") {
+		t.Fatalf("reasons = %q", reasons)
+	}
+}
