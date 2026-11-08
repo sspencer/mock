@@ -100,7 +100,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.recordUnmatched(r, up != nil)
 		if up != nil {
 			capture.match.Upstream = up.target.String()
-			up.serve(capture, r)
+			s.serveUpstream(up, capture, r)
 		} else {
 			http.NotFound(capture, r)
 		}
@@ -115,6 +115,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	status = method.Status
 	render := newRenderer(method, values)
+	if method.Proxy != "" {
+		target, exact, err := proxyTarget(method, render)
+		if err != nil {
+			s.logResponseRenderError(err)
+			http.Error(capture, "mock: "+err.Error(), http.StatusBadGateway)
+		} else {
+			capture.match.Upstream = target.String()
+			s.serveRouteProxy(capture, r, target, exact)
+		}
+		s.logRequest(r, requestBody, capture, capture.statusCode(), method.Name, arrivedAt, time.Since(arrivedAt))
+		return
+	}
 	file, hasFile, err := render.file()
 	var body []byte
 	var headers http.Header
@@ -301,6 +313,9 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 			if _, _, err := restclient.ParseDelay(raw); err != nil {
 				logger.Warn("invalid @delay will be ignored", "delay", raw, "method", method.Name, "source", method.Source, "error", err)
 			}
+		}
+		if method.Proxy != "" && (method.Body != "" || method.File != "" || len(method.Headers) > 0 || method.Stream > 0 || method.Fault != "") {
+			logger.Warn("@proxy forwards the request, so this section's response body, file, headers, @stream and @fault are ignored", "method", method.Name, "source", method.Source, "line", method.Line)
 		}
 		checked := method
 		if method.File != "" && method.Body == "" && !restclient.FileIsTemplate(method.File) {

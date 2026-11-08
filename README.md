@@ -552,6 +552,7 @@ in the file, or in a section, where it replaces the file value.
 | `@seed` | any non-empty text | random | Make generated values reproducible per request. See [Reproducible data](#reproducible-data). |
 | `@template` | `auto`, `on` or `off` | `auto` | Whether placeholders are expanded in the body. See [External response bodies](#external-response-bodies). |
 | `@trim` | `on` or `off` | `on` | With `off` the inline body keeps its exact text and line endings. See [Supported dialect](#supported-dialect). |
+| `@proxy` | `http` or `https` URL | none | Forward the requests this section matches to the URL instead of answering. See [Per-route proxying](#per-route-proxying). |
 | `@port` | port number | `-p` (`8080`) | Serve the section on this port. A port in the request URL takes precedence. See [Multiple ports](#multiple-ports). |
 | `@header.Name` | [matcher value](#matcher-values): `text`, `*`, `!`, `~regex`, `!text` or `!~regex` | none | Require the incoming request header to match. A section's header matcher replaces a file one of the same name. See [Header matching](#header-matching). |
 | `@cookie.name` | matcher value | none | Require the request cookie to match. See [Cookie matching](#cookie-matching). |
@@ -1253,6 +1254,51 @@ mock --upstream https://api.example.com fixtures.http
 The admin UI marks forwarded requests as **proxied** and shows the upstream
 URL, the real response, and the nearby routes that didn't match.
 
+### Per-route proxying
+
+`@proxy = URL` on a section forwards the requests that section matches to a
+real service, so matchers decide which requests go there. Routes without
+`@proxy` still answer with mock responses, and `--upstream` still handles
+requests no route matches:
+
+```http
+@sandbox = https://sandbox.payments.example.com
+
+### Sandbox charges
+@header.X-Test-Mode = live
+@proxy = {{sandbox}}/v1
+POST /payments/*rest
+
+### Mock charges
+POST /payments/*rest
+Content-Type: application/json
+
+{"id":"ch_{{$uuid}}","status":"succeeded"}
+
+### Old API
+@proxy = {{sandbox}}/v2/accounts/{{$path.id}}
+GET /legacy/users/:id
+```
+
+- A plain URL works like `--upstream`: the request path and query are appended
+  to it, so a request for `/payments/charge?x=1` goes to
+  `https://sandbox.payments.example.com/v1/payments/charge?x=1`.
+- A URL with placeholders rewrites the path. It is rendered with the request's
+  values and used as the whole target path; the request's query is appended
+  unless the URL has its own. Above, `/legacy/users/7?page=2` goes to
+  `.../v2/accounts/7?page=2`. Placeholders are inserted unencoded, so a `*rest`
+  wildcard keeps its slashes; use `{{%name}}` to percent-encode a value. The
+  scheme and host must be literal (file `{{variables}}` are fine), and a
+  placeholder the request doesn't provide answers `502 Bad Gateway`.
+- The method, headers and body are forwarded, with the same `Host`,
+  `X-Forwarded-*` and `Via` headers, timeouts, `502` and `508` responses as
+  `--upstream`. `@delay` waits before forwarding. The section's response body,
+  `< file`, response headers, `@stream` and `@fault` are ignored, with a load
+  warning.
+- A proxied request counts as matched for [strict mode](#strict-mode-and-route-coverage)
+  and route hit counts. The admin UI marks it **proxied** and names the URL it
+  was sent to.
+
 ## Strict mode and route coverage
 
 `mock` counts how many requests each route answered. The admin UI's routes
@@ -1536,8 +1582,9 @@ On narrow screens, selecting traffic or a route opens the inspector; use
 - Matched requests show the fixture name, source file/line, configuration revision,
   and elapsed time. Unmatched requests show up to five
   nearby routes with method, path, query, header, and body mismatch explanations.
-  Requests forwarded with `--upstream` are marked **proxied** in the table (the
-  filter matches `proxied`), and the inspector names the upstream URL.
+  Requests forwarded with `--upstream` or by a `@proxy` route are marked
+  **proxied** in the table (the filter matches `proxied`), and the inspector
+  names the URL they were sent to.
 - **Copy as route** appears on unmatched requests and copies a draft `.http`
   section to paste into a request file. The draft has the request's method and
   path, and requires the fields the request had without fixing their values:

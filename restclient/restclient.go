@@ -3,6 +3,7 @@ package restclient
 import (
 	"bufio"
 	"cmp"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -81,6 +82,9 @@ type Method struct {
 	FaultRate     float64
 	Template      string
 	Port          int
+	// Proxy is the @proxy URL that matching requests are forwarded to. It may
+	// hold request placeholders in its path and query.
+	Proxy string
 }
 
 // legacyVariablePattern matches the removed "# $name=value" comment variables.
@@ -856,12 +860,48 @@ func applyControlVariable(method *Method, def definition, source string) error {
 		if strings.TrimSpace(value) == "" {
 			return parseErrorf(source, def.line, `section %q: @seed needs a value, such as "@seed = 42"`, method.Name)
 		}
+	case "proxy":
+		proxy := strings.TrimSpace(value)
+		if err := ValidateProxy(proxy); err != nil {
+			return parseErrorf(source, def.line, "section %q: @proxy %v", method.Name, err)
+		}
+		method.Proxy = proxy
 	case "port":
 		port, err := parsePort(value)
 		if err != nil {
 			return parseErrorf(source, def.line, "section %q: @port %v", method.Name, err)
 		}
 		method.Port = port
+	}
+	return nil
+}
+
+// ValidateProxy checks an @proxy value: an absolute http or https URL whose
+// scheme and host are literal. Request placeholders such as {{$path.rest}}
+// may appear in the path and query.
+func ValidateProxy(raw string) error {
+	const usage = `must be an http or https URL, such as "https://api.example.com" or "https://api.example.com/v2/{{$path.rest}}"`
+	scheme, rest, ok := strings.Cut(raw, "://")
+	if !ok || (!strings.EqualFold(scheme, "http") && !strings.EqualFold(scheme, "https")) {
+		return errors.New(usage)
+	}
+	hostEnd := strings.IndexAny(rest, "/?#")
+	if hostEnd < 0 {
+		hostEnd = len(rest)
+	}
+	if strings.Contains(raw[:len(scheme)+3+hostEnd], "{{") {
+		return errors.New("placeholders may appear only in the path and query, not in the scheme or host")
+	}
+	sample := PlaceholderPattern.ReplaceAllString(raw, "x")
+	target, err := url.Parse(sample)
+	if err != nil || target.Host == "" || target.Hostname() == "" {
+		return errors.New(usage)
+	}
+	if target.Fragment != "" || strings.Contains(sample, "#") {
+		return errors.New("must not have a #fragment")
+	}
+	if target.User != nil {
+		return errors.New("must not include user credentials")
 	}
 	return nil
 }
@@ -967,6 +1007,7 @@ var controlVariables = map[string]struct{}{
 	"seed":     {},
 	"template": {},
 	"trim":     {},
+	"proxy":    {},
 }
 
 // PlaceholderPattern matches {{name}}, {{%name}} and {{$name args}} placeholders

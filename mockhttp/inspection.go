@@ -30,6 +30,8 @@ type RouteInfo struct {
 	Delay string `json:"delay"`
 	// Stream is the @stream pause between body chunks, when set.
 	Stream string `json:"stream,omitempty"`
+	// Proxy is the @proxy URL matching requests are forwarded to, when set.
+	Proxy string `json:"proxy,omitempty"`
 	// Fault is the @fault, such as "reset" or "truncate 25%", when set.
 	Fault         string            `json:"fault,omitempty"`
 	File          string            `json:"file,omitempty"`
@@ -54,7 +56,8 @@ type MatchInfo struct {
 	Route      *RouteInfo      `json:"route,omitempty"`
 	Revision   uint64          `json:"revision"`
 	Candidates []RouteMismatch `json:"candidates,omitempty"`
-	// Upstream is the base URL an unmatched request was forwarded to (--upstream).
+	// Upstream is where the request was forwarded: the --upstream base URL for
+	// an unmatched request, or the @proxy target of the matched route.
 	Upstream string `json:"upstream,omitempty"`
 }
 
@@ -86,7 +89,7 @@ func describeRoute(method restclient.Method, index int, revision uint64) RouteIn
 	}
 	return RouteInfo{ID: fmt.Sprintf("%d:%d", revision, index), Revision: revision, Name: method.Name, Method: method.Method,
 		Path: (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath(), Query: method.Query.Encode(), Port: method.Port, Source: method.Source, Line: method.Line, Status: method.Status,
-		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
+		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), Proxy: method.Proxy, File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
 		MatchQuery: cloneValues(method.MatchQuery), MatchPath: cloneOptional(method.MatchPath),
 		MatchBody: method.MatchBody, MatchJSON: cloneOptional(method.MatchJSON), MatchXML: cloneOptional(method.MatchXML), MatchForm: cloneValues(method.MatchForm), MatchCookies: cloneValues(method.MatchCookies),
 		Variables: cloneVariables(method.Variables), Body: body, BodyTruncated: truncated}

@@ -260,3 +260,18 @@ func TestParseXMLMatcher(t *testing.T) {
 		}
 	}
 }
+
+func TestParseProxy(t *testing.T) {
+	methods, err := Parse("test.http", strings.NewReader("@base = https://api.example.com\n### P\n@proxy = {{base}}/v1/{{$path.rest}}\nGET /p/*rest\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := methods[0].Proxy; got != "https://api.example.com/v1/{{$path.rest}}" {
+		t.Fatalf("Proxy = %q", got)
+	}
+	for _, bad := range []string{"api.example.com", "ftp://x", "https://", "https://{{$query.h}}/x", "https://x/#y", "https://u:p@x"} {
+		if _, err := Parse("test.http", strings.NewReader("### P\n@proxy = "+bad+"\nGET /p\n")); err == nil || !strings.Contains(err.Error(), "@proxy") {
+			t.Errorf("@proxy = %s: err = %v", bad, err)
+		}
+	}
+}

@@ -158,6 +158,12 @@ test('describeMatcher explains negated matchers', () => {
     assert.equal(isSampleExact('!guest'), false);
 });
 
+test('formatRoute shows the proxy target instead of a response', () => {
+    const text = formatRoute({ method: 'GET', path: '/x', status: 200, delay: '50ms', proxy: 'https://api.example.com/v1' });
+    assert.ok(text.includes('Proxy: https://api.example.com/v1 · delay 50ms'), text);
+    assert.ok(!text.includes('Response: 200'), text);
+});
+
 test('formatRoute lists XML requirements', () => {
     const text = formatRoute({ method: 'POST', path: '/soap', matchXml: { 'Envelope.Body.GetQuote.symbol': '*', 'order["@id"]': '!draft' } });
     assert.ok(text.includes('xml Envelope.Body.GetQuote.symbol: '), text);

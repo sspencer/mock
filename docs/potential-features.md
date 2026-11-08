@@ -31,11 +31,7 @@ and with the items above done they are the next thing to revisit.
 
 ### Matching and routing
 
-- **Per-route proxying** (M): `@proxy = https://api.example.com` on a section
-  forwards requests that match it to that URL, optionally rewriting the path.
-  `--upstream` is all or nothing for unmatched requests; this lets one file
-  send `/payments/*` to a sandbox while mocking everything else, and lets
-  matchers decide which requests go to the real service.
+(All matching and routing ideas are implemented; see below.)
 
 ### Responses and templating
 
@@ -178,6 +174,8 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Per-route proxying:** `@proxy = URL` forwards the requests a section
+  matches; a URL with placeholders rewrites the target path.
 - **XML body matchers:** `@xml.element.path` matchers and
   `{{$xml.element.path}}` placeholders, starting at the root element, ignoring
   namespace prefixes, with `*` for any child and `["@name"]` for attributes.

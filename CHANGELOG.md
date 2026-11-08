@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add `@proxy = URL`, which forwards the requests a section matches to a real service. A plain URL gets the request path appended, like `--upstream`; a URL with placeholders, such as `https://api.example.com/v2/{{$path.rest}}`, rewrites the path. Proxied requests count as matched and are marked **proxied** in the admin UI.
+
 - Add `@xml.element.path` request matchers and `{{$xml.element.path}}` placeholders for XML bodies. Paths start at the root element, ignore namespace prefixes, accept `*` for any child, and end in `["@name"]` to read an attribute.
 
 - `@form.name` matchers and `{{$form.name}}` placeholders read `multipart/form-data` bodies: text parts by content, file parts by file name.
