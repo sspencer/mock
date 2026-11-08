@@ -45,8 +45,7 @@ and with the items above done they are the next thing to revisit.
 
 ### Working with real APIs
 
-- **Broader REST Client import:** environment files
-  (`http-client.env.json`, VS Code `rest-client.environmentVariables`).
+(All Working with real APIs ideas are implemented; see below.)
 
 ### Configuration and inputs
 
@@ -112,6 +111,11 @@ Recorded so these are not proposed again without a new reason:
   Client-style tool.
 
 ## Implemented from the original ideas
+
+- **REST Client environments:** `-e NAME` reads `http-client.env.json` (and
+  its private override) or VS Code `rest-client.environmentVariables`,
+  merging `$shared`; `-E FILE` names the file. Values fill in variables no
+  `@name` defines (`restclient.Options.Defaults`).
 
 - **REST Client file compatibility:** unnamed sections (named from `# @name`
   or the request line), requests and comments before the first `###`, `//`

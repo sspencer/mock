@@ -80,3 +80,38 @@ func TestCheckVariableOverride(t *testing.T) {
 		}
 	}
 }
+
+func TestOptionsDefaultsFillUndefinedVariables(t *testing.T) {
+	source := "@host = http://localhost:9000\n\n### A\nGET {{host}}/a\nX-Token: {{token}}\n\nok\n"
+	methods, err := Options{
+		Defaults: map[string]string{"host": "http://localhost:9500", "token": "env", "port": "9999", "query.x": "1"},
+		Vars:     map[string]string{"token": "cli"},
+	}.Parse("vars.http", strings.NewReader(source))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if methods[0].Port != 9000 {
+		t.Errorf("port = %d, want 9000: an @name definition beats a default and @port is never defaulted", methods[0].Port)
+	}
+	if got := methods[0].Variables["token"]; got != "cli" {
+		t.Errorf("token = %q, want cli from Vars", got)
+	}
+	methods, err = Options{Defaults: map[string]string{"token": "env", "unused": "x"}}.Parse("vars.http", strings.NewReader(source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := methods[0].Variables["token"]; got != "env" {
+		t.Errorf("token = %q, want env from Defaults", got)
+	}
+	if unused := UnusedVariables(methods); len(unused) != 0 {
+		t.Errorf("UnusedVariables() = %+v, want none", unused)
+	}
+}
+
+func TestIsDefaultVariable(t *testing.T) {
+	for name, want := range map[string]bool{"baseUrl": true, "api-key": true, "port": false, "delay": false, "header.X": false, "callback.url": false, "1x": false} {
+		if got := IsDefaultVariable(name); got != want {
+			t.Errorf("IsDefaultVariable(%q) = %v, want %v", name, got, want)
+		}
+	}
+}

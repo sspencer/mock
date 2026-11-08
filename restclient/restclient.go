@@ -221,6 +221,18 @@ type Options struct {
 	// and supply values for {{name}} references that no @name defines. Names
 	// must pass CheckVariableOverride.
 	Vars map[string]string
+	// Defaults supply values for {{name}} references that no @name defines,
+	// such as a REST Client environment; @name definitions and Vars win.
+	// Names that IsDefaultVariable rejects are ignored.
+	Defaults map[string]string
+}
+
+// IsDefaultVariable reports whether name can be supplied by Options.Defaults:
+// a valid variable name that is neither a request matcher nor a control
+// variable such as @port or @delay, which a default must not set by accident.
+func IsDefaultVariable(name string) bool {
+	_, control := controlVariables[name]
+	return CheckVariableOverride(name) == nil && !control && !strings.HasPrefix(name, "callback.")
 }
 
 // CheckVariableOverride reports whether name can be set with Options.Vars:
@@ -400,7 +412,7 @@ func (o Options) Parse(source string, r io.Reader) ([]Method, error) {
 
 	var methods []Method
 	for _, pending := range sections {
-		method, err := parseSection(pending, fileDefs, o.Vars, source)
+		method, err := parseSection(pending, fileDefs, o, source)
 		if err != nil {
 			return nil, err
 		}
@@ -517,10 +529,17 @@ var valueEscapes = map[byte]byte{'n': '\n', 'r': '\r', 't': '\t', '\\': '\\'}
 // scopeDefinitions merges file and section definitions (later ones win) and
 // then applies command-line overrides. An override keeps the line of the
 // definition it replaces; one with no definition gets line 0.
-func scopeDefinitions(fileDefs, methodDefs []definition, overrides map[string]string) []definition {
+func scopeDefinitions(fileDefs, methodDefs []definition, opts Options) []definition {
+	overrides := opts.Vars
+	var defaults []definition
+	for _, name := range slices.Sorted(maps.Keys(opts.Defaults)) {
+		if IsDefaultVariable(name) {
+			defaults = append(defaults, definition{name: name, value: opts.Defaults[name]})
+		}
+	}
 	var merged []definition
 	index := make(map[string]int)
-	for _, def := range slices.Concat(fileDefs, methodDefs) {
+	for _, def := range slices.Concat(defaults, fileDefs, methodDefs) {
 		key := def.name
 		if headerName, ok := strings.CutPrefix(key, "header."); ok {
 			key = "header." + http.CanonicalHeaderKey(headerName)
@@ -542,7 +561,7 @@ func scopeDefinitions(fileDefs, methodDefs []definition, overrides map[string]st
 	return merged
 }
 
-func parseSection(pending pendingSection, fileDefs []definition, overrides map[string]string, source string) (Method, error) {
+func parseSection(pending pendingSection, fileDefs []definition, opts Options, source string) (Method, error) {
 	method := pending.method
 	lines := pending.lines
 	sectionNameLine := pending.nameLine
@@ -562,7 +581,7 @@ func parseSection(pending pendingSection, fileDefs []definition, overrides map[s
 	method.Comments = pending.directives.comments
 	i := pending.directives.next
 
-	defs := scopeDefinitions(fileDefs, pending.directives.defs, overrides)
+	defs := scopeDefinitions(fileDefs, pending.directives.defs, opts)
 	for _, def := range defs {
 		if isMatcherName(def.name) {
 			continue

@@ -230,10 +230,10 @@ mock [flags] <file.http> [file.http...]
 mock [flags] -d <dir> [-d <dir>...] [file.http...]
 mock [flags] <directory>
 cat file.http | mock
-mock validate [-strict] [-json] [-var name=value] <file.http|dir> [file.http|dir...]
+mock validate [-strict] [-json] [-var name=value] [-env NAME [-env-file FILE]] <file.http|dir> [file.http|dir...]
 mock init [-force] [dir]
 mock import [-host HOST] [-path PREFIX] <file.har|->
-mock check -upstream URL [-all] [-json] [-header 'Name: value'] [-var name=value] [-timeout 10s] <file.http|dir> [file.http|dir...]
+mock check -upstream URL [-all] [-json] [-header 'Name: value'] [-var name=value] [-env NAME [-env-file FILE]] [-timeout 10s] <file.http|dir> [file.http|dir...]
 mock -version
 mock -h
 ```
@@ -252,6 +252,8 @@ Flags:
 | `-r`, `--record` | (off) | With `-u`, append a draft `.http` section to this file for each method and path the upstream answered (see [Recording forwarded requests](#recording-forwarded-requests)) |
 | `-s`, `--strict` | (off) | At shutdown, list requests no route matched and routes that never matched, and exit `1` if any request was unmatched (see [Strict mode and route coverage](#strict-mode-and-route-coverage)) |
 | `-v`, `--var` | | `NAME=VALUE`: set the `@NAME` variable in every request file, overriding its definitions. Repeat for more variables (see [Variables from the command line](#variables-from-the-command-line)) |
+| `-e`, `--env` | | Use this REST Client environment for `{{NAME}}` references no `@NAME` defines (see [REST Client environments](#rest-client-environments)) |
+| `-E`, `--env-file` | `http-client.env.json`, else `.vscode/settings.json` | With `-e`, read the environments from this file |
 | `-d`, `--dir` | | Load every `.http` file under this directory, after any file arguments, and pick up added or removed files on reload. Repeat for more directories (see [A directory of request files](#a-directory-of-request-files)) |
 | `-i`, `--poll` | (off) | Also check the request files for changes this often, such as `1s` (at least `100ms`), for filesystems that do not deliver change events (see [Reloading](#reloading)) |
 | `-w`, `--delay` | (off) | Delay every route that has no `@delay` of its own, such as `250ms` or `50ms..300ms` (see [Latency and faults for every route](#latency-and-faults-for-every-route)) |
@@ -386,6 +388,7 @@ body.
 | `-strict` | Treat warnings as errors |
 | `-json` | Print a JSON report (`ok`, `routes`, `diagnostics`) instead of text |
 | `-var name=value` | Set a variable as `mock -v` does, so the same warnings apply. Repeatable |
+| `-env NAME`, `-env-file FILE` | Use a [REST Client environment](#rest-client-environments) as `mock -e` and `-E` do |
 
 It exits `0` when the files are valid, `1` when there are errors (or warnings
 with `-strict`), and `2` for usage mistakes, so it fits in CI:
@@ -439,6 +442,7 @@ path. The mock answers in-process without `@delay`, `@fault`, `@stream`,
 | `-all` | Also send routes with unsafe methods (`POST`, `PUT`, `PATCH`, `DELETE`). Without it only `GET`, `HEAD` and `OPTIONS` routes are sent |
 | `-header 'Name: value'` | Add a header to every upstream request, such as credentials. Repeatable |
 | `-var name=value` | Set a variable in every request file, as with `mock -v` |
+| `-env NAME`, `-env-file FILE` | Use a [REST Client environment](#rest-client-environments), as with `mock -e` and `-E` |
 | `-timeout 10s` | Time limit for each upstream request |
 | `-json` | Print the report as JSON: `ok` and one result per route with `result` (`ok`, `drift`, `skipped` or `error`), `differences`, and each side's `status` and `contentType` |
 
@@ -550,6 +554,39 @@ instead of being ignored silently:
 - request headers after the request line (`Authorization`, `Accept`, ...),
   which `mock` reads as response headers.
 
+### REST Client environments
+
+`-e NAME` (`--env`) reads the variables of environment `NAME` from the files
+the REST Client extensions use, looked up in the working directory:
+
+- `http-client.env.json`, with `http-client.private.env.json` overriding it
+  (JetBrains HTTP Client);
+- otherwise `rest-client.environmentVariables` in `.vscode/settings.json`
+  (VS Code REST Client; comments and trailing commas are allowed).
+
+`-E FILE` (`--env-file`) reads either format from another file. A file named
+`http-client.env.json` still picks up its private sibling.
+
+```json
+{
+  "$shared": { "version": "v1" },
+  "local": { "host": "http://localhost:9000", "base": "{{$shared version}}/api" },
+  "staging": { "host": "http://localhost:9100" }
+}
+```
+
+```sh
+mock -e local api.http
+```
+
+The values in `$shared` apply to every environment, and an environment's own
+values win. `{{$shared name}}` in a value reads `$shared`. An environment
+value is used only where no `@name` in the file defines that variable, and
+`-v` overrides both. Values that are objects or arrays are skipped, and so
+are names `mock` reserves: request matchers and special variables such as
+`port` or `delay`. An unknown environment name is an error. The environment
+is read at startup; restart `mock` to pick up changes to it.
+
 ### Supported dialect
 
 `mock` supports a practical subset of JetBrains REST Client / `.http` files:
@@ -557,7 +594,7 @@ instead of being ignored silently:
 | Supported | Not supported |
 |-----------|----------------|
 | `###` sections, named or [unnamed](#rest-client-files), and a request before the first `###` | Request separators beyond `###` |
-| `@name = value` file and method variables, `-v name=value` overrides and `{{$env.NAME}}` | Environment files / `{{env}}` from IDE |
+| `@name = value` file and method variables, `-v name=value` overrides, [environment files](#rest-client-environments) (`-e`) and `{{$env.NAME}}` | `{{$dotenv}}`, `{{$processEnv}}` and other IDE-only system variables |
 | Request line `METHOD /path`, a full URL, an optional `HTTP/1.1` version, or a bare target (`GET`) | Full multi-step scripts |
 | Response headers after the request line | Separate request vs response documents |
 | `@header.Name`, `@cookie.name`, `@query.name`, `@path.name`, `@body`, `@json.path`, `@xml.path`, `@form.name` request matchers (exact, `*`, `!`, `~regex`, `!text`, `!~regex`) | none |

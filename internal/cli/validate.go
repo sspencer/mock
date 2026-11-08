@@ -16,7 +16,7 @@ import (
 	"github.com/sspencer/mock/restclient"
 )
 
-const validateUsage = "usage: mock validate [-strict] [-json] [-var name=value] <file.http|dir> [file.http|dir...]"
+const validateUsage = "usage: mock validate [-strict] [-json] [-var name=value] [-env NAME [-env-file FILE]] <file.http|dir> [file.http|dir...]"
 
 // diagnostic is one problem found while validating request files.
 type diagnostic struct {
@@ -75,6 +75,9 @@ func runValidate(args []string, stdout io.Writer) error {
 	asJSON := fs.Bool("json", false, "print the report as JSON")
 	var vars varFlag
 	fs.Var(&vars, "var", "set `name=value` in every request file (repeatable)")
+	var env envFlags
+	fs.StringVar(&env.Name, "env", "", "use the REST Client environment `NAME` for variables no @name defines")
+	fs.StringVar(&env.File, "env-file", "", "read -env environments from `FILE` (default http-client.env.json, else .vscode/settings.json)")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			fs.SetOutput(stdout)
@@ -90,7 +93,14 @@ func runValidate(args []string, stdout io.Writer) error {
 
 	report := validateReport{Diagnostics: []diagnostic{}}
 	var found []diagnostic
-	methods, err := loadValidationMethods(fs.Args(), vars.options())
+	if err := env.check("-env-file", "-env"); err != nil {
+		return err
+	}
+	opts, err := env.options(vars)
+	if err != nil {
+		return runError("%v", err)
+	}
+	methods, err := loadValidationMethods(fs.Args(), opts)
 	if err != nil {
 		report.Diagnostics = append(report.Diagnostics, diagnostic{Level: "error", Message: err.Error()})
 	} else {
