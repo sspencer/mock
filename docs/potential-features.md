@@ -45,25 +45,7 @@ and with the items above done they are the next thing to revisit.
 
 ### Working with real APIs
 
-- **Recording** (L): capture proxied traffic and write it out as `.http`
-  sections to start a fixture file. Builds on `--upstream` pass-through; lower
-  priority.
-- **Copy all unmatched requests as routes** (S): a UI action that drafts one
-  section per distinct method and path among unmatched (or proxied) requests,
-  using the existing Copy as route logic. A lightweight form of recording that
-  needs no new server code.
-- **HAR import** (M): `mock import traffic.har > api.http` converts a HAR file
-  saved from browser devtools or a proxy into `.http` sections, so fixtures
-  can be built from traffic captured anywhere. Unlike the rejected OpenAPI
-  import it starts from real responses, but it is another converter to
-  maintain, so it should share the draft logic with Copy as route.
-- **Broader REST Client import:** unnamed sections, comments before the first
-  section, HTTP versions on request lines (all currently load errors),
-  environment files and request variables, and explicit request-to-response
-  conversion warnings. Named `###` sections, `@header.*` matchers,
-  `@name = value` variables, and `{{host}}` or full URLs in the request target
-  (whose port selects the listener) are supported; warnings already flag likely
-  request headers used as response headers.
+(All Working with real APIs ideas are implemented; see below.)
 
 ### Configuration and inputs
 
@@ -130,6 +112,26 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **REST Client environments:** `-e NAME` reads `http-client.env.json` (and
+  its private override) or VS Code `rest-client.environmentVariables`,
+  merging `$shared`; `-E FILE` names the file. Values fill in variables no
+  `@name` defines (`restclient.Options.Defaults`).
+
+- **REST Client file compatibility:** unnamed sections (named from `# @name`
+  or the request line), requests and comments before the first `###`, `//`
+  comments, HTTP versions and bare targets on request lines, and load
+  warnings for request variables and request settings.
+- **Recording:** `mock -u URL -r recorded.http fixtures.http` appends a draft
+  section (the Copy as route draft, with the real response) for each method
+  and path the upstream answers, once each, through `Server.SetRequestHook`.
+- **HAR import:** `mock import -host api.example.com traffic.har > api.http`
+  drafts one section per distinct method and path from a HAR file, with the
+  captured responses. The Go draft logic (`internal/cli/draft.go`) is a port
+  of the UI's Copy as route (`draft.mjs`).
+- **Copy all unmatched requests as routes:** the traffic panel's **Copy
+  unmatched as routes** button drafts one section per distinct method and path
+  among unmatched (or proxied) requests, using the Copy as route logic
+  (`buildRouteDrafts` in `draft.mjs`).
 - **Drift check against the real API:** `mock check -upstream URL api.http`
   sends each route's sample request to the mock and the real service and
   reports differences in status, `Content-Type` and top-level JSON fields.

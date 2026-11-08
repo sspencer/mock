@@ -243,7 +243,7 @@ func TestResolveFile(t *testing.T) {
 
 func TestParseRejectsRequestLinesWithExtraTokens(t *testing.T) {
 	input := `### User
-GET /users HTTP/1.1
+GET /users extra
 `
 
 	_, err := Parse("test.http", strings.NewReader(input))
@@ -439,16 +439,16 @@ func TestVariableDefinitionSyntax(t *testing.T) {
 
 func TestRejectInvalidVariableDefinitions(t *testing.T) {
 	for input, want := range map[string]string{
-		"@no-equals\n### r\nGET /x":                   `expected "@name = value"`,
-		"@two words = 1\n### r\nGET /x":               "cannot contain spaces",
-		"@ = 1\n### r\nGET /x":                        "variable name is required",
-		"@1bad = 1\n### r\nGET /x":                    "invalid variable name",
-		"### r\n@json.ro*les = a\nGET /x":             "invalid variable name",
-		"### r\n@json.*x = a\nGET /x":                 "invalid variable name",
-		"### r\n@query.* = a\nGET /x":                 "invalid variable name",
-		"### r\n@status = 201\nGET /x":                "@status is not supported",
-		"### r\n# $delay=1s\nGET /x":                  `use "@delay = 1s"`,
-		"# comment before any section\n### r\nGET /x": "content before first ### section",
+		"@no-equals\n### r\nGET /x":       `expected "@name = value"`,
+		"@two words = 1\n### r\nGET /x":   "cannot contain spaces",
+		"@ = 1\n### r\nGET /x":            "variable name is required",
+		"@1bad = 1\n### r\nGET /x":        "invalid variable name",
+		"### r\n@json.ro*les = a\nGET /x": "invalid variable name",
+		"### r\n@json.*x = a\nGET /x":     "invalid variable name",
+		"### r\n@query.* = a\nGET /x":     "invalid variable name",
+		"### r\n@status = 201\nGET /x":    "@status is not supported",
+		"### r\n# $delay=1s\nGET /x":      `use "@delay = 1s"`,
+		"not a request\n### r\nGET /x":    "content before first ### section",
 	} {
 		_, err := Parse("test.http", strings.NewReader(input))
 		if err == nil || !strings.Contains(err.Error(), want) {
@@ -583,16 +583,9 @@ func TestParseErrors(t *testing.T) {
 	}{
 		{
 			name: "content before first section",
-			input: `GET /users
+			input: `Users list
 `,
-			want: []string{"test.http:1:", "content before first ###", "GET /users"},
-		},
-		{
-			name: "missing method name",
-			input: `###
-GET /users
-`,
-			want: []string{"test.http:1:", "method name is required after ###"},
+			want: []string{"test.http:1:", "content before first ###", "Users list"},
 		},
 		{
 			name: "missing request line",
@@ -762,13 +755,6 @@ GET /users
 			want: []string{"test.http:4:", "invalid response status [1000]"},
 		},
 		{
-			name: "status without name",
-			input: `### [204]
-GET /users
-`,
-			want: []string{"test.http:1:", "method name is required after the status"},
-		},
-		{
 			name: "error line in later section",
 			input: `### Good
 GET /ok
@@ -776,7 +762,7 @@ GET /ok
 ok
 
 ### Bad
-POST /users HTTP/1.1
+POST /users HTTP/1.1 extra
 `,
 			want: []string{"test.http:7:", `section "Bad" has an invalid HTTP request line`},
 		},
@@ -833,7 +819,7 @@ func TestRejectInvalidDirectives(t *testing.T) {
 			t.Errorf("accepted %s", directive)
 		}
 	}
-	for _, name := range []string{"[103] route", "[0] route", "[1000] route", "[204]"} {
+	for _, name := range []string{"[103] route", "[0] route", "[1000] route"} {
 		if _, err := Parse("test.http", strings.NewReader("### "+name+"\nGET /x")); err == nil {
 			t.Errorf("accepted section name %q", name)
 		}
@@ -873,5 +859,61 @@ func TestParseRateLimit(t *testing.T) {
 	}
 	if _, err := Parse("test.http", strings.NewReader("### Search\n@rate-limit = lots\nGET /search\n\nok\n")); err == nil || !strings.Contains(err.Error(), "test.http:2:") {
 		t.Errorf("bad @rate-limit error = %v", err)
+	}
+}
+
+func TestParseRESTClientForms(t *testing.T) {
+	input := `# A REST Client file
+// with comments before the first request
+@host = http://localhost:8080
+
+GET {{host}}/users HTTP/1.1
+Content-Type: application/json
+
+[]
+
+###
+// unnamed section
+POST /users HTTP/2
+
+{"id":1}
+
+### [204]
+DELETE /users/1
+
+###
+/health
+
+### Status
+https://example.com/status HTTP/1.1
+`
+	methods, err := Parse("rest.http", strings.NewReader(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []struct {
+		name, method, path string
+		status, line       int
+	}{
+		{"GET {{host}}/users", "GET", "/users", 200, 5},
+		{"POST /users", "POST", "/users", 200, 10},
+		{"DELETE /users/1", "DELETE", "/users/1", 204, 16},
+		{"GET /health", "GET", "/health", 200, 19},
+		{"Status", "GET", "/status", 200, 22},
+	}
+	if len(methods) != len(want) {
+		t.Fatalf("got %d methods", len(methods))
+	}
+	for i, w := range want {
+		m := methods[i]
+		if m.Name != w.name || m.Method != w.method || m.Path != w.path || m.Status != w.status || m.Line != w.line {
+			t.Errorf("method %d = %q %s %s %d line %d, want %+v", i, m.Name, m.Method, m.Path, m.Status, m.Line, w)
+		}
+	}
+	if methods[0].Body != "[]" || methods[1].Body != `{"id":1}` {
+		t.Errorf("bodies %q %q", methods[0].Body, methods[1].Body)
+	}
+	if got := methods[1].Comments; len(got) != 1 || got[0] != "unnamed section" {
+		t.Errorf("comments %q", got)
 	}
 }

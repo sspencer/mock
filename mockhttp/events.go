@@ -342,3 +342,14 @@ func requestEventHeaders(r *http.Request) http.Header {
 	}
 	return headers
 }
+
+// SetRequestHook calls hook with the event of every request the server
+// handles (not @callback requests), after it is logged, in the request's
+// goroutine, so hook must be safe for concurrent use. A nil hook removes it.
+func (s *Server) SetRequestHook(hook func(RequestEvent)) {
+	if hook == nil {
+		s.requestHook.Store(nil)
+		return
+	}
+	s.requestHook.Store(&hook)
+}

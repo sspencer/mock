@@ -74,8 +74,7 @@ export function buildRouteDraft(event, { mockPort = 0 } = {}) {
 
     const response = event.response || {};
     const upstreamBody = bodyText(response.body);
-    const useUpstream = Boolean(event.match?.upstream) && response.status > 0 && !response.fault &&
-        !response.body?.encoding && !response.body?.truncated && inlineSafe(upstreamBody);
+    const useUpstream = usableUpstream(event);
     const status = useUpstream ? response.status : 200;
     lines.push(`### [${status}] ${request.method} ${routePath(path)}`);
 
@@ -101,4 +100,30 @@ export function buildRouteDraft(event, { mockPort = 0 } = {}) {
         lines.push('Content-Type: application/json', '', '{}');
     }
     return lines.join('\n') + '\n';
+}
+
+// usableUpstream reports whether an event's response came from --upstream and
+// can be pasted as a draft's response.
+function usableUpstream(event) {
+    const response = event.response || {};
+    return Boolean(event.match?.upstream) && response.status > 0 && !response.fault &&
+        !response.body?.encoding && !response.body?.truncated && inlineSafe(bodyText(response.body));
+}
+
+// buildRouteDrafts drafts one section per distinct method and path among the
+// events no route answered (callbacks are skipped), oldest first. For each
+// method and path the first event with a usable upstream response is used, else
+// the first event. It returns the sections joined by blank lines and how many
+// there are; text is "" when there are none.
+export function buildRouteDrafts(events, options = {}) {
+    const groups = new Map();
+    for (const event of events || []) {
+        if (!event?.request?.method || event.match?.route || event.callback) continue;
+        const path = (event.request.url || '/').split('?')[0];
+        const key = `${event.request.method} ${path}`;
+        const current = groups.get(key);
+        if (!current || (!usableUpstream(current) && usableUpstream(event))) groups.set(key, event);
+    }
+    const sections = [...groups.values()].map(event => buildRouteDraft(event, options));
+    return { text: sections.join('\n'), count: sections.length };
 }

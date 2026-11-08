@@ -230,9 +230,10 @@ mock [flags] <file.http> [file.http...]
 mock [flags] -d <dir> [-d <dir>...] [file.http...]
 mock [flags] <directory>
 cat file.http | mock
-mock validate [-strict] [-json] [-var name=value] <file.http|dir> [file.http|dir...]
+mock validate [-strict] [-json] [-var name=value] [-env NAME [-env-file FILE]] <file.http|dir> [file.http|dir...]
 mock init [-force] [dir]
-mock check -upstream URL [-all] [-json] [-header 'Name: value'] [-var name=value] [-timeout 10s] <file.http|dir> [file.http|dir...]
+mock import [-host HOST] [-path PREFIX] <file.har|->
+mock check -upstream URL [-all] [-json] [-header 'Name: value'] [-var name=value] [-env NAME [-env-file FILE]] [-timeout 10s] <file.http|dir> [file.http|dir...]
 mock -version
 mock -h
 ```
@@ -248,8 +249,11 @@ Flags:
 | `-x`, `--no-ui` | (off) | Do not start the admin UI. Cannot be combined with `-a` |
 | `-b`, `--bind` | `127.0.0.1`, or `MOCK_BIND` | Bind address. Use `0.0.0.0` to listen on all interfaces |
 | `-u`, `--upstream` | (off) | Forward requests no route matches to this `http` or `https` URL and return its response (see [Passing unmatched requests to a real API](#passing-unmatched-requests-to-a-real-api)) |
+| `-r`, `--record` | (off) | With `-u`, append a draft `.http` section to this file for each method and path the upstream answered (see [Recording forwarded requests](#recording-forwarded-requests)) |
 | `-s`, `--strict` | (off) | At shutdown, list requests no route matched and routes that never matched, and exit `1` if any request was unmatched (see [Strict mode and route coverage](#strict-mode-and-route-coverage)) |
 | `-v`, `--var` | | `NAME=VALUE`: set the `@NAME` variable in every request file, overriding its definitions. Repeat for more variables (see [Variables from the command line](#variables-from-the-command-line)) |
+| `-e`, `--env` | | Use this REST Client environment for `{{NAME}}` references no `@NAME` defines (see [REST Client environments](#rest-client-environments)) |
+| `-E`, `--env-file` | `http-client.env.json`, else `.vscode/settings.json` | With `-e`, read the environments from this file |
 | `-d`, `--dir` | | Load every `.http` file under this directory, after any file arguments, and pick up added or removed files on reload. Repeat for more directories (see [A directory of request files](#a-directory-of-request-files)) |
 | `-i`, `--poll` | (off) | Also check the request files for changes this often, such as `1s` (at least `100ms`), for filesystems that do not deliver change events (see [Reloading](#reloading)) |
 | `-w`, `--delay` | (off) | Delay every route that has no `@delay` of its own, such as `250ms` or `50ms..300ms` (see [Latency and faults for every route](#latency-and-faults-for-every-route)) |
@@ -384,6 +388,7 @@ body.
 | `-strict` | Treat warnings as errors |
 | `-json` | Print a JSON report (`ok`, `routes`, `diagnostics`) instead of text |
 | `-var name=value` | Set a variable as `mock -v` does, so the same warnings apply. Repeatable |
+| `-env NAME`, `-env-file FILE` | Use a [REST Client environment](#rest-client-environments) as `mock -e` and `-E` do |
 
 It exits `0` when the files are valid, `1` when there are errors (or warnings
 with `-strict`), and `2` for usage mistakes, so it fits in CI:
@@ -437,6 +442,7 @@ path. The mock answers in-process without `@delay`, `@fault`, `@stream`,
 | `-all` | Also send routes with unsafe methods (`POST`, `PUT`, `PATCH`, `DELETE`). Without it only `GET`, `HEAD` and `OPTIONS` routes are sent |
 | `-header 'Name: value'` | Add a header to every upstream request, such as credentials. Repeatable |
 | `-var name=value` | Set a variable in every request file, as with `mock -v` |
+| `-env NAME`, `-env-file FILE` | Use a [REST Client environment](#rest-client-environments), as with `mock -e` and `-E` |
 | `-timeout 10s` | Time limit for each upstream request |
 | `-json` | Print the report as JSON: `ok` and one result per route with `result` (`ok`, `drift`, `skipped` or `error`), `differences`, and each side's `status` and `contentType` |
 
@@ -444,6 +450,35 @@ path. The mock answers in-process without `@delay`, `@fault`, `@stream`,
 `~regex` or negated matcher the sample cannot guess) is an error. Redirects are
 not followed. The exit code is `0` when nothing drifted, `1` on drift or
 errors, and `2` for usage errors.
+
+### Importing traffic from a HAR file
+
+`mock import` turns a HAR file, saved from browser devtools ("Save all as
+HAR"), a proxy such as mitmproxy or Charles, or `mock`'s own **Export HAR**,
+into `.http` sections on stdout:
+
+```sh
+mock import -host api.example.com traffic.har > api.http
+```
+
+Each distinct method and path becomes one section, drafted the same way as the
+admin UI's **Copy as route**: the section requires the query parameters,
+`Authorization` header and top-level JSON or form fields the request had
+(`@query.page = *`, without fixing their values) and answers with the captured
+status, `Content-Type` and body. When a path was requested more than once, the
+first request with a usable response is drafted. A body that is binary, was
+left out of the HAR, or can't be pasted inline becomes a placeholder `[200]`
+with `{}`; a body containing `{{` gets `@template = off`. Path characters that
+mean something in routes (`*`, a leading `:`, `{`, `}`) are escaped.
+
+| Flag | Description |
+|------|-------------|
+| `-host HOST` | Import only requests to this host (`api.example.com`, or with a port) |
+| `-path PREFIX` | Import only request paths starting with this prefix, such as `/api/` |
+
+CORS preflight requests and non-HTTP entries are skipped. Pass `-` to read the
+HAR from stdin. A summary of imported and skipped requests goes to stderr. The
+exit code is `1` when nothing could be imported.
 
 ## Request File Format
 
@@ -490,18 +525,80 @@ range is `200`–`999`; invalid codes are load errors. Brackets that do not hold
 only digits, such as `### [beta] Users`, stay part of the name. The old
 `$status` variable is no longer supported and is also a load error.
 
+### REST Client files
+
+Files written for the VS Code REST Client or JetBrains HTTP Client load with a
+few allowances:
+
+- The name after `###` is optional. An unnamed section (`###` or `### [204]`
+  alone) is named after its request line, such as `GET /users`, or after a
+  `# @name login` comment above the request line.
+- A request before the first `###` starts an unnamed section, so a file of
+  requests separated only by `###` loads. Comments directly above it (no blank
+  line in between) belong to it.
+- `#` and `//` lines are comments, before the first section and above a
+  request line.
+- An HTTP version after the target, as in `GET /users HTTP/1.1`, is ignored.
+- A request line that is only a target, such as `https://example.com/users`
+  or `/health`, is a `GET`.
+
+Some REST Client features have no meaning in a mock and get load warnings
+instead of being ignored silently:
+
+- request variables such as `{{login.response.body.$.token}}`: a mock answers
+  a single request, so there is no earlier response to read. Use
+  [`{{$json.*}}`, `{{$header.*}}` or `{{$query.*}}`](#placeholders) for the
+  current request's values;
+- request settings in comments, such as `# @no-redirect`, `# @prompt` or
+  `# @timeout`;
+- request headers after the request line (`Authorization`, `Accept`, ...),
+  which `mock` reads as response headers.
+
+### REST Client environments
+
+`-e NAME` (`--env`) reads the variables of environment `NAME` from the files
+the REST Client extensions use, looked up in the working directory:
+
+- `http-client.env.json`, with `http-client.private.env.json` overriding it
+  (JetBrains HTTP Client);
+- otherwise `rest-client.environmentVariables` in `.vscode/settings.json`
+  (VS Code REST Client; comments and trailing commas are allowed).
+
+`-E FILE` (`--env-file`) reads either format from another file. A file named
+`http-client.env.json` still picks up its private sibling.
+
+```json
+{
+  "$shared": { "version": "v1" },
+  "local": { "host": "http://localhost:9000", "base": "{{$shared version}}/api" },
+  "staging": { "host": "http://localhost:9100" }
+}
+```
+
+```sh
+mock -e local api.http
+```
+
+The values in `$shared` apply to every environment, and an environment's own
+values win. `{{$shared name}}` in a value reads `$shared`. An environment
+value is used only where no `@name` in the file defines that variable, and
+`-v` overrides both. Values that are objects or arrays are skipped, and so
+are names `mock` reserves: request matchers and special variables such as
+`port` or `delay`. An unknown environment name is an error. The environment
+is read at startup; restart `mock` to pick up changes to it.
+
 ### Supported dialect
 
 `mock` supports a practical subset of JetBrains REST Client / `.http` files:
 
 | Supported | Not supported |
 |-----------|----------------|
-| `###` named sections | Request separators beyond `###` |
-| `@name = value` file and method variables, `-v name=value` overrides and `{{$env.NAME}}` | Environment files / `{{env}}` from IDE |
-| Request line `METHOD /path` | Full multi-step scripts |
+| `###` sections, named or [unnamed](#rest-client-files), and a request before the first `###` | Request separators beyond `###` |
+| `@name = value` file and method variables, `-v name=value` overrides, [environment files](#rest-client-environments) (`-e`) and `{{$env.NAME}}` | `{{$dotenv}}`, `{{$processEnv}}` and other IDE-only system variables |
+| Request line `METHOD /path`, a full URL, an optional `HTTP/1.1` version, or a bare target (`GET`) | Full multi-step scripts |
 | Response headers after the request line | Separate request vs response documents |
 | `@header.Name`, `@cookie.name`, `@query.name`, `@path.name`, `@body`, `@json.path`, `@xml.path`, `@form.name` request matchers (exact, `*`, `!`, `~regex`, `!text`, `!~regex`) | none |
-| `{{name}}`, `{{%name}}` and `{{$placeholder}}` in bodies, response headers and `< path` file paths, with [filters](#filters) and [`{{#repeat}}` blocks](#generated-lists) | Request variables (`{{login.response.body.token}}`) |
+| `{{name}}`, `{{%name}}` and `{{$placeholder}}` in bodies, response headers and `< path` file paths, with [filters](#filters) and [`{{#repeat}}` blocks](#generated-lists) | Request variables (`{{login.response.body.token}}`; a load warning) |
 | `< path` external body files | Mixing inline text and `< path` in one body; imports of other `.http` files |
 
 Inline bodies normalize line endings to LF and discard leading and trailing
@@ -1517,6 +1614,47 @@ mock --upstream https://api.example.com fixtures.http
 The admin UI marks forwarded requests as **proxied** and shows the upstream
 URL, the real response, and the nearby routes that didn't match.
 
+### Recording forwarded requests
+
+Add `-r` (`--record`) to turn forwarded traffic into a request file. Each time
+the upstream answers a method and path that isn't recorded yet, `mock` appends
+a draft section for it, the same draft as the admin UI's **Copy as route**:
+
+```sh
+mock --upstream https://api.example.com --record recorded.http fixtures.http
+```
+
+```http
+### [200] GET /users
+@query.page = *
+@header.Authorization = *
+GET /users
+Content-Type: application/json
+
+[{"id":1,"name":"Alex"}]
+```
+
+- Only requests `--upstream` answered are recorded: not requests a route
+  answered (including `@proxy` routes), and not `mock`'s own `502` or `508`
+  answers when the upstream fails. Upstream errors such as `404` are recorded
+  like any other answer.
+- Each method and path is recorded once, from the first answer; query strings
+  don't make separate sections. Sections already in the file count as
+  recorded, so restarting with the same file only adds new routes. The file
+  must load as a request file if it already exists.
+- The section requires the query parameters, `Authorization` header and
+  top-level JSON or form fields the request had, without fixing their values,
+  and answers with the upstream's status, `Content-Type` and body. A gzip or
+  deflate response is decoded. A body that is binary, longer than the 64 KiB
+  capture limit, or can't be pasted inline becomes a placeholder `[200]` with
+  `{}`; a body containing `{{` gets `@template = off`. `@port` is set when the
+  request arrived on a port other than `-p`.
+- Review the file before using it: recorded bodies may contain real data, and
+  matchers are deliberately loose. To replay while recording, also load the
+  recorded file once it exists (`mock -u URL -r recorded.http recorded.http`):
+  hot reload picks up each new section, so the next matching request is
+  answered by the recording instead of the upstream.
+
 ### Per-route proxying
 
 `@proxy = URL` on a section forwards the requests that section matches to a
@@ -1916,6 +2054,12 @@ On narrow screens, selecting traffic or a route opens the inspector; use
   proxied with `--upstream`, whose real status, `Content-Type` and body are
   used when the body can be pasted inline (with `@template = off` if it
   contains `{{`).
+- **Copy unmatched as routes**, above the traffic list, copies one draft
+  section per distinct method and path among every unmatched request in the
+  log, oldest first, so a session of traffic becomes a starting request file.
+  Query strings don't split a path into separate sections, and a proxied
+  request with a usable upstream response is preferred over one without.
+  Callbacks and requests a route answered are skipped.
 - The routes list shows how many requests each route has answered; dimmed `0`s
   are routes nothing has matched yet.
 - Select a configured route to inspect its match requirements, response headers,

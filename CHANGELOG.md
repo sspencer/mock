@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Add `-e` (`--env`) to use a REST Client environment: variables come from `http-client.env.json` (with `http-client.private.env.json` overriding it) or `.vscode/settings.json` `rest-client.environmentVariables`, with `$shared` values and `{{$shared name}}` references. `-E` (`--env-file`) names another file. `mock validate` and `mock check` take `-env` and `-env-file`. Environment values fill in variables no `@name` defines.
+
+- Load more REST Client files: the name after `###` is optional (unnamed sections are named after `# @name` or their request line), a request may come before the first `###`, `//` lines are comments, an `HTTP/1.1` version on the request line is ignored, and a bare target is a `GET`. Request variables such as `{{login.response.body.$.token}}` and request settings such as `# @no-redirect` now get load warnings.
+
+- Add `-r` (`--record`) to record forwarded traffic: with `--upstream`, each method and path the upstream answers is appended to the file as a draft `.http` section with the real response (gzip and deflate decoded). Sections already in the file are not recorded again. Library users can watch requests with `Server.SetRequestHook`.
+
+- Add `mock import <file.har>`, which converts a HAR file from browser devtools, a proxy or **Export HAR** into `.http` sections on stdout, one per distinct method and path, drafted like **Copy as route** with the captured responses. `-host` and `-path` filter the requests.
+
+- Add **Copy unmatched as routes** to the admin UI's traffic panel. It copies one draft `.http` section (the same draft as **Copy as route**) per distinct method and path among the unmatched requests in the log, preferring proxied requests' upstream responses.
+
 - Add `mock check -upstream URL <files>`, a drift check: it sends each route's sample request to the mock and to the real API and reports differences in status, `Content-Type` and top-level JSON fields. Only safe methods are sent unless `-all` is given; `-header` adds credentials and `-json` prints a machine-readable report. It exits `1` on drift.
 
 - Add benchmarks for matching against 3,000 routes, template rendering, `ServeHTTP` and parsing (`make bench`).

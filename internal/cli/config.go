@@ -39,11 +39,17 @@ type config struct {
 	Args             []string
 	// Upstream receives requests no route matches (-u); nil answers 404.
 	Upstream *url.URL
+	// Record is the file that requests --upstream answered are appended to
+	// as draft sections (-r).
+	Record string
 	// Strict reports unmatched requests and unused routes at shutdown and
 	// fails the run when any request went unmatched (-s).
 	Strict bool
 	// Vars override or supply @name variables in every request file (-v).
 	Vars varFlag
+	// Env selects a REST Client environment whose values fill in variables
+	// no @name defines (-e, -E).
+	Env envFlags
 	// Dirs are directories whose .http files are all loaded and watched (-d).
 	Dirs listFlag
 	// Poll, when set, checks the request files for changes on this interval
@@ -71,9 +77,10 @@ const usageText = `usage:
   mock [flags] -d <dir> [-d <dir>...] [file.http...]
   mock [flags] <directory>
   cat file.http | mock
-  mock validate [-strict] [-json] [-var name=value] <file.http|dir> [file.http|dir...]
+  mock validate [-strict] [-json] [-var name=value] [-env NAME [-env-file FILE]] <file.http|dir> [file.http|dir...]
   mock init [-force] [dir]
-  mock check -upstream URL [-all] [-json] [-header 'Name: value'] [-var name=value] [-timeout 10s] <file.http|dir> [file.http|dir...]
+  mock import [-host HOST] [-path PREFIX] <file.har|->
+  mock check -upstream URL [-all] [-json] [-header 'Name: value'] [-var name=value] [-env NAME [-env-file FILE]] [-timeout 10s] <file.http|dir> [file.http|dir...]
 
 flags:
   -p, --port PORT      default HTTP port, for routes whose request target or
@@ -86,11 +93,18 @@ flags:
                        (default 127.0.0.1, or MOCK_BIND)
   -u, --upstream URL   forward requests no route matches to this http or
                        https URL and return its response
+  -r, --record FILE    with -u, append a draft section to FILE for each
+                       method and path the upstream answered
   -s, --strict         at shutdown, list requests no route matched and routes
                        that never matched, and exit 1 if any request was
                        unmatched
   -v, --var NAME=VALUE set @NAME in every request file, overriding its
                        definitions; repeat for more variables
+  -e, --env NAME       use the REST Client environment NAME (with $shared)
+                       from http-client.env.json and http-client.private.env.json,
+                       else .vscode/settings.json, for variables no @name
+                       defines
+  -E, --env-file FILE  read -e environments from FILE instead
   -d, --dir DIR        load every .http file under DIR, after any file
                        arguments, and pick up added or removed files on
                        reload; repeat for more directories
@@ -142,11 +156,20 @@ func parseConfig(args []string) (config, error) {
 	for _, name := range []string{"u", "upstream"} {
 		flagSet.StringVar(&upstream, name, "", "")
 	}
+	for _, name := range []string{"r", "record"} {
+		flagSet.StringVar(&cfg.Record, name, "", "")
+	}
 	for _, name := range []string{"s", "strict"} {
 		flagSet.BoolVar(&cfg.Strict, name, false, "")
 	}
 	for _, name := range []string{"v", "var"} {
 		flagSet.Var(&cfg.Vars, name, "")
+	}
+	for _, name := range []string{"e", "env"} {
+		flagSet.StringVar(&cfg.Env.Name, name, "", "")
+	}
+	for _, name := range []string{"E", "env-file"} {
+		flagSet.StringVar(&cfg.Env.File, name, "", "")
 	}
 	for _, name := range []string{"d", "dir"} {
 		flagSet.Var(&cfg.Dirs, name, "")
@@ -176,6 +199,12 @@ func parseConfig(args []string) (config, error) {
 		if cfg.Upstream, err = parseUpstream(upstream); err != nil {
 			return config{}, err
 		}
+	}
+	if cfg.Record != "" && cfg.Upstream == nil {
+		return config{}, usageError("-r (--record) needs -u (--upstream): only forwarded requests are recorded")
+	}
+	if err := cfg.Env.check("-E (--env-file)", "-e (--env)"); err != nil {
+		return config{}, err
 	}
 	if delay != "" {
 		if cfg.Defaults.Delay, cfg.Defaults.DelayMax, err = restclient.ParseDelay(delay); err != nil {
@@ -235,11 +264,6 @@ func (v *varFlag) Set(raw string) error {
 	}
 	(*v)[name] = value
 	return nil
-}
-
-// options returns the parse options that apply the variables.
-func (v varFlag) options() restclient.Options {
-	return restclient.Options{Vars: v}
 }
 
 // listFlag collects a repeated string flag.

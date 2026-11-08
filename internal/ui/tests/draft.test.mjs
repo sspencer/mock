@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildRouteDraft, routePath } from '../static/draft.mjs';
+import { buildRouteDraft, buildRouteDrafts, routePath } from '../static/draft.mjs';
 
 const body = text => ({ text, size: text.length, capturedSize: text.length, truncated: false });
 const unmatched = (request, extra = {}) => ({
@@ -86,4 +86,29 @@ test('unusable upstream responses fall back to the placeholder', () => {
 test('an event without a method cannot be drafted', () => {
     assert.throws(() => buildRouteDraft({ request: {} }), /no captured method/);
     assert.throws(() => buildRouteDraft(undefined), /no captured method/);
+});
+
+test('buildRouteDrafts drafts one section per unmatched method and path', () => {
+    const matched = unmatched({ url: '/ok' }, { match: { revision: 1, route: { name: 'ok' } } });
+    const proxied = unmatched({ url: '/users?page=2' }, {
+        match: { revision: 1, upstream: 'http://api' },
+        response: { status: 201, headers: { 'Content-Type': ['application/json'] }, body: body('{"id":1}') },
+    });
+    const callback = unmatched({ method: 'POST', url: '/hook' }, { callback: { url: 'http://x/hook' } });
+    const { text, count } = buildRouteDrafts([
+        unmatched({ url: '/users?page=1' }),
+        matched,
+        proxied,
+        unmatched({ method: 'POST', url: '/users' }),
+        callback,
+        unmatched({ url: '/users' }),
+    ], { mockPort: 8080 });
+    assert.equal(count, 2);
+    assert.equal(text,
+        '### [201] GET /users\n@query.page = *\nGET /users\nContent-Type: application/json\n\n{"id":1}\n' +
+        '\n### [200] POST /users\nPOST /users\nContent-Type: application/json\n\n{}\n');
+});
+
+test('buildRouteDrafts returns nothing without unmatched requests', () => {
+    assert.deepEqual(buildRouteDrafts([]), { text: '', count: 0 });
 });

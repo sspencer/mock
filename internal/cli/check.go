@@ -21,7 +21,7 @@ import (
 	"github.com/sspencer/mock/restclient"
 )
 
-const checkUsage = "usage: mock check -upstream URL [-all] [-json] [-header 'Name: value'] [-var name=value] [-timeout 10s] <file.http|dir> [file.http|dir...]"
+const checkUsage = "usage: mock check -upstream URL [-all] [-json] [-header 'Name: value'] [-var name=value] [-env NAME [-env-file FILE]] [-timeout 10s] <file.http|dir> [file.http|dir...]"
 
 // maxCheckBody caps how much of each response body is read for the JSON
 // field comparison.
@@ -88,6 +88,9 @@ func runCheck(ctx context.Context, args []string, stdout io.Writer) error {
 	fs.Var(&headers, "header", "add `Name: value` to every upstream request (repeatable)")
 	var vars varFlag
 	fs.Var(&vars, "var", "set `name=value` in every request file (repeatable)")
+	var env envFlags
+	fs.StringVar(&env.Name, "env", "", "use the REST Client environment `NAME` for variables no @name defines")
+	fs.StringVar(&env.File, "env-file", "", "read -env environments from `FILE` (default http-client.env.json, else .vscode/settings.json)")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			fs.SetOutput(stdout)
@@ -110,7 +113,14 @@ func runCheck(ctx context.Context, args []string, stdout io.Writer) error {
 	if *timeout <= 0 {
 		return usageError("-timeout must be positive")
 	}
-	methods, err := loadValidationMethods(fs.Args(), vars.options())
+	if err := env.check("-env-file", "-env"); err != nil {
+		return err
+	}
+	opts, err := env.options(vars)
+	if err != nil {
+		return runError("%v", err)
+	}
+	methods, err := loadValidationMethods(fs.Args(), opts)
 	if err != nil {
 		return runError("%v", err)
 	}

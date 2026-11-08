@@ -29,6 +29,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if len(args) > 0 && args[0] == "check" {
 		return runCheck(ctx, args[1:], stdout)
 	}
+	if len(args) > 0 && args[0] == "import" {
+		return runImport(args[1:], stdin, stdout, stderr)
+	}
 	if len(args) > 0 && args[0] == "init" {
 		return runInit(args[1:], stdout)
 	}
@@ -54,10 +57,14 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	if len(cfg.Args) == 0 && len(cfg.Dirs) == 0 {
 		if f, ok := stdin.(*os.File); ok && stdinIsTerminal(f) {
-			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-u url] [-s] [-v name=value] [-d dir] [-i 1s] [-w delay] [-f fault] [-l json] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
+			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-u url] [-s] [-v name=value] [-e env] [-d dir] [-i 1s] [-w delay] [-f fault] [-l json] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
 		}
 	}
-	input, err := loadInput(cfg.Args, cfg.Dirs, stdin, cfg.Vars.options())
+	opts, err := cfg.Env.options(cfg.Vars)
+	if err != nil {
+		return runError("%v", err)
+	}
+	input, err := loadInput(cfg.Args, cfg.Dirs, stdin, opts)
 	if err != nil {
 		return runError("%v", err)
 	}
@@ -121,9 +128,17 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		mockServer = mockhttp.New(input.Methods, logger)
 		mockServer.SetRouteDefaults(cfg.Defaults)
 		mockServer.SetUpstream(cfg.Upstream)
+		if cfg.Record != "" {
+			rec, err := newRecorder(cfg.Record, cfg.Port, logger)
+			if err != nil {
+				closeAll()
+				return runError("%v", err)
+			}
+			mockServer.SetRequestHook(rec.record)
+		}
 		handler = mockServer
 		if input.watched() {
-			reloads = &reloader{server: mockServer, input: input, opts: cfg.Vars.options(), plan: plan, logger: logger, out: routesOut, err: stderr}
+			reloads = &reloader{server: mockServer, input: input, opts: opts, plan: plan, logger: logger, out: routesOut, err: stderr}
 			// Holding the lock until the watcher is assigned keeps an early
 			// file event from reloading before the reloader is complete.
 			reloads.mu.Lock()
@@ -181,6 +196,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			}
 			if cfg.Upstream != nil {
 				fmt.Fprintf(stdout, "forwarding unmatched requests to %s\n", cfg.Upstream)
+			}
+			if cfg.Record != "" {
+				fmt.Fprintf(stdout, "recording forwarded requests to %s\n", cfg.Record)
 			}
 			if delay := cfg.Defaults.DelayString(); delay != "" {
 				fmt.Fprintf(stdout, "delaying routes without @delay by %s\n", delay)
@@ -258,6 +276,9 @@ func announceJSON(logger *slog.Logger, cfg config, mockListeners []net.Listener,
 	}
 	if cfg.Upstream != nil {
 		logger.Info("forwarding unmatched requests", "upstream", cfg.Upstream.String())
+	}
+	if cfg.Record != "" {
+		logger.Info("recording forwarded requests", "file", cfg.Record)
 	}
 	if delay := cfg.Defaults.DelayString(); delay != "" {
 		logger.Info("delaying routes without @delay", "delay", delay)
