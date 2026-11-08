@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `GET /requests` on the admin port returns the request log as JSON, filtered
+  by `method`, `path`, `route`, `matched` and `since`.
+
 - Shadowed-route warnings now compare paths segment by segment, so they also catch a later route hidden by an earlier catch-all (`/api/*` before `/api/users/:id`), by a parameter (`/users/:id` before `/users/me`), or by the same path with a renamed parameter. `@path.*` matchers on the earlier route are taken into account.
 
 - Add `-v` / `--var NAME=VALUE` (and `mock validate -var`) to set a variable in every request file from the command line. It overrides file and section definitions, supplies values for `{{name}}` references with no definition, and can set special variables such as `@delay`; it cannot set request matchers.

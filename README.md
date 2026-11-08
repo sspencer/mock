@@ -1137,6 +1137,7 @@ The UI is served at the root of the admin port (`-a`, default `8081`):
 | `/clear` | `POST` clears stored events |
 | `/state` | `GET` active revision, route count, last successful reload, and reload error |
 | `/routes` | `GET` route configuration, including source location, port, matchers, status, delay, body preview, and `hits` (requests answered) |
+| `/requests` | `GET` the request log as JSON, optionally filtered (see below) |
 
 Selecting a route shows a sample `curl` command for that route's port (the
 default mock port when the route declares none), ready to paste
@@ -1155,6 +1156,31 @@ When `mock` listens on more than one port, the request table shows each
 request's host and port, and routes are labeled with their port.
 The `/clear` POST endpoint requires an `X-Requested-With` header or a JSON
 `Content-Type`, and reject cross-origin and cross-site requests.
+
+### Reading the request log
+
+`GET /requests` returns the request log as a JSON array, oldest first: the
+same events the UI shows, with the request, the response, and the route that
+answered (`match.route`, or `null`). It holds the latest 1,000 requests since
+`mock` started or the log was last cleared. Query parameters narrow it, and
+combine:
+
+| Parameter | Keeps requests |
+|-----------|----------------|
+| `method=POST` | with this method (any case) |
+| `path=/users/7` | whose URL path is exactly this, ignoring the query string |
+| `route=Create user` | answered by the route with this name |
+| `matched=true` / `matched=false` | a route answered, or none did (requests forwarded with `--upstream` count as unmatched) |
+| `since=42` | with an event `id` greater than this |
+
+```sh
+curl -s 'http://127.0.0.1:8081/requests?method=POST&path=/users' | jq length
+curl -s 'http://127.0.0.1:8081/requests?matched=false' | jq -r '.[].request.url'
+```
+
+A test can assert what its code under test sent: `POST /clear` (with
+`X-Requested-With`) before the test, then read `/requests` after it. An
+invalid `matched` or `since` value returns `400`.
 
 ### Resizing and mobile navigation
 

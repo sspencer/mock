@@ -15,8 +15,7 @@ is described in full under [Ideas](#ideas).
 2. ~~**Answer `HEAD` from `GET` routes** (S).~~ Done.
 3. ~~**Variables from the command line and environment** (S).~~ Done.
 4. ~~**Smarter shadow warnings** (S).~~ Done.
-5. **Request journal API** (S–M). `GET /requests` on the admin port turns the
-   captured traffic into something tests in any language can assert on.
+5. ~~**Request journal API** (S–M).~~ Done.
 6. **Go test helper and request assertions** (M). Builds on the journal so Go
    tests can start a mock per test and assert on what it received.
 7. **Lint rendered JSON bodies** (S). Catch a trailing comma or a placeholder
@@ -80,12 +79,6 @@ so revisit them once the items above are done.
 
 ### Testing and CI
 
-- **Request journal API** (S–M): `GET /requests` on the admin port returns the
-  retained request events as JSON, filterable by method, path, route name,
-  matched or unmatched, and a sequence cursor (`?since=`). Tests in any
-  language can then assert "the client called `POST /users` once with this
-  body" without parsing SSE. `/events` already holds the data; this is a
-  query interface over it.
 - **Go test helper and request assertions** (M): expose the server as a test
   helper, for example `srv := mocktest.Start(t, "testdata/api.http")` with
   `srv.URL` and `srv.AssertCalled(t, "POST /users", 1)`, backed by the captured
@@ -229,6 +222,9 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Request journal API:** `GET /requests` on the admin port returns the
+  retained request events as JSON, filtered by `method`, `path`, `route`,
+  `matched` and `since`; `Server.Requests` exposes the same query in Go.
 - **Smarter shadow warnings:** paths are compared segment by segment, so a
   catch-all such as `/api/*`, a `:param` before a literal, or a renamed
   parameter now produces the warning, and `@path.*` matchers on the earlier
