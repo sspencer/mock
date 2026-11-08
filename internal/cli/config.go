@@ -65,6 +65,7 @@ const usageText = `usage:
   mock [flags] <directory>
   cat file.http | mock
   mock validate [-strict] [-json] [-var name=value] <file.http|dir> [file.http|dir...]
+  mock init [-force] [dir]
 
 flags:
   -p, --port PORT      default HTTP port, for routes whose request target or

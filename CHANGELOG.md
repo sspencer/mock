@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add `mock init [-force] [dir]`, which writes a commented starter `api.http` and the `users.json` it serves, so a new API runs in one command. It refuses to overwrite existing files without `-force`.
+
 - Add `@callback = METHOD URL` webhook callbacks, with `@callback.delay`, `@callback.header.Name` and `@callback.body` templates rendered from the triggering request. Each callback is sent once after the response, times out after 10 seconds, and is logged in the admin UI marked **callback**. `GET /requests?callbacks=true` and `RequestFilter.Callbacks` list them.
 
 - Add `@compress = gzip | deflate | auto | off` to compress response bodies. `gzip` and `deflate` always compress; `auto` follows the request's `Accept-Encoding` and adds `Vary: Accept-Encoding`.
