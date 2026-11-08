@@ -37,6 +37,11 @@ type Server struct {
 	mu             sync.Mutex
 	config         ConfigState
 	upstream       atomic.Pointer[upstreamProxy]
+	// defaults holds the --delay and --fault for routes that set none.
+	defaults atomic.Pointer[RouteDefaults]
+	// limiters holds the @rate-limit state of each route, by routeKey.
+	limiters map[string]*rateLimiter
+	limitMu  sync.Mutex
 	// reloader re-reads the request files for POST /reload.
 	reloader func()
 	// callbacks tracks @callback requests in flight; callbackCtx is cancelled
@@ -69,6 +74,7 @@ func (s *Server) SetMethods(methods []restclient.Method) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.hits = carryHits(compiled, s.methods, s.hits)
+	s.pruneLimiters(compiled)
 	s.methods = compiled
 	s.config.Revision++
 	s.config.RouteCount = len(compiled)
@@ -114,6 +120,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		status = capture.statusCode()
 		s.logRequest(r, requestBody, capture, status, "", arrivedAt, time.Since(arrivedAt))
+		return
+	}
+	method = s.withDefaults(method)
+	if s.overRateLimit(capture, method) {
+		s.logRequest(r, requestBody, capture, capture.statusCode(), method.Name, arrivedAt, time.Since(arrivedAt))
 		return
 	}
 	if !s.delay(r.Context(), method) {

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -662,28 +661,6 @@ two
 		}
 		if body := response.Body.String(); body != want.body {
 			t.Fatalf("request %d body = %q, want %q", i+1, body, want.body)
-		}
-	}
-}
-
-func BenchmarkServerRouteLookup(b *testing.B) {
-	var input strings.Builder
-	for i := 0; i < 1000; i++ {
-		fmt.Fprintf(&input, "### Route %d\nGET /routes/%d\n\nok-%d\n\n", i, i, i)
-	}
-	methods, err := restclient.Parse("bench.http", strings.NewReader(input.String()))
-	if err != nil {
-		b.Fatalf("Parse() error = %v", err)
-	}
-
-	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	request := httptest.NewRequest(http.MethodGet, "/routes/999", nil)
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		if _, _, _, ok := server.findMethod(request, requestBody{}); !ok {
-			b.Fatal("findMethod() did not match route")
 		}
 	}
 }

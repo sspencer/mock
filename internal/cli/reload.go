@@ -16,6 +16,7 @@ import (
 
 // reloadMockFiles re-reads the input's request files, rescanning its
 // directories, and swaps in the new routes. On failure the old routes stay.
+// A nil out logs the routes as records instead of printing them.
 func reloadMockFiles(mockServer *mockhttp.Server, input inputSource, opts restclient.Options, plan *portPlan, logger *slog.Logger, out, errOut io.Writer) {
 	mockServer.BeginReload()
 	load := func() ([]restclient.Method, error) { return input.load(nil, opts) }
@@ -41,7 +42,7 @@ func reloadMockFiles(mockServer *mockhttp.Server, input inputSource, opts restcl
 	}
 	mockServer.SetMethods(methods)
 	logger.Info("reloaded request files", "input", input.describe(), "methods", len(methods))
-	printMethods(out, methods)
+	showMethods(out, logger, methods)
 }
 
 // reloader serializes reloads from every trigger: file events, POST /reload,

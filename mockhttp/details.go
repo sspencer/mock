@@ -158,8 +158,8 @@ func (s *Server) logRequest(r *http.Request, requestBody loggedBody, response *r
 		"method", r.Method,
 		"path", r.URL.RequestURI(),
 		"status", status,
-		"mock", methodName,
-		"duration", elapsed.String(),
+		"route", methodName,
+		"duration", elapsed,
 	}
 	if response.fault != "" {
 		attrs = append(attrs, "fault", response.fault)

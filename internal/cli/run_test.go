@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -201,5 +203,45 @@ func TestRunUpstreamRejectsStaticDirectory(t *testing.T) {
 	err := Run(cancelledContext(), []string{"-u", "https://api.example.com", t.TempDir()}, strings.NewReader(""), io.Discard, io.Discard, logger)
 	if err == nil || ExitCode(err) != 2 || !strings.Contains(err.Error(), "upstream") {
 		t.Fatalf("Run(dir, -u) error = %v (exit %d), want usage error", err, ExitCode(err))
+	}
+}
+
+func TestRunJSONLogsWriteOnlyJSONToStdout(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "api.http")
+	if err := os.WriteFile(path, []byte("### List users\nGET /users\n\nok\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	var out bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if err := Run(cancelledContext(), []string{"-l", "json", "-p", "0", "-a", "0", path}, strings.NewReader(""), &out, io.Discard, logger); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	var msgs []string
+	var route map[string]any
+	for line := range strings.Lines(out.String()) {
+		var record map[string]any
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			t.Fatalf("stdout line %q is not JSON: %v", line, err)
+		}
+		msg, _ := record["msg"].(string)
+		msgs = append(msgs, msg)
+		if msg == "route" {
+			route = record
+		}
+	}
+	for _, want := range []string{"starting mock HTTP server", "admin UI", "watching request files for changes", "route", "shutting down"} {
+		if !slices.Contains(msgs, want) {
+			t.Errorf("messages = %q, want %q", msgs, want)
+		}
+	}
+	if route["method"] != "GET" || route["path"] != "/users" || route["route"] != "List users" || route["source"] != path+":1" {
+		t.Errorf("route record = %v", route)
+	}
+}
+
+func TestParseConfigRejectsUnknownLogFormat(t *testing.T) {
+	if _, err := parseConfig([]string{"--log-format", "xml", "a.http"}); err == nil || !strings.Contains(err.Error(), "text or json") {
+		t.Fatalf("parseConfig() error = %v", err)
 	}
 }

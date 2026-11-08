@@ -39,25 +39,6 @@ and with the items above done they are the next thing to revisit.
 
 ### Testing and CI
 
-- **Structured JSON logs** (S): `--log-format json` writes one object per
-  request (method, path, status, route, duration) for CI log collectors and
-  `jq`. The server already logs through `slog`.
-- **Global latency and faults** (S): `--delay 50ms..300ms` and `--fault reset
-  5%` apply to every route without editing files, for a resilience run
-  against the same fixtures the normal tests use. Route-level `@delay` and
-  `@fault` would take precedence.
-- **Drift check against the real API** (M): `mock check --upstream URL
-  api.http` sends each route's sample request (the one the admin UI already
-  builds) to the real service and reports differences in status,
-  `Content-Type` and top-level JSON fields. Mocks go stale when the real API
-  changes; this tells you which fixtures to update.
-- **Rate limit simulation** (M): `@rate-limit = 5/1s` answers `429` with
-  `Retry-After` once a route is over its budget. It needs per-route counters,
-  so it belongs with `@times` in the stateful work, although it is
-  time-based, which the stateful plan currently leaves out.
-- **Benchmarks** (S): `go test -bench` cases for matching and rendering with a
-  few thousand routes, so performance regressions in the linear route scan or
-  the template renderer show up in review.
 - **Stateful scenarios** (deferred): `@times` for retry tests, then named
   scenarios with `@scenario`, `@state` and `@next-state`. Full plan in
   [stateful-scenarios.md](stateful-scenarios.md).
@@ -89,9 +70,6 @@ and with the items above done they are the next thing to revisit.
 - **Shared definitions across files** (S–M): `@import ./common.http` (or a
   variables-only file) so several request files can share `@host`, tokens and
   common response headers. The dialect table lists imports as unsupported.
-- **Starter file** (S): `mock init` writes a commented `api.http` showing a
-  route, a matcher, a placeholder and a file body, so a new user has something
-  that runs in one command.
 
 ### Admin UI
 
@@ -152,6 +130,21 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Drift check against the real API:** `mock check -upstream URL api.http`
+  sends each route's sample request to the mock and the real service and
+  reports differences in status, `Content-Type` and top-level JSON fields.
+- **Benchmarks:** `make bench` runs matching benchmarks against 3,000 routes,
+  rendering benchmarks, a whole `ServeHTTP` request and the parser.
+- **Rate limit simulation:** `@rate-limit = 5/1s` answers `429` with
+  `Retry-After` once a route is over its sliding-window budget. Counts are
+  per route and survive reloads that keep the route.
+- **Global latency and faults:** `-w` (`--delay`) and `-f` (`--fault`) apply
+  to every route without its own `@delay` or `@fault`.
+- **Structured JSON logs:** `-l json` (`--log-format json`) makes stdout pure
+  JSON lines: the startup banner, one `route` record per route, and one
+  `http request` record per request (method, path, status, route, duration).
+- **Starter file:** `mock init [-force] [dir]` writes a commented `api.http`
+  and `users.json` showing routes, matchers, placeholders and a file body.
 - **Webhook callbacks:** `@callback = POST {{$json.callbackUrl}}` with
   `@callback.delay`, `.header.*` and `.body`, sent once after the response
   and logged in the admin UI.

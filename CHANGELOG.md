@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Add `mock check -upstream URL <files>`, a drift check: it sends each route's sample request to the mock and to the real API and reports differences in status, `Content-Type` and top-level JSON fields. Only safe methods are sent unless `-all` is given; `-header` adds credentials and `-json` prints a machine-readable report. It exits `1` on drift.
+
+- Add benchmarks for matching against 3,000 routes, template rendering, `ServeHTTP` and parsing (`make bench`).
+
+- Add `@rate-limit = N/window` (such as `5/1s` or `10/s`): once a route has answered N requests in a sliding window it answers `429 Too Many Requests` with `Retry-After`. The route details and `/routes` show the limit (`rateLimit`).
+
+- Add `-w` (`--delay`) and `-f` (`--fault`) to delay or fault every route that has no `@delay` or `@fault` of its own, such as `--delay 50ms..300ms --fault "reset 5%"`. Library users call `Server.SetRouteDefaults`.
+
+- Add `-l json` (`--log-format json`): stdout carries only JSON lines, with the startup banner and route list as records and one `http request` record per request. The request log's matched-route key is now `route` (was `mock`), and `duration` is logged as a duration value (nanoseconds in JSON).
+
+- Add `mock init [-force] [dir]`, which writes a commented starter `api.http` and the `users.json` it serves, so a new API runs in one command. It refuses to overwrite existing files without `-force`.
+
 - Add `@callback = METHOD URL` webhook callbacks, with `@callback.delay`, `@callback.header.Name` and `@callback.body` templates rendered from the triggering request. Each callback is sent once after the response, times out after 10 seconds, and is logged in the admin UI marked **callback**. `GET /requests?callbacks=true` and `RequestFilter.Callbacks` list them.
 
 - Add `@compress = gzip | deflate | auto | off` to compress response bodies. `gzip` and `deflate` always compress; `auto` follows the request's `Accept-Encoding` and adds `Vary: Accept-Encoding`.

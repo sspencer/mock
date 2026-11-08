@@ -1,0 +1,45 @@
+@greeting = Hello
+
+### List users
+# Starter mock API, written by "mock init".
+#
+# Run it with:   mock api.http
+# Then try:      curl localhost:8080/users/7
+# Watch traffic: http://127.0.0.1:8081/
+#
+# Each "###" line starts a route. The line after the comments and
+# directives is the request it answers. The headers below that line are
+# sent back in the response, and the body after the blank line is the
+# response body. Save an edit and mock reloads the file.
+#
+# "< users.json" sends the file next to this one as the body.
+GET /users
+Content-Type: application/json
+
+< users.json
+
+### Find user
+# :id matches any path segment, and {{$id}} puts it in the response.
+# {{$name}} is a random name on every request, and {{greeting}} is the
+# variable defined at the top of the file.
+GET /users/:id
+Content-Type: application/json
+
+{"id": "{{$id}}", "name": "{{$name}}", "message": "{{greeting}} from mock"}
+
+### [201] Create user
+# @json.* matchers pick which route answers: this one needs a JSON body
+# with an "email" field. {{$json.email}} echoes it back.
+@json.email = *
+POST /users
+Content-Type: application/json
+
+{"id": {{$randomInt 100 999}}, "email": "{{$json.email}}"}
+
+### [400] Create user without an email
+# Routes are tried in order, so this answers the requests the route above
+# did not match.
+POST /users
+Content-Type: application/json
+
+{"error": "email is required"}

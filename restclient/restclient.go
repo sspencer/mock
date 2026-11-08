@@ -93,6 +93,10 @@ type Method struct {
 	Compress string
 	// Callback is the @callback request sent after the response, if any.
 	Callback *Callback
+	// RateLimit is the @rate-limit budget: at most RateLimit requests per
+	// RateWindow, after which the route answers 429. 0 means no limit.
+	RateLimit  int
+	RateWindow time.Duration
 }
 
 // Callback is an outbound request a route sends after it responds, set by
@@ -862,6 +866,12 @@ func applyControlVariable(method *Method, def definition, source string) error {
 			return parseErrorf(source, def.line, "section %q: @delay %v", method.Name, err)
 		}
 		method.Delay, method.DelayMax = low, high
+	case "rate-limit":
+		limit, window, err := ParseRateLimit(value)
+		if err != nil {
+			return parseErrorf(source, def.line, "section %q: @rate-limit %v", method.Name, err)
+		}
+		method.RateLimit, method.RateWindow = limit, window
 	case "stream":
 		pause, err := time.ParseDuration(strings.TrimSpace(value))
 		if err != nil || pause < 0 {
@@ -1044,6 +1054,22 @@ func ParseDelay(raw string) (low, high time.Duration, err error) {
 	return low, high, nil
 }
 
+// ParseRateLimit parses a @rate-limit value: a request count, a slash and a
+// window, such as "5/1s", "100/1m" or "5/s" (a bare unit means one of it).
+func ParseRateLimit(raw string) (limit int, window time.Duration, err error) {
+	count, per, ok := strings.Cut(strings.TrimSpace(raw), "/")
+	limit, countErr := strconv.Atoi(strings.TrimSpace(count))
+	per = strings.TrimSpace(per)
+	if per == "s" || per == "m" || per == "h" {
+		per = "1" + per
+	}
+	window, windowErr := time.ParseDuration(per)
+	if !ok || countErr != nil || windowErr != nil || limit < 1 || window <= 0 {
+		return 0, 0, fmt.Errorf(`must be a request count and a window, such as "5/1s", "100/1m" or "10/s"`)
+	}
+	return limit, window, nil
+}
+
 // ParseFault parses an @fault value: "reset" or "truncate", optionally
 // followed by the share of responses it applies to, such as "reset 25%".
 // rate is between 0 and 1.
@@ -1119,17 +1145,18 @@ func trimTrailingBlankLines(lines []string) []string {
 
 // controlVariables are consumed by the mock server itself (not only as {{name}} references).
 var controlVariables = map[string]struct{}{
-	"delay":    {},
-	"port":     {},
-	"stream":   {},
-	"fault":    {},
-	"seed":     {},
-	"template": {},
-	"trim":     {},
-	"proxy":    {},
-	"fixture":  {},
-	"compress": {},
-	"callback": {},
+	"delay":      {},
+	"port":       {},
+	"stream":     {},
+	"fault":      {},
+	"seed":       {},
+	"template":   {},
+	"trim":       {},
+	"proxy":      {},
+	"fixture":    {},
+	"compress":   {},
+	"callback":   {},
+	"rate-limit": {},
 }
 
 // PlaceholderPattern matches {{name}}, {{%name}} and {{$name args}} placeholders
