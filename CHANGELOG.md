@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `@form.name` matchers and `{{$form.name}}` placeholders read `multipart/form-data` bodies: text parts by content, file parts by file name.
+
 - `@json` matchers and `{{$json.*}}` placeholders accept `["key"]` segments for object keys that contain dots or other punctuation, such as `@json.labels["app.kubernetes.io/name"] = web`.
 
 - Add `@cookie.name` request matchers and `{{$cookie.name}}` placeholders, which read one cookie from the `Cookie` header. The admin UI's sample `curl` sends required cookies, and mismatch explanations never show cookie values.

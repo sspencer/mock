@@ -418,7 +418,7 @@ only digits, such as `### [beta] Users`, stay part of the name. The old
 | `@name = value` file and method variables, `-v name=value` overrides and `{{$env.NAME}}` | Environment files / `{{env}}` from IDE |
 | Request line `METHOD /path` | Full multi-step scripts |
 | Response headers after the request line | Separate request vs response documents |
-| `@header.Name`, `@cookie.name`, `@query.name`, `@path.name`, `@body`, `@json.path`, `@form.name` request matchers (exact, `*`, `!`, `~regex`, `!text`, `!~regex`) | Multipart and XML body matchers |
+| `@header.Name`, `@cookie.name`, `@query.name`, `@path.name`, `@body`, `@json.path`, `@form.name` request matchers (exact, `*`, `!`, `~regex`, `!text`, `!~regex`) | XML body matchers |
 | `{{name}}`, `{{%name}}` and `{{$placeholder}}` in bodies, response headers and `< path` file paths, with [filters](#filters) and [`{{#repeat}}` blocks](#generated-lists) | Request variables (`{{login.response.body.token}}`) |
 | `< path` external body files | Mixing inline text and `< path` in one body; imports of other `.http` files |
 
@@ -1131,7 +1131,12 @@ pong
 - **`@form.name`**: matches a field of an `a=1&b=2` body, decoded, in any
   order. A repeated field matches when any of its values does. Field names must
   be valid variable names, so `user[name]` cannot be matched.
-- Bodies are parsed as JSON or form data whatever their `Content-Type`. A blank
+- **Multipart uploads**: when the request's `Content-Type` is
+  `multipart/form-data`, `@form.name` and `{{$form.name}}` read its parts
+  instead. A text part's value is its content; a file part's value is its file
+  name, so `@form.avatar = ~(?i).*\.png` matches a PNG upload. File contents
+  are not matched.
+- Other bodies are parsed as JSON or URL-encoded form data whatever their `Content-Type`. A blank
   body has no fields, so `@json.name = !` and `@form.name = !` match it. A body
   that does not parse matches no `@json.*` (or `@form.*`) matcher, not even
   `!`.

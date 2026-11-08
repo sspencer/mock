@@ -31,7 +31,7 @@ and with the items above done they are the next thing to revisit.
 
 ### Matching and routing
 
-- **Richer matching:** multipart and XML bodies. Current matching covers methods, encoded paths and path
+- **Richer matching:** XML bodies. Current matching covers methods, encoded paths and path
   parameters, declared query values, and exact, present (`*`), absent (`!`),
   regex (`~regex`) and negated (`!text`, `!~regex`) matchers on headers, cookies, query and path parameters, the raw body,
   JSON fields and form fields, plus trailing `*` path wildcards. The first
@@ -184,6 +184,8 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Multipart bodies:** `@form.name` and `{{$form.name}}` read
+  `multipart/form-data` parts (file parts by file name).
 - **JSON paths with dotted keys:** `["key"]` segments in `@json` matchers and
   `{{$json.*}}` placeholders, such as `labels["app.kubernetes.io/name"]`.
 - **Cookie matchers:** `@cookie.name` matchers and `{{$cookie.name}}`

@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"maps"
+	"mime"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/url"
@@ -198,14 +201,58 @@ func (f *requestFacts) cookieValues(name string) []string {
 	return f.cookies[name]
 }
 
+// multipartBoundary returns the boundary of a multipart/form-data content
+// type.
+func multipartBoundary(contentType string) (string, bool) {
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if err != nil || mediaType != "multipart/form-data" || params["boundary"] == "" {
+		return "", false
+	}
+	return params["boundary"], true
+}
+
+// parseMultipartForm reads the fields of a multipart/form-data body. A text
+// part's value is its content; a file part (one with a filename) contributes
+// its file name, so @form.avatar = ~.*\.png matches an upload by name. A
+// blank body has no fields.
+func parseMultipartForm(body []byte, boundary string) (url.Values, error) {
+	form := url.Values{}
+	if len(bytes.TrimSpace(body)) == 0 {
+		return form, nil
+	}
+	reader := multipart.NewReader(bytes.NewReader(body), boundary)
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			return form, nil
+		}
+		if err != nil {
+			return nil, errBodyNotMultipart
+		}
+		name := part.FormName()
+		if name == "" {
+			continue
+		}
+		if filename := part.FileName(); filename != "" {
+			form.Add(name, filename)
+			continue
+		}
+		value, err := io.ReadAll(part)
+		if err != nil {
+			return nil, errBodyNotMultipart
+		}
+		form.Add(name, string(value))
+	}
+}
+
 func (f *requestFacts) formMatches(name, expected string) bool {
 	values, err := f.formValues(name)
 	return err == nil && restclient.MustMatcher(expected).Match(values)
 }
 
-// formValues returns a field of a URL-encoded body. A blank body has no
-// fields; a body that does not parse is an error, and then no @form matcher
-// matches.
+// formValues returns a field of a URL-encoded or multipart/form-data body.
+// A blank body has no fields; a body that does not parse is an error, and
+// then no @form matcher matches.
 func (f *requestFacts) formValues(name string) ([]string, error) {
 	if f.body.unavailable {
 		return nil, errBodyUnavailable
@@ -213,7 +260,9 @@ func (f *requestFacts) formValues(name string) ([]string, error) {
 	if !f.formDone {
 		f.formDone = true
 		f.form, f.formErr = url.Values{}, nil
-		if text := strings.TrimSpace(string(f.body.data)); text != "" {
+		if boundary, ok := multipartBoundary(f.r.Header.Get("Content-Type")); ok {
+			f.form, f.formErr = parseMultipartForm(f.body.data, boundary)
+		} else if text := strings.TrimSpace(string(f.body.data)); text != "" {
 			if form, err := url.ParseQuery(text); err != nil {
 				f.formErr = errBodyNotForm
 			} else {
@@ -363,9 +412,10 @@ func (f *requestFacts) jsonValues(path string) ([]string, error) {
 }
 
 var (
-	errBodyUnavailable = errors.New("request body is larger than 1 MiB or could not be read")
-	errBodyNotJSON     = errors.New("request body is not valid JSON")
-	errBodyNotForm     = errors.New("request body is not valid URL-encoded form data")
+	errBodyUnavailable  = errors.New("request body is larger than 1 MiB or could not be read")
+	errBodyNotJSON      = errors.New("request body is not valid JSON")
+	errBodyNotForm      = errors.New("request body is not valid URL-encoded form data")
+	errBodyNotMultipart = errors.New("request body is not valid multipart/form-data")
 )
 
 // requestLocalPort returns the port of the listener that accepted r, or 0 when
