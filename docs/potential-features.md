@@ -45,13 +45,8 @@ and with the items above done they are the next thing to revisit.
 
 ### Working with real APIs
 
-- **Broader REST Client import:** unnamed sections, comments before the first
-  section, HTTP versions on request lines (all currently load errors),
-  environment files and request variables, and explicit request-to-response
-  conversion warnings. Named `###` sections, `@header.*` matchers,
-  `@name = value` variables, and `{{host}}` or full URLs in the request target
-  (whose port selects the listener) are supported; warnings already flag likely
-  request headers used as response headers.
+- **Broader REST Client import:** environment files
+  (`http-client.env.json`, VS Code `rest-client.environmentVariables`).
 
 ### Configuration and inputs
 
@@ -118,6 +113,10 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **REST Client file compatibility:** unnamed sections (named from `# @name`
+  or the request line), requests and comments before the first `###`, `//`
+  comments, HTTP versions and bare targets on request lines, and load
+  warnings for request variables and request settings.
 - **Recording:** `mock -u URL -r recorded.http fixtures.http` appends a draft
   section (the Copy as route draft, with the real response) for each method
   and path the upstream answers, once each, through `Server.SetRequestHook`.

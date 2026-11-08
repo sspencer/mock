@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -382,6 +383,7 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 		warnUnknownPlaceholders(logger, checked, fixture)
 		checkedMethods = append(checkedMethods, checked)
 		warnIncomingHeadersUsedAsResponse(logger, method)
+		warnRESTClientSyntax(logger, method)
 		warnInvalidJSONBody(logger, method)
 	}
 	warnShadowedRoutes(logger, methods)
@@ -578,6 +580,44 @@ func warnIncomingHeadersUsedAsResponse(logger *slog.Logger, method restclient.Me
 	}
 }
 
+// requestVariablePattern matches a REST Client request variable reference,
+// such as {{login.response.body.$.token}}.
+var requestVariablePattern = regexp.MustCompile(`\{\{\s*([A-Za-z_][\w-]*\.(?:request|response)\.[^}]*?)\s*\}\}`)
+
+// requestSettingPattern matches REST Client request settings in comments,
+// such as "@name login" or "@no-redirect".
+var requestSettingPattern = regexp.MustCompile(`^@(name|prompt|note|no-redirect|no-cookie-jar|no-log|no-auto-encoding|connection-timeout|timeout)\b`)
+
+// warnRESTClientSyntax warns about REST Client request settings, which are
+// comments to mock, and request variables, which mock cannot resolve, so a
+// file converted from REST Client does not silently lose them.
+func warnRESTClientSyntax(logger *slog.Logger, method restclient.Method) {
+	texts := []string{method.Body, method.File}
+	for _, values := range method.Headers {
+		texts = append(texts, values...)
+	}
+	seen := map[string]bool{}
+	for _, text := range texts {
+		for _, match := range requestVariablePattern.FindAllStringSubmatch(text, -1) {
+			if seen[match[1]] {
+				continue
+			}
+			seen[match[1]] = true
+			logger.Warn("REST Client request variables are not supported: a mock answers one request and has no earlier response to read; use {{$json.*}}, {{$header.*}} or {{$query.*}} for this request's values",
+				"placeholder", match[1], "method", method.Name, "source", method.Source, "line", method.Line)
+		}
+	}
+	for _, comment := range method.Comments {
+		if match := requestSettingPattern.FindStringSubmatch(comment); match != nil {
+			if match[1] == "name" && strings.TrimSpace(comment[len("@name"):]) == method.Name {
+				continue // It named an unnamed section.
+			}
+			logger.Warn("REST Client request setting is ignored: it is a comment to mock (name sections with ### Name, and use @delay for timing)",
+				"setting", "@"+match[1], "method", method.Name, "source", method.Source, "line", method.Line)
+		}
+	}
+}
+
 // cloneMethods gives the server ownership of all mutable route configuration.
 func cloneMethods(methods []restclient.Method) []restclient.Method {
 	out := append([]restclient.Method(nil), methods...)
@@ -671,6 +711,9 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method, fixt
 			}
 			key := node.name
 			if node.prefix != "$" {
+				if requestVariablePattern.MatchString("{{" + key + "}}") {
+					continue // warnRESTClientSyntax reports it.
+				}
 				if _, ok := method.Variables[key]; !ok {
 					warn("unresolved placeholder preserved literally (no @"+key+" variable is defined)", key)
 				}

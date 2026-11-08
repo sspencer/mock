@@ -844,3 +844,41 @@ ok
 		t.Fatalf("startedAt = %q, want RFC3339", server.events[0].Request.StartedAt)
 	}
 }
+
+func TestWarnRESTClientSyntax(t *testing.T) {
+	methods, err := restclient.Parse("test.http", strings.NewReader(`# @name login
+POST /login HTTP/1.1
+
+{"token":"{{login.response.body.$.token}}"}
+
+### Profile
+# @no-redirect
+GET /me
+X-Session: {{login.response.headers.X-Session}}
+
+{"user":"{{other.request.body.name}}"}
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if methods[0].Name != "login" {
+		t.Fatalf("unnamed section name = %q, want login from # @name", methods[0].Name)
+	}
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	_ = New(methods, logger)
+	logText := buf.String()
+	for _, want := range []string{
+		"placeholder=login.response.body.$.token",
+		"placeholder=login.response.headers.X-Session",
+		"placeholder=other.request.body.name",
+		"setting=@no-redirect",
+	} {
+		if !strings.Contains(logText, want) {
+			t.Errorf("log missing %q:\n%s", want, logText)
+		}
+	}
+	if strings.Contains(logText, "setting=@name") || strings.Contains(logText, "unresolved placeholder") {
+		t.Errorf("unexpected warning:\n%s", logText)
+	}
+}

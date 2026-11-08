@@ -157,7 +157,62 @@ type pendingSection struct {
 	directives    directives
 	bodyStartLine int
 	nameLine      int
+	// unnamed sections ("###" alone, or a request before the first "###")
+	// are named after their request line.
+	unnamed bool
 }
+
+// unnamedSection is the name of an unnamed section until its request line
+// is read.
+const unnamedSection = "(unnamed)"
+
+func newMethod(name string, status int, source string, line int) *Method {
+	return &Method{
+		Name:          name,
+		Status:        status,
+		Variables:     make(map[string]string),
+		VariableLines: make(map[string]int),
+		MatchHeaders:  make(http.Header),
+		MatchQuery:    make(url.Values),
+		MatchPath:     make(map[string]string),
+		MatchJSON:     make(map[string]string),
+		MatchXML:      make(map[string]string),
+		MatchForm:     make(url.Values),
+		MatchCookies:  make(url.Values),
+		Headers:       make(http.Header),
+		Source:        source,
+		Line:          line,
+	}
+}
+
+// isComment reports whether a trimmed line is a "#" or "//" comment.
+func isComment(line string) bool {
+	return strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//")
+}
+
+// looksLikeRequestLine reports whether a trimmed line reads as a request
+// line: "METHOD target", or a bare target, which REST Client sends as GET.
+func looksLikeRequestLine(line string) bool {
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return false
+	}
+	if len(fields) >= 2 && isHTTPMethod(strings.ToUpper(fields[0])) {
+		return true
+	}
+	return len(fields) <= 2 && isBareTarget(fields[0])
+}
+
+// isBareTarget reports whether a request line token is a target without a
+// method: a path or an http(s) URL.
+func isBareTarget(token string) bool {
+	return strings.HasPrefix(token, "/") || strings.HasPrefix(token, "http://") ||
+		strings.HasPrefix(token, "https://") || strings.HasPrefix(token, "{{")
+}
+
+// httpVersionPattern matches an HTTP version token at the end of a request
+// line, which REST Client allows and mock ignores.
+var httpVersionPattern = regexp.MustCompile(`^HTTP/\d(?:\.\d)?$`)
 
 // Options adjust how request files are parsed. The zero value parses files
 // as written.
@@ -231,6 +286,10 @@ func (o Options) Parse(source string, r io.Reader) ([]Method, error) {
 	var sections []pendingSection
 	var fileDefs []definition
 	var current *Method
+	var currentUnnamed bool
+	// leading holds the comment lines directly above a request before the
+	// first ###, which become part of its unnamed section.
+	var leading, leadingEndings []string
 	var section []string
 	var sectionEndings []string
 	// bodyStartLine is the 1-based file line number of section[0], when section is non-empty.
@@ -263,6 +322,7 @@ func (o Options) Parse(source string, r io.Reader) ([]Method, error) {
 			directives:    found,
 			bodyStartLine: bodyStartLine,
 			nameLine:      sectionNameLine,
+			unnamed:       currentUnnamed,
 		})
 		return nil
 	}
@@ -278,22 +338,11 @@ func (o Options) Parse(source string, r io.Reader) ([]Method, error) {
 			if err != nil {
 				return nil, parseErrorf(source, lineNumber, "%v", err)
 			}
-			current = &Method{
-				Name:          name,
-				Status:        status,
-				Variables:     make(map[string]string),
-				VariableLines: make(map[string]int),
-				MatchHeaders:  make(http.Header),
-				MatchQuery:    make(url.Values),
-				MatchPath:     make(map[string]string),
-				MatchJSON:     make(map[string]string),
-				MatchXML:      make(map[string]string),
-				MatchForm:     make(url.Values),
-				MatchCookies:  make(url.Values),
-				Headers:       make(http.Header),
-				Source:        source,
-				Line:          lineNumber,
+			currentUnnamed = name == ""
+			if currentUnnamed {
+				name = unnamedSection
 			}
+			current = newMethod(name, status, source, lineNumber)
 			section = section[:0]
 			sectionEndings = sectionEndings[:0]
 			sectionNameLine = lineNumber
@@ -303,14 +352,30 @@ func (o Options) Parse(source string, r io.Reader) ([]Method, error) {
 		if current == nil {
 			trimmed := strings.TrimSpace(line)
 			if trimmed == "" {
+				leading, leadingEndings = leading[:0], leadingEndings[:0]
 				continue
 			}
 			if strings.HasPrefix(trimmed, "@") {
+				leading, leadingEndings = leading[:0], leadingEndings[:0]
 				def, err := parseDefinition(trimmed, source, lineNumber)
 				if err != nil {
 					return nil, err
 				}
 				fileDefs = append(fileDefs, def)
+				continue
+			}
+			if isComment(trimmed) {
+				leading = append(leading, line)
+				leadingEndings = append(leadingEndings, ending)
+				continue
+			}
+			if looksLikeRequestLine(trimmed) {
+				// A request before the first ### starts an unnamed section,
+				// as in REST Client files, with the comments directly above it.
+				current, currentUnnamed = newMethod(unnamedSection, 0, source, lineNumber), true
+				section = append(append(section[:0], leading...), line)
+				sectionEndings = append(append(sectionEndings[:0], leadingEndings...), ending)
+				sectionNameLine, bodyStartLine = lineNumber-len(leading), lineNumber-len(leading)
 				continue
 			}
 			return nil, parseErrorf(source, lineNumber,
@@ -351,9 +416,6 @@ var sectionStatusPattern = regexp.MustCompile(`^\[\s*(\d+)\s*\]\s*`)
 // name, as in "### [204] Delete a user". Status is 0 when none is given.
 // Brackets that do not hold only digits, like "[beta]", stay part of the name.
 func parseSectionName(text string) (name string, status int, err error) {
-	if text == "" {
-		return "", 0, fmt.Errorf(`method name is required after ### (example: "### List users")`)
-	}
 	match := sectionStatusPattern.FindStringSubmatch(text)
 	if match == nil {
 		return text, 0, nil
@@ -362,11 +424,7 @@ func parseSectionName(text string) (name string, status int, err error) {
 	if convErr != nil || status < 200 || status > 999 {
 		return "", 0, fmt.Errorf(`invalid response status [%s] in section name (expected a final HTTP status between 200 and 999, example: "### [204] Delete a user")`, match[1])
 	}
-	name = text[len(match[0]):]
-	if name == "" {
-		return "", 0, fmt.Errorf(`method name is required after the status (example: "### [204] Delete a user")`)
-	}
-	return name, status, nil
+	return text[len(match[0]):], status, nil
 }
 
 // scanDirectives reads the leading blank, "#" comment, and "@name = value"
@@ -384,6 +442,8 @@ func scanDirectives(lines []string, lineAt func(int) int, source, sectionName st
 				return found, err
 			}
 			found.defs = append(found.defs, def)
+		case strings.HasPrefix(line, "//"):
+			found.comments = append(found.comments, strings.TrimSpace(line[2:]))
 		case strings.HasPrefix(line, "#"):
 			comment := strings.TrimSpace(line[1:])
 			found.comments = append(found.comments, comment)
@@ -537,6 +597,14 @@ func parseSection(pending pendingSection, fileDefs []definition, overrides map[s
 
 	rawRequest := strings.TrimSpace(lines[i])
 	requestLine := strings.Fields(rawRequest)
+	if len(requestLine) == 3 && httpVersionPattern.MatchString(requestLine[2]) {
+		requestLine = requestLine[:2]
+	}
+	if len(requestLine) == 1 && isBareTarget(requestLine[0]) {
+		requestLine = []string{http.MethodGet, requestLine[0]}
+	} else if len(requestLine) == 2 && isBareTarget(requestLine[0]) && httpVersionPattern.MatchString(requestLine[1]) {
+		requestLine = []string{http.MethodGet, requestLine[0]}
+	}
 	switch {
 	case len(requestLine) == 0:
 		return method, parseErrorf(source, lineAt(i),
@@ -547,7 +615,7 @@ func parseSection(pending pendingSection, fileDefs []definition, overrides map[s
 			method.Name, quoteSnippet(rawRequest))
 	case len(requestLine) > 2:
 		return method, parseErrorf(source, lineAt(i),
-			`section %q has an invalid HTTP request line %s (expected exactly "METHOD /path"; HTTP version tokens are not supported)`,
+			`section %q has an invalid HTTP request line %s (expected "METHOD /path", optionally followed by an HTTP version such as HTTP/1.1)`,
 			method.Name, quoteSnippet(rawRequest))
 	}
 
@@ -559,6 +627,16 @@ func parseSection(pending pendingSection, fileDefs []definition, overrides map[s
 	}
 
 	method.Target = requestLine[1]
+	if pending.unnamed {
+		method.Name = method.Method + " " + method.Target
+		// REST Client names a request with a "# @name login" comment.
+		for _, comment := range method.Comments {
+			if name, ok := strings.CutPrefix(comment, "@name "); ok && strings.TrimSpace(name) != "" {
+				method.Name = strings.TrimSpace(name)
+				break
+			}
+		}
+	}
 	rawTarget := Expand(method.Target, method.Variables, nil)
 	target, err := url.ParseRequestURI(rawTarget)
 	if err != nil {

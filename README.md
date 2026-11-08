@@ -521,18 +521,47 @@ range is `200`–`999`; invalid codes are load errors. Brackets that do not hold
 only digits, such as `### [beta] Users`, stay part of the name. The old
 `$status` variable is no longer supported and is also a load error.
 
+### REST Client files
+
+Files written for the VS Code REST Client or JetBrains HTTP Client load with a
+few allowances:
+
+- The name after `###` is optional. An unnamed section (`###` or `### [204]`
+  alone) is named after its request line, such as `GET /users`, or after a
+  `# @name login` comment above the request line.
+- A request before the first `###` starts an unnamed section, so a file of
+  requests separated only by `###` loads. Comments directly above it (no blank
+  line in between) belong to it.
+- `#` and `//` lines are comments, before the first section and above a
+  request line.
+- An HTTP version after the target, as in `GET /users HTTP/1.1`, is ignored.
+- A request line that is only a target, such as `https://example.com/users`
+  or `/health`, is a `GET`.
+
+Some REST Client features have no meaning in a mock and get load warnings
+instead of being ignored silently:
+
+- request variables such as `{{login.response.body.$.token}}`: a mock answers
+  a single request, so there is no earlier response to read. Use
+  [`{{$json.*}}`, `{{$header.*}}` or `{{$query.*}}`](#placeholders) for the
+  current request's values;
+- request settings in comments, such as `# @no-redirect`, `# @prompt` or
+  `# @timeout`;
+- request headers after the request line (`Authorization`, `Accept`, ...),
+  which `mock` reads as response headers.
+
 ### Supported dialect
 
 `mock` supports a practical subset of JetBrains REST Client / `.http` files:
 
 | Supported | Not supported |
 |-----------|----------------|
-| `###` named sections | Request separators beyond `###` |
+| `###` sections, named or [unnamed](#rest-client-files), and a request before the first `###` | Request separators beyond `###` |
 | `@name = value` file and method variables, `-v name=value` overrides and `{{$env.NAME}}` | Environment files / `{{env}}` from IDE |
-| Request line `METHOD /path` | Full multi-step scripts |
+| Request line `METHOD /path`, a full URL, an optional `HTTP/1.1` version, or a bare target (`GET`) | Full multi-step scripts |
 | Response headers after the request line | Separate request vs response documents |
 | `@header.Name`, `@cookie.name`, `@query.name`, `@path.name`, `@body`, `@json.path`, `@xml.path`, `@form.name` request matchers (exact, `*`, `!`, `~regex`, `!text`, `!~regex`) | none |
-| `{{name}}`, `{{%name}}` and `{{$placeholder}}` in bodies, response headers and `< path` file paths, with [filters](#filters) and [`{{#repeat}}` blocks](#generated-lists) | Request variables (`{{login.response.body.token}}`) |
+| `{{name}}`, `{{%name}}` and `{{$placeholder}}` in bodies, response headers and `< path` file paths, with [filters](#filters) and [`{{#repeat}}` blocks](#generated-lists) | Request variables (`{{login.response.body.token}}`; a load warning) |
 | `< path` external body files | Mixing inline text and `< path` in one body; imports of other `.http` files |
 
 Inline bodies normalize line endings to LF and discard leading and trailing
