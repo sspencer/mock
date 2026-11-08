@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `@json` matchers and `{{$json.*}}` placeholders accept `["key"]` segments for object keys that contain dots or other punctuation, such as `@json.labels["app.kubernetes.io/name"] = web`.
+
 - Add `@cookie.name` request matchers and `{{$cookie.name}}` placeholders, which read one cookie from the `Cookie` header. The admin UI's sample `curl` sends required cookies, and mismatch explanations never show cookie values.
 
 - Add "present but not X" matcher values: `!text` and `!~regex` accept a present, non-blank value that is not `text` (or does not match `regex`), for every matcher type. **Breaking:** a matcher value that starts with `!`, such as `@header.X = !draft`, used to be an exact match for that text; write `~!draft` for that now.

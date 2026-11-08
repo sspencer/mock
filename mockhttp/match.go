@@ -296,7 +296,8 @@ func (f *requestFacts) jsonMatches(path, expected string) bool {
 }
 
 // jsonValues looks up a dot-separated field path in the JSON body. Numeric
-// segments index arrays, and a "*" segment selects every element of an array,
+// segments index arrays, ["key"] segments name object keys that may hold
+// dots, and a "*" segment selects every element of an array,
 // so a path can name many values, in document order. A missing field or null
 // is no value; strings are their text; other values are compact JSON. A blank
 // body has no fields; any other body that is not JSON is an error, and then no
@@ -320,19 +321,26 @@ func (f *requestFacts) jsonValues(path string) ([]string, error) {
 	if f.jsonErr != nil {
 		return nil, f.jsonErr
 	}
+	segments, err := restclient.ParseJSONPath(path)
+	if err != nil {
+		return nil, nil
+	}
 	nodes := []any{f.json}
-	for _, segment := range strings.Split(path, ".") {
+	for _, segment := range segments {
 		var next []any
 		for _, node := range nodes {
 			switch node := node.(type) {
 			case map[string]any:
-				if child, ok := node[segment]; ok {
+				if child, ok := node[segment.Name]; ok && !segment.Any {
 					next = append(next, child)
 				}
 			case []any:
-				if segment == "*" {
+				if segment.Quoted {
+					continue
+				}
+				if segment.Any {
 					next = append(next, node...)
-				} else if index, err := strconv.Atoi(segment); err == nil && index >= 0 && index < len(node) {
+				} else if index, err := strconv.Atoi(segment.Name); err == nil && index >= 0 && index < len(node) {
 					next = append(next, node[index])
 				}
 			}

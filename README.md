@@ -1113,6 +1113,12 @@ pong
   compared as compact JSON text, so `@json.age = 42` and `@json.active = true`
   work, and `@json.age = ~[0-9]+` accepts `42` and `"42"`. A missing field or
   `null` counts as absent for `*` and `!`.
+- **Keys with dots** go in `["key"]`: `@json.labels["app.kubernetes.io/name"] = web`
+  matches `{"labels":{"app.kubernetes.io/name":"web"}}`, and
+  `{{$json.labels["app.kubernetes.io/name"]}}` reads it. A quoted key is always
+  an object key, so `["0"]` and `["*"]` name the keys `0` and `*`. Quoted keys
+  cannot hold double quotes or whitespace, and the path must start with a
+  plain field.
 - **`*` in a `@json` path** selects every element of an array, and the matcher
   accepts the request when any selected element matches:
   `@json.roles.* = admin` accepts `{"roles":["dev","admin"]}`, and

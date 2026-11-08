@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sampleFormBody, sampleJSONBody, buildCurl, buildRouteCurl, formatMessage, formatRoute, bodyNotice, sampleParam, describeMatcher, isSampleExact } from '../static/inspector.mjs';
+import { sampleFormBody, sampleJSONBody, buildCurl, buildRouteCurl, formatMessage, formatRoute, bodyNotice, sampleParam, describeMatcher, isSampleExact, jsonPathSegments } from '../static/inspector.mjs';
 import { attachSplitter, clampPercent, alignedTrafficHeight } from '../static/layout.mjs';
 
 const message = {
@@ -162,4 +162,15 @@ test('route curl sends required cookies', () => {
     const route = { method: 'GET', path: '/me', matchCookies: { session: ['*'], theme: ['dark'], debug: ['!'] } };
     assert.equal(buildRouteCurl(route, 'http://localhost:8080'), "curl --cookie 'session=example; theme=dark' 'http://localhost:8080/me'");
     assert.match(formatRoute(route), /Cookie requirements\nsession: \*\ntheme: dark\ndebug: ! \(must be absent\)/);
+});
+
+test('JSON paths with quoted keys', () => {
+    assert.deepEqual(jsonPathSegments('meta["user.id"].x'), [
+        { name: 'meta', any: false, quoted: false },
+        { name: 'user.id', any: false, quoted: true },
+        { name: 'x', any: false, quoted: false },
+    ]);
+    assert.equal(jsonPathSegments('a..b'), null);
+    assert.equal(sampleJSONBody({ 'labels["app.name"]': 'web', 'items.*.sku': 'A1', 'm["0"]': 'z' }),
+        '{"labels":{"app.name":"web"},"items":[{"sku":"A1"}],"m":{"0":"z"}}');
 });

@@ -68,6 +68,20 @@ export function describeMatcher(value) {
     return value;
 }
 
+// Splits a @json path such as items.*.sku or meta["user.id"] into
+// { name, any, quoted } segments, like restclient.ParseJSONPath. Returns null
+// for a malformed path.
+export function jsonPathSegments(path) {
+    const segments = [];
+    const pattern = /\.?\["([^"\s]+)"\]|(?:^|\.)([A-Za-z0-9_-]+|\*)/y;
+    let match;
+    while (pattern.lastIndex < path.length && (match = pattern.exec(path))) {
+        if (match[1] !== undefined) segments.push({ name: match[1], any: false, quoted: true });
+        else segments.push({ name: match[2], any: match[2] === '*', quoted: false });
+    }
+    return segments.length && pattern.lastIndex === path.length ? segments : null;
+}
+
 // Builds a sample JSON body from @json matchers. Exact values are used as
 // written (JSON literals such as 42 or true stay unquoted); "*" and regexp
 // values become "example"; "!" fields are left out. Numeric path segments
@@ -84,14 +98,17 @@ export function sampleJSONBody(matchJson) {
     try {
         for (const [path, value] of entries) {
             // A "*" segment accepts any element, so the sample puts the value first.
-            const segments = path.split('.').map(segment => segment === '*' ? '0' : segment);
-            if (root === undefined) root = isIndex(segments[0]) ? [] : {};
+            const parsed = jsonPathSegments(path);
+            if (!parsed) throw new Error('bad path');
+            const segments = parsed.map(({ name, any }) => any ? '0' : name);
+            const index = i => !parsed[i].quoted && isIndex(segments[i]);
+            if (root === undefined) root = index(0) ? [] : {};
             let node = root;
             segments.forEach((segment, i) => {
                 const last = i === segments.length - 1;
-                if (Array.isArray(node) !== isIndex(segment)) throw new Error('conflict');
+                if (Array.isArray(node) !== index(i)) throw new Error('conflict');
                 if (last) { node[segment] = literal(value); return; }
-                const child = node[segment] ?? (isIndex(segments[i + 1]) ? [] : {});
+                const child = node[segment] ?? (index(i + 1) ? [] : {});
                 if (typeof child !== 'object' || child === null) throw new Error('conflict');
                 node[segment] = child;
                 node = child;

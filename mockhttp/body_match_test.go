@@ -336,3 +336,35 @@ c
 		t.Fatalf("specific-first routes warned:\n%s", buf.String())
 	}
 }
+
+func TestJSONMatcherQuotedKeys(t *testing.T) {
+	s := newTestServer(t, `### Dotted
+@json.labels["app.kubernetes.io/name"] = web
+POST /deploy
+Content-Type: application/json
+
+{"name": "{{$json.labels["app.kubernetes.io/name"]}}"}
+
+### Literal star key
+@json.stats["*"] = 1
+POST /deploy
+
+star
+
+### Fallback
+POST /deploy
+
+fallback
+`)
+	tests := []struct{ body, want string }{
+		{`{"labels":{"app.kubernetes.io/name":"web"}}`, `{"name": "web"}`},
+		{`{"labels":{"app":{"kubernetes":"web"}}}`, "fallback"},
+		{`{"stats":{"*":1}}`, "star"},
+		{`{"stats":[1]}`, "fallback"}, // a quoted "*" never selects array elements
+	}
+	for _, tt := range tests {
+		if _, got := serveBody(t, s, "/deploy", tt.body); got != tt.want {
+			t.Errorf("body %s: got %q, want %q", tt.body, got, tt.want)
+		}
+	}
+}
