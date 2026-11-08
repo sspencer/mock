@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add the `mocktest` Go package for running a mock server from `.http` files inside a Go test: `mocktest.Start(t, "api.http")` serves on a random port, and `AssertCalled(t, "POST /users", 1)`, `AssertNotCalled` and `AssertAllMatched` check the requests it received.
+
 - `GET /requests` on the admin port returns the request log as JSON, filtered
   by `method`, `path`, `route`, `matched` and `since`.
 

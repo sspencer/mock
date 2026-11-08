@@ -16,8 +16,7 @@ is described in full under [Ideas](#ideas).
 3. ~~**Variables from the command line and environment** (S).~~ Done.
 4. ~~**Smarter shadow warnings** (S).~~ Done.
 5. ~~**Request journal API** (S–M).~~ Done.
-6. **Go test helper and request assertions** (M). Builds on the journal so Go
-   tests can start a mock per test and assert on what it received.
+6. ~~**Go test helper and request assertions** (M).~~ Done.
 7. **Lint rendered JSON bodies** (S). Catch a trailing comma or a placeholder
    that breaks JSON at load time instead of in the client under test.
 8. **Directory of request files** (S–M). Load every `.http` file under a
@@ -79,12 +78,6 @@ so revisit them once the items above are done.
 
 ### Testing and CI
 
-- **Go test helper and request assertions** (M): expose the server as a test
-  helper, for example `srv := mocktest.Start(t, "testdata/api.http")` with
-  `srv.URL` and `srv.AssertCalled(t, "POST /users", 1)`, backed by the captured
-  requests. The same data could serve an admin endpoint for assertions from
-  other languages: expected request counts, ordering, and matching
-  constraints.
 - **Structured JSON logs** (S): `--log-format json` writes one object per
   request (method, path, status, route, duration) for CI log collectors and
   `jq`. The server already logs through `slog`.
@@ -222,6 +215,10 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Go test helper and request assertions:** the `mocktest` package starts a
+  server per test (`mocktest.Start(t, "api.http")`, `srv.URL`) and asserts
+  with `AssertCalled(t, "POST /users", 1)`, `AssertNotCalled` and
+  `AssertAllMatched`, backed by `Server.Requests`.
 - **Request journal API:** `GET /requests` on the admin port returns the
   retained request events as JSON, filtered by `method`, `path`, `route`,
   `matched` and `since`; `Server.Requests` exposes the same query in Go.

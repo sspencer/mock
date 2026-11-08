@@ -1126,6 +1126,48 @@ kill "$mock_pid"     # SIGTERM
 wait "$mock_pid"   # fails the job if any request went unmatched
 ```
 
+## Using mock in Go tests
+
+The `mocktest` package runs a mock server inside a Go test, from the same
+`.http` files, and asserts on what the code under test sent:
+
+```go
+import "github.com/sspencer/mock/mocktest"
+
+func TestSignup(t *testing.T) {
+	api := mocktest.Start(t, "testdata/api.http")
+	client := NewClient(api.URL)
+
+	if err := client.Signup("avery"); err != nil {
+		t.Fatal(err)
+	}
+
+	api.AssertCalled(t, "POST /users", 1)
+	api.AssertNotCalled(t, "DELETE /users/1")
+	api.AssertAllMatched(t)
+}
+```
+
+- `Start(t, files...)` loads request files and `StartSource(t, text)` loads
+  `.http` text; `StartWith(t, mocktest.Options{...})` takes both plus `Vars`
+  (as `-v` sets them). A file that fails to load fails the test. Load
+  warnings are written with `t.Log`; set `Quiet` to drop them.
+- The server listens on a random local port, given by `URL`, and closes when
+  the test ends. Every route answers on that port; ports in request targets
+  and `@port` are ignored.
+- A call is a method and path, `"POST /users"`, which matches that exact URL
+  path whatever the query (add `?page=2` to require that exact query too), or
+  a route name, `"Create user"`, which counts the requests that route
+  answered.
+- `AssertCalled(t, call, n)`, `AssertNotCalled(t, call)` and
+  `AssertAllMatched(t)` report failures with `t.Errorf` and list every request
+  received. `Calls(call)` and `Requests(filter)` return the request events to
+  check bodies and headers yourself, `Clear()` forgets requests received so
+  far, and `Mock` is the underlying `mockhttp.Server`.
+
+From other languages, read the same data from [`/requests`](#reading-the-request-log)
+on the admin port.
+
 ## Admin UI And API
 
 The UI is served at the root of the admin port (`-a`, default `8081`):
