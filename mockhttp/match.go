@@ -243,13 +243,15 @@ func (f *requestFacts) bodyValues() []string {
 
 func (f *requestFacts) jsonMatches(path, expected string) bool {
 	values, err := f.jsonValues(path)
-	return err == nil && restclient.MustMatcher(expected).Match(values)
+	return err == nil && restclient.MustMatcher(expected).MatchAny(values)
 }
 
 // jsonValues looks up a dot-separated field path in the JSON body. Numeric
-// segments index arrays. A missing field or null is no value; strings are
-// their text; other values are compact JSON. A blank body has no fields; any
-// other body that is not JSON is an error, and then no @json matcher matches.
+// segments index arrays, and a "*" segment selects every element of an array,
+// so a path can name many values, in document order. A missing field or null
+// is no value; strings are their text; other values are compact JSON. A blank
+// body has no fields; any other body that is not JSON is an error, and then no
+// @json matcher matches.
 func (f *requestFacts) jsonValues(path string) ([]string, error) {
 	if f.body.unavailable {
 		return nil, errBodyUnavailable
@@ -269,33 +271,38 @@ func (f *requestFacts) jsonValues(path string) ([]string, error) {
 	if f.jsonErr != nil {
 		return nil, f.jsonErr
 	}
-	value := f.json
+	nodes := []any{f.json}
 	for _, segment := range strings.Split(path, ".") {
-		switch node := value.(type) {
-		case map[string]any:
-			value = node[segment]
-		case []any:
-			index, err := strconv.Atoi(segment)
-			if err != nil || index < 0 || index >= len(node) {
-				return nil, nil
+		var next []any
+		for _, node := range nodes {
+			switch node := node.(type) {
+			case map[string]any:
+				if child, ok := node[segment]; ok {
+					next = append(next, child)
+				}
+			case []any:
+				if segment == "*" {
+					next = append(next, node...)
+				} else if index, err := strconv.Atoi(segment); err == nil && index >= 0 && index < len(node) {
+					next = append(next, node[index])
+				}
 			}
-			value = node[index]
+		}
+		nodes = next
+	}
+	var values []string
+	for _, node := range nodes {
+		switch node := node.(type) {
+		case nil:
+		case string:
+			values = append(values, node)
 		default:
-			return nil, nil
+			if text, err := json.Marshal(node); err == nil {
+				values = append(values, string(text))
+			}
 		}
 	}
-	switch value := value.(type) {
-	case nil:
-		return nil, nil
-	case string:
-		return []string{value}, nil
-	default:
-		text, err := json.Marshal(value)
-		if err != nil {
-			return nil, nil
-		}
-		return []string{string(text)}, nil
-	}
+	return values, nil
 }
 
 var (

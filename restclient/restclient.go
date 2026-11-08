@@ -85,6 +85,26 @@ var legacyVariablePattern = regexp.MustCompile(`^\$([A-Za-z_][A-Za-z0-9_.-]*)\s*
 
 var variableNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*$`)
 
+// jsonWildcardName reports whether name is a @json matcher path whose "*"
+// segments select every element of an array, as in json.roles.*. Only whole
+// segments may be "*"; the rest of the name follows the usual rule.
+func jsonWildcardName(name string) bool {
+	path, ok := strings.CutPrefix(name, "json.")
+	if !ok {
+		return false
+	}
+	segments := strings.Split(path, ".")
+	if !slices.Contains(segments, "*") {
+		return false
+	}
+	for i, segment := range segments {
+		if segment == "*" {
+			segments[i] = "x"
+		}
+	}
+	return variableNamePattern.MatchString("json." + strings.Join(segments, "."))
+}
+
 // definition is one "@name = value" line. The value is trimmed and unescaped
 // but still holds any {{name}} references.
 type definition struct {
@@ -341,7 +361,7 @@ func parseDefinition(line, source string, lineNumber int) (definition, error) {
 	case strings.ContainsFunc(name, unicode.IsSpace):
 		return definition{}, parseErrorf(source, lineNumber,
 			"invalid variable name %q (names cannot contain spaces)", name)
-	case !variableNamePattern.MatchString(name):
+	case !variableNamePattern.MatchString(name) && !jsonWildcardName(name):
 		return definition{}, parseErrorf(source, lineNumber,
 			"invalid variable name %q (use letters, digits, '_', '.', '-', starting with a letter or '_')", name)
 	}

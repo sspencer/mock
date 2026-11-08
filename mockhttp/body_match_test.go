@@ -88,6 +88,83 @@ fallback
 	}
 }
 
+func TestJSONArrayWildcards(t *testing.T) {
+	methods, err := restclient.Parse("body.http", strings.NewReader(`### Admin
+@json.roles.* = admin
+POST /login
+
+admin
+
+### SKU
+@json.items.*.sku = ~A[0-9]+
+POST /login
+
+sku
+
+### Tagged
+@json.items.*.tags.* = sale
+POST /login
+
+sale
+
+### Has roles
+@json.roles.* = *
+POST /login
+
+has roles
+
+### No roles
+@json.roles.* = !
+POST /login
+
+no roles
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	tests := []struct{ body, want string }{
+		{`{"roles":["dev","admin"]}`, "admin"},
+		{`{"roles":["dev"]}`, "has roles"},
+		{`{"roles":[]}`, "no roles"},
+		{`{"roles":[null,""]}`, "no roles"},
+		{`{"roles":[null,"x"]}`, "has roles"},
+		{`{}`, "no roles"},
+		{`{"roles":"admin"}`, "no roles"},       // "*" selects elements of arrays only
+		{`{"roles":{"a":"admin"}}`, "no roles"}, // an object is not an array
+		{`{"roles":[["admin"]]}`, "has roles"},  // nested arrays compare as compact JSON
+		{`{"items":[{"sku":"B1"},{"sku":"A2"}]}`, "sku"},
+		{`{"items":[{"sku":"B1"},{"tags":["new","sale"]}]}`, "sale"},
+		{`{"items":[{"sku":"B1","tags":["new"]}]}`, "no roles"},
+	}
+	for _, tt := range tests {
+		if code, body := serveBody(t, s, "/login", tt.body); code != 200 || body != tt.want {
+			t.Errorf("POST %q = %d %q, want %q", tt.body, code, body, tt.want)
+		}
+	}
+}
+
+func TestJSONWildcardCaptureAndReasons(t *testing.T) {
+	methods, err := restclient.Parse("body.http", strings.NewReader(`### Order
+@json.items.*.sku = ~A(?P<n>[0-9]+)
+POST /orders
+
+sku {{$n}}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if _, body := serveBody(t, s, "/orders", `{"items":[{"sku":"B1"},{"sku":"A2"},{"sku":"A3"}]}`); body != "sku 2" {
+		t.Errorf("body = %q, want the first matching element's capture", body)
+	}
+	serveBody(t, s, "/orders", `{"items":[{"sku":"1"},{"sku":"2"},{"sku":"3"},{"sku":"4"},{"sku":"5"},{"sku":"6"},{"sku":"7"}]}`)
+	reasons := strings.Join(s.events[1].Match.Candidates[0].Reasons, "\n")
+	if want := `received ["1" "2" "3" "4" "5"] and 2 more`; !strings.Contains(reasons, want) {
+		t.Errorf("reasons missing %q:\n%s", want, reasons)
+	}
+}
+
 func TestBodyMatchers(t *testing.T) {
 	methods, err := restclient.Parse("body.http", strings.NewReader(`### Exact
 @body = ping

@@ -133,6 +133,7 @@ test('Route cURL sends a sample body for body and JSON matchers', () => {
     assert.equal(buildRouteCurl({ method: 'POST', path: '/echo', matchBody: '~.*x.*' }, origin), "curl --request POST 'http://localhost:8080/echo'");
     assert.equal(sampleJSONBody({ a: '1', 'a.b': '2' }), '');
     assert.equal(sampleJSONBody({ x: '!' }), '');
+    assert.equal(sampleJSONBody({ 'roles.*': 'admin', 'items.*.sku': '~A[0-9]+' }), '{"roles":["admin"],"items":[{"sku":"example"}]}');
     const text = formatRoute({ method: 'POST', path: '/login', source: 't.http', line: 1, revision: 1, status: 200, matchBody: '~.*x.*', matchJson: { 'user.name': 'alice' } });
     assert.ok(text.includes('Body requirements\nbody: ~.*x.* (regular expression)\njson user.name: alice'), text);
 });

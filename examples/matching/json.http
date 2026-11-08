@@ -24,9 +24,10 @@ Content-Type: application/json
 {"id": "{{$uuid}}", "status": "priority", "discount": 0.1}
 
 ### [201] Gift card order
-# A regex on an array element (numeric segments index arrays) with a named group.
-# Run: curl -d '{"items":[{"sku":"GIFT-50","qty":1}]}' localhost:8080/orders
-@json.items.0.sku = ~GIFT-(?P<amount>[0-9]+)
+# A "*" segment checks every array element; any gift card SKU in the order matches.
+# The named group captures from the first element that matches.
+# Run: curl -d '{"items":[{"sku":"TEA-001","qty":1},{"sku":"GIFT-50","qty":1}]}' localhost:8080/orders
+@json.items.*.sku = ~GIFT-(?P<amount>[0-9]+)
 POST /orders
 Content-Type: application/json
 

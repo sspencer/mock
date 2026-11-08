@@ -111,6 +111,7 @@ func TestParseBodyAndJSONMatchers(t *testing.T) {
 	methods, err := Parse("test.http", strings.NewReader(`### Login
 @body = ~.*alice.*
 @json.user.roles.0 = admin
+@json.items.*.sku = ~A[0-9]+
 POST /login
 
 ok
@@ -119,7 +120,7 @@ ok
 		t.Fatal(err)
 	}
 	m := methods[0]
-	if m.MatchBody != "~.*alice.*" || m.MatchJSON["user.roles.0"] != "admin" {
+	if m.MatchBody != "~.*alice.*" || m.MatchJSON["user.roles.0"] != "admin" || m.MatchJSON["items.*.sku"] != "~A[0-9]+" {
 		t.Fatalf("MatchBody = %q, MatchJSON = %v", m.MatchBody, m.MatchJSON)
 	}
 	if _, ok := m.Variables["body"]; ok {
@@ -160,5 +161,29 @@ ok
 	}
 	if got := PathParams("/a/%3Aid/%2Arest"); len(got) != 0 {
 		t.Fatalf("escaped segments are literal, got %v", got)
+	}
+}
+
+func TestMatcherMatchAny(t *testing.T) {
+	tests := []struct {
+		raw    string
+		values []string
+		want   bool
+	}{
+		{"admin", []string{"dev", "admin"}, true},
+		{"admin", []string{"dev"}, false},
+		{"admin", nil, false},
+		{"~A[0-9]+", []string{"B1", "A2"}, true},
+		{"*", []string{"", "x"}, true}, // any non-blank value, not only the first
+		{"*", []string{"", " "}, false},
+		{"*", nil, false},
+		{"!", nil, true},
+		{"!", []string{"", " "}, true},
+		{"!", []string{"", "x"}, false}, // every value must be blank
+	}
+	for _, tt := range tests {
+		if got := MustMatcher(tt.raw).MatchAny(tt.values); got != tt.want {
+			t.Errorf("MustMatcher(%q).MatchAny(%q) = %v, want %v", tt.raw, tt.values, got, tt.want)
+		}
 	}
 }

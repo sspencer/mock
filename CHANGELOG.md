@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add any-element matching to `@json` paths: a `*` segment selects every element of an array, so `@json.roles.* = admin` matches when any role is `admin` and `@json.items.*.sku = ~A[0-9]+` checks every item. With a wildcard, `*` requires at least one non-blank element and `!` requires none. Mismatch reasons quote at most five received values. The admin UI's sample request for such a route puts the value in the first element.
+
 - Add `-s` / `--strict`. At shutdown, `mock` writes a report to stderr listing requests no route matched (including ones forwarded with `--upstream`) and routes that never matched a request, and exits `1` if any request was unmatched, so a call to an unmocked endpoint can fail a CI run.
 - Count how many requests each route answered. The admin UI's routes list and route details show the count, and `/routes` and request events report it as `hits`. Counts carry over a reload for routes that did not change.
 

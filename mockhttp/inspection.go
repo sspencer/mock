@@ -271,12 +271,20 @@ func mismatch(method restclient.Method, facts *requestFacts) RouteMismatch {
 	return result
 }
 
+// maxReasonValues caps how many received values a mismatch reason quotes.
+const maxReasonValues = 5
+
 // matcherReason explains why actual values failed a matcher. Received values
 // are quoted only when showValues is set.
 func matcherReason(matcher restclient.Matcher, actual []string, showValues bool) string {
 	received := ""
 	if showValues {
-		received = fmt.Sprintf("; received %q", actual)
+		// A @json path with "*" can select a whole array; show the start of it.
+		if extra := len(actual) - maxReasonValues; extra > 0 {
+			received = fmt.Sprintf("; received %q and %d more", actual[:maxReasonValues], extra)
+		} else {
+			received = fmt.Sprintf("; received %q", actual)
+		}
 	}
 	switch {
 	case matcher.Kind == restclient.MatchAbsent:
