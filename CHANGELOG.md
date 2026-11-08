@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add `mock check -upstream URL <files>`, a drift check: it sends each route's sample request to the mock and to the real API and reports differences in status, `Content-Type` and top-level JSON fields. Only safe methods are sent unless `-all` is given; `-header` adds credentials and `-json` prints a machine-readable report. It exits `1` on drift.
+
 - Add benchmarks for matching against 3,000 routes, template rendering, `ServeHTTP` and parsing (`make bench`).
 
 - Add `@rate-limit = N/window` (such as `5/1s` or `10/s`): once a route has answered N requests in a sliding window it answers `429 Too Many Requests` with `Retry-After`. The route details and `/routes` show the limit (`rateLimit`).

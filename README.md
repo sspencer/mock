@@ -232,6 +232,7 @@ mock [flags] <directory>
 cat file.http | mock
 mock validate [-strict] [-json] [-var name=value] <file.http|dir> [file.http|dir...]
 mock init [-force] [dir]
+mock check -upstream URL [-all] [-json] [-header 'Name: value'] [-var name=value] [-timeout 10s] <file.http|dir> [file.http|dir...]
 mock -version
 mock -h
 ```
@@ -396,6 +397,53 @@ supplied only by a request query (`?delay=`), so it reports two warnings and
 fails under `-strict`.
 
 A file literally named `validate` must be passed as `./validate`.
+
+### Checking mocks against the real API
+
+Mocks go stale when the real API changes. `mock check` sends each route's
+sample request (the one the admin UI's route details show) to the mock and to
+the real service, and reports where they differ:
+
+```sh
+mock check -upstream https://staging.example.com/api -header "Authorization: Bearer $TOKEN" api.http
+```
+
+```text
+drift  GET /users/1 (api.http:12 Find user)
+         json: missing from mock: created_at
+         json: only in mock: nickname
+ok     GET /users (api.http:3 List users)
+skip   POST /users (api.http:20 Create user): not a safe method; use -all to send it
+checked 3 routes: 1 ok, 1 drifted, 0 errors, 1 skipped
+```
+
+It compares:
+
+- the status code;
+- the `Content-Type` media type (parameters such as `charset` are ignored);
+- when both answers are JSON with the same status, the top-level object
+  fields, or the first element's fields when both are arrays.
+
+The sample request fills path parameters with an exact `@path` value or a
+sample (`1` for names such as `id` or `user_id`, else `example`), and adds
+required `@query`, `@header` and `@cookie` values and a body from `@json`,
+`@form` or an exact `@body`. The request path goes under the `-upstream` base
+path. The mock answers in-process without `@delay`, `@fault`, `@stream`,
+`@rate-limit` or `@callback`.
+
+| Flag | Description |
+|------|-------------|
+| `-upstream URL` | The real API's base URL (required) |
+| `-all` | Also send routes with unsafe methods (`POST`, `PUT`, `PATCH`, `DELETE`). Without it only `GET`, `HEAD` and `OPTIONS` routes are sent |
+| `-header 'Name: value'` | Add a header to every upstream request, such as credentials. Repeatable |
+| `-var name=value` | Set a variable in every request file, as with `mock -v` |
+| `-timeout 10s` | Time limit for each upstream request |
+| `-json` | Print the report as JSON: `ok` and one result per route with `result` (`ok`, `drift`, `skipped` or `error`), `differences`, and each side's `status` and `contentType` |
+
+`@proxy` routes are skipped. A route whose sample request cannot match it (a
+`~regex` or negated matcher the sample cannot guess) is an error. Redirects are
+not followed. The exit code is `0` when nothing drifted, `1` on drift or
+errors, and `2` for usage errors.
 
 ## Request File Format
 

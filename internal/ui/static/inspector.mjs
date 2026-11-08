@@ -52,6 +52,8 @@ export function sampleParam(name) {
 }
 
 // Builds a curl command for the mock listener that can be pasted into a shell.
+// `mock check` builds the same sample request in Go (internal/cli/sample.go);
+// keep the two in step.
 // `origin` is the scheme, host, and port the mock routes are served from.
 // Matcher values: "*" (present), "!" (absent), "~pattern" (regexp),
 // "!text" and "!~pattern" (present but not that), else exact. A sample

@@ -39,11 +39,6 @@ and with the items above done they are the next thing to revisit.
 
 ### Testing and CI
 
-- **Drift check against the real API** (M): `mock check --upstream URL
-  api.http` sends each route's sample request (the one the admin UI already
-  builds) to the real service and reports differences in status,
-  `Content-Type` and top-level JSON fields. Mocks go stale when the real API
-  changes; this tells you which fixtures to update.
 - **Stateful scenarios** (deferred): `@times` for retry tests, then named
   scenarios with `@scenario`, `@state` and `@next-state`. Full plan in
   [stateful-scenarios.md](stateful-scenarios.md).
@@ -135,6 +130,9 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Drift check against the real API:** `mock check -upstream URL api.http`
+  sends each route's sample request to the mock and the real service and
+  reports differences in status, `Content-Type` and top-level JSON fields.
 - **Benchmarks:** `make bench` runs matching benchmarks against 3,000 routes,
   rendering benchmarks, a whole `ServeHTTP` request and the parser.
 - **Rate limit simulation:** `@rate-limit = 5/1s` answers `429` with
