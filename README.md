@@ -249,8 +249,20 @@ server from `/` instead of loading mock routes or the request-log UI.
 `mock validate` loads the files without starting a server and prints every
 problem it finds, one per line as `file:line: level: message`. It checks the
 same things `mock` checks at startup: syntax errors, invalid `@delay` or `@port`
-values, a URL port that conflicts with `@port`, invalid placeholder arguments, unresolved placeholders, unused variables, and request
-headers used as response headers.
+values, a URL port that conflicts with `@port`, invalid placeholder arguments, unresolved placeholders, unused variables,
+request headers used as response headers, routes that can never match, and
+JSON bodies that do not parse.
+
+A route whose `Content-Type` is JSON (`application/json` or `+json`, or a
+`< file.json` with no `Content-Type`) has its body rendered once without a
+request and parsed, so a trailing comma or a broken `{{#repeat}}` warns at
+load time instead of failing in the client under test. Placeholders that read
+the request (or an unset `$env` variable) render as `1`, which is valid both
+bare and inside a string, so `{"id": {{$id}}}` passes; the check cannot tell
+whether an unquoted placeholder will be a number at request time. Bodies with
+`@template = off` are parsed as written, and a body file whose path has a
+placeholder is not checked. The warning gives the line within the rendered
+body.
 
 | Flag | Description |
 |------|-------------|

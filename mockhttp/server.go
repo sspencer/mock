@@ -310,6 +310,7 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 		warnUnknownPlaceholders(logger, checked)
 		checkedMethods = append(checkedMethods, checked)
 		warnIncomingHeadersUsedAsResponse(logger, method)
+		warnInvalidJSONBody(logger, method)
 	}
 	warnShadowedRoutes(logger, methods)
 	for _, unused := range restclient.UnusedVariables(checkedMethods) {

@@ -17,8 +17,7 @@ is described in full under [Ideas](#ideas).
 4. ~~**Smarter shadow warnings** (S).~~ Done.
 5. ~~**Request journal API** (S–M).~~ Done.
 6. ~~**Go test helper and request assertions** (M).~~ Done.
-7. **Lint rendered JSON bodies** (S). Catch a trailing comma or a placeholder
-   that breaks JSON at load time instead of in the client under test.
+7. ~~**Lint rendered JSON bodies** (S).~~ Done.
 8. **Directory of request files** (S–M). Load every `.http` file under a
    directory and pick up new files on reload.
 9. **Reload trigger and polling fallback** (S). File events are unreliable on
@@ -81,11 +80,6 @@ so revisit them once the items above are done.
 - **Structured JSON logs** (S): `--log-format json` writes one object per
   request (method, path, status, route, duration) for CI log collectors and
   `jq`. The server already logs through `slog`.
-- **Lint rendered JSON bodies** (S): for routes whose `Content-Type` is JSON,
-  `mock validate` (and startup) renders the body with sample values and warns
-  when the result does not parse, naming the route and line. Hand-written
-  fixtures with a trailing comma, or a `{{$json.name}}` placeholder left
-  unquoted, currently fail only in the client under test.
 - **Global latency and faults** (S): `--delay 50ms..300ms` and `--fault reset
   5%` apply to every route without editing files, for a resilience run
   against the same fixtures the normal tests use. Route-level `@delay` and
@@ -215,6 +209,11 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Lint rendered JSON bodies:** startup and `mock validate` render each JSON
+  route's body (inline or a fixed `< file`) with request placeholders set to
+  `1` and warn, with the route and body line, when it does not parse. An
+  unquoted request placeholder cannot be judged, since `1` fits both a bare
+  value and a string.
 - **Go test helper and request assertions:** the `mocktest` package starts a
   server per test (`mocktest.Start(t, "api.http")`, `srv.URL`) and asserts
   with `AssertCalled(t, "POST /users", 1)`, `AssertNotCalled` and
