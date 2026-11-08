@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -198,10 +199,14 @@ func (f *requestFacts) formValues(name string) ([]string, error) {
 	return f.form[name], nil
 }
 
-// lookup resolves a {{$name}} placeholder: path, capture and query values
-// first, then the explicit namespaces $path.name, $query.name and
-// $header.Name, then $json.field.path and $form.name from the request body.
+// lookup resolves a {{$name}} placeholder: $env.NAME from the server's
+// environment (never from the request), then path, capture and query values,
+// then the explicit namespaces $path.name, $query.name and $header.Name, then
+// $json.field.path and $form.name from the request body.
 func (v templateValues) lookup(key string) (string, bool) {
+	if name, ok := strings.CutPrefix(key, "env."); ok && name != "" {
+		return os.LookupEnv(name)
+	}
 	if value, ok := v.values[key]; ok {
 		return value, true
 	}

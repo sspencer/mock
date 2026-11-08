@@ -188,7 +188,7 @@ docker run --rm \
 mock [flags] <file.http> [file.http...]
 mock [flags] <directory>
 cat file.http | mock
-mock validate [-strict] [-json] <file.http> [file.http...]
+mock validate [-strict] [-json] [-var name=value] <file.http> [file.http...]
 mock -version
 mock -h
 ```
@@ -205,6 +205,7 @@ Flags:
 | `-b`, `--bind` | `127.0.0.1`, or `MOCK_BIND` | Bind address. Use `0.0.0.0` to listen on all interfaces |
 | `-u`, `--upstream` | (off) | Forward requests no route matches to this `http` or `https` URL and return its response (see [Passing unmatched requests to a real API](#passing-unmatched-requests-to-a-real-api)) |
 | `-s`, `--strict` | (off) | At shutdown, list requests no route matched and routes that never matched, and exit `1` if any request was unmatched (see [Strict mode and route coverage](#strict-mode-and-route-coverage)) |
+| `-v`, `--var` | | `NAME=VALUE`: set the `@NAME` variable in every request file, overriding its definitions. Repeat for more variables (see [Variables from the command line](#variables-from-the-command-line)) |
 | `--version` | | Print version and exit |
 | `-h`, `--help` | | Print usage and exit |
 
@@ -255,6 +256,7 @@ headers used as response headers.
 |------|-------------|
 | `-strict` | Treat warnings as errors |
 | `-json` | Print a JSON report (`ok`, `routes`, `diagnostics`) instead of text |
+| `-var name=value` | Set a variable as `mock -v` does, so the same warnings apply. Repeatable |
 
 It exits `0` when the files are valid, `1` when there are errors (or warnings
 with `-strict`), and `2` for usage mistakes, so it fits in CI:
@@ -321,7 +323,7 @@ only digits, such as `### [beta] Users`, stay part of the name. The old
 | Supported | Not supported |
 |-----------|----------------|
 | `###` named sections | Request separators beyond `###` |
-| `@name = value` file and method variables | Environment files / `{{env}}` from IDE |
+| `@name = value` file and method variables, `-v name=value` overrides and `{{$env.NAME}}` | Environment files / `{{env}}` from IDE |
 | Request line `METHOD /path` | Full multi-step scripts |
 | Response headers after the request line | Separate request vs response documents |
 | `@header.Name`, `@query.name`, `@path.name`, `@body`, `@json.path`, `@form.name` request matchers (exact, `*`, `!`, `~regex`) | Multipart and XML body matchers |
@@ -463,6 +465,41 @@ Variable names with a special meaning, which `mock` consumes itself:
 Every other variable is only used through `{{name}}` references. `mock` warns
 at load time about variables that nothing references.
 
+### Variables from the command line
+
+`-v NAME=VALUE` (`--var`) sets `@NAME` in every request file. It overrides
+file and method definitions of that name, and supplies a value for
+`{{NAME}}` references that no `@NAME` defines. Repeat it for more variables:
+
+```sh
+mock -v host=http://localhost:9000 -v token=dev-token api.http
+```
+
+The value is used as written (no backslash escapes) and may reference other
+variables or placeholders. Special variables can be set too, so
+`-v delay=0s` removes every file-level and section `@delay`. Request matchers
+(`@header.*`, `@query.*`, `@path.*`, `@body`, `@json.*`, `@form.*`) cannot be
+set this way. Reloads keep the command-line values.
+
+To read the server's environment instead, use `{{$env.NAME}}` in a body,
+response header, `< path` or variable value:
+
+```http
+@token = {{$env.API_TOKEN | default dev-token}}
+
+### Profile
+GET /me
+X-Token: {{token}}
+
+{"token": "{{$env.API_TOKEN}}"}
+```
+
+`{{$env.NAME}}` is read when the response is rendered and never comes from the
+request. An unset variable leaves the placeholder literal and warns at load
+time, unless it has a `| default` filter. Anything a route renders is visible
+to whoever can reach the mock port, so only reference variables you are
+willing to serve.
+
 ## Placeholders
 
 Response bodies **and response headers** can contain placeholders:
@@ -486,6 +523,8 @@ a namespace:
 - `{{$path.id}}` reads only the `:id` path parameter.
 - `{{$query.id}}` reads only the `id` query parameter (its first value).
 - `{{$header.X-Request-Id}}` reads a request header (case-insensitive).
+- `{{$env.API_TOKEN}}` reads an environment variable of the `mock` process
+  (see [Variables from the command line](#variables-from-the-command-line)).
 
 A namespaced value that the request lacks leaves the placeholder literal.
 `{{$path.name}}` warns at load time when the route has no `:name` parameter. A missing body field leaves the
@@ -539,7 +578,8 @@ These REST Client–style generators take arguments:
 Unknown placeholders are left as written (for example `{{$nope}}`) and
 produce a load-time warning. Other REST Client dynamic variables, such as
 `{{$processEnv}}`, `{{$dotenv}}` and `{{$aadToken}}`, are not supported and are
-treated as unknown placeholders.
+treated as unknown placeholders; use `{{$env.NAME}}` in place of
+`{{$processEnv NAME}}`.
 
 ### Filters
 

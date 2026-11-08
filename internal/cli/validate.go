@@ -15,7 +15,7 @@ import (
 	"github.com/sspencer/mock/restclient"
 )
 
-const validateUsage = "usage: mock validate [-strict] [-json] <file.http> [file.http...]"
+const validateUsage = "usage: mock validate [-strict] [-json] [-var name=value] <file.http> [file.http...]"
 
 // diagnostic is one problem found while validating request files.
 type diagnostic struct {
@@ -72,6 +72,8 @@ func runValidate(args []string, stdout io.Writer) error {
 	fs.SetOutput(io.Discard)
 	strict := fs.Bool("strict", false, "treat warnings as errors")
 	asJSON := fs.Bool("json", false, "print the report as JSON")
+	var vars varFlag
+	fs.Var(&vars, "var", "set `name=value` in every request file (repeatable)")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			fs.SetOutput(stdout)
@@ -87,7 +89,7 @@ func runValidate(args []string, stdout io.Writer) error {
 
 	report := validateReport{Diagnostics: []diagnostic{}}
 	var found []diagnostic
-	methods, err := loadValidationMethods(fs.Args())
+	methods, err := loadValidationMethods(fs.Args(), vars.options())
 	if err != nil {
 		report.Diagnostics = append(report.Diagnostics, diagnostic{Level: "error", Message: err.Error()})
 	} else {
@@ -127,8 +129,8 @@ func runValidate(args []string, stdout io.Writer) error {
 	return nil
 }
 
-func loadValidationMethods(paths []string) ([]restclient.Method, error) {
-	methods, err := restclient.Load(paths)
+func loadValidationMethods(paths []string, opts restclient.Options) ([]restclient.Method, error) {
+	methods, err := opts.Load(paths)
 	if err != nil {
 		return nil, err
 	}

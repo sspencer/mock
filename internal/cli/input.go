@@ -16,7 +16,7 @@ type inputSource struct {
 	WatchFiles []string
 }
 
-func loadInput(args []string, stdin io.Reader) (inputSource, error) {
+func loadInput(args []string, stdin io.Reader, opts restclient.Options) (inputSource, error) {
 	if len(args) == 1 {
 		info, err := os.Stat(args[0])
 		if err != nil {
@@ -35,7 +35,7 @@ func loadInput(args []string, stdin io.Reader) (inputSource, error) {
 			return inputSource{}, fmt.Errorf("cannot mix static directory %q with other request inputs", arg)
 		}
 	}
-	methods, err := loadMethods(args, stdin)
+	methods, err := loadMethods(args, stdin, opts)
 	if err != nil {
 		return inputSource{}, err
 	}
@@ -46,11 +46,11 @@ func loadInput(args []string, stdin io.Reader) (inputSource, error) {
 	return src, nil
 }
 
-func loadMethods(args []string, stdin io.Reader) ([]restclient.Method, error) {
+func loadMethods(args []string, stdin io.Reader, opts restclient.Options) ([]restclient.Method, error) {
 	if len(args) > 0 {
-		return restclient.Load(args)
+		return opts.Load(args)
 	}
-	return restclient.Parse("<stdin>", stdin)
+	return opts.Parse("<stdin>", stdin)
 }
 
 func validateMethods(methods []restclient.Method, args []string) error {

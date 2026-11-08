@@ -23,7 +23,7 @@ ok
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	methods, err := loadMethods([]string{path}, strings.NewReader(""))
+	methods, err := loadMethods([]string{path}, strings.NewReader(""), restclient.Options{})
 	if err != nil {
 		t.Fatalf("loadMethods() error = %v", err)
 	}
@@ -43,7 +43,7 @@ func TestLoadMethodsParsesStdinWhenNoFiles(t *testing.T) {
 POST /users
 
 created
-`))
+`), restclient.Options{})
 	if err != nil {
 		t.Fatalf("loadMethods() error = %v", err)
 	}
@@ -60,7 +60,7 @@ created
 
 func TestLoadInputUsesSingleDirectoryAsStaticRoot(t *testing.T) {
 	dir := t.TempDir()
-	input, err := loadInput([]string{dir}, strings.NewReader(""))
+	input, err := loadInput([]string{dir}, strings.NewReader(""), restclient.Options{})
 	if err != nil {
 		t.Fatalf("loadInput() error = %v", err)
 	}
@@ -79,7 +79,7 @@ func TestLoadInputRejectsDirectoryMixedWithRequestFiles(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	_, err := loadInput([]string{dir, path}, strings.NewReader(""))
+	_, err := loadInput([]string{dir, path}, strings.NewReader(""), restclient.Options{})
 	if err == nil {
 		t.Fatal("loadInput() error = nil, want error")
 	}

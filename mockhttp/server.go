@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -532,6 +533,12 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method) {
 			if name, ok := strings.CutPrefix(key, "path."); ok {
 				if !pathParams[name] {
 					warn("unresolved placeholder preserved literally (the route path has no :"+name+" parameter)", key)
+				}
+				continue
+			}
+			if name, ok := strings.CutPrefix(key, "env."); ok && name != "" {
+				if _, set := os.LookupEnv(name); !set {
+					warn("unresolved placeholder preserved literally (environment variable "+name+" is not set)", key)
 				}
 				continue
 			}

@@ -13,8 +13,7 @@ is described in full under [Ideas](#ideas).
 1. ~~**Validate the examples in CI** (S).~~ Done; see
    [Implemented](#implemented-from-the-original-ideas).
 2. ~~**Answer `HEAD` from `GET` routes** (S).~~ Done.
-3. **Variables from the command line and environment** (S). Tokens and hosts
-   are the most common things people need to vary without editing files.
+3. ~~**Variables from the command line and environment** (S).~~ Done.
 4. **Smarter shadow warnings** (S). The current check misses the most common
    ordering mistake, a catch-all such as `/api/*` placed first.
 5. **Request journal API** (S–M). `GET /requests` on the admin port turns the
@@ -151,10 +150,6 @@ so revisit them once the items above are done.
 
 ### Configuration and inputs
 
-- **Variables from the command line and environment** (S): `-var
-  host=staging.example.com` overrides `@host`, and `{{$env.API_TOKEN}}` reads an
-  environment variable. A safer, explicit replacement for REST Client's
-  unsupported `$processEnv`.
 - **Directory of request files** (S–M): today a directory argument serves static
   files. A mode such as `mock --dir fixtures/` would load every `.http` file
   under it and pick up new files on reload; the watcher currently knows only
@@ -240,6 +235,12 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Variables from the command line and environment:** `-v` / `--var
+  NAME=VALUE` (and `mock validate -var`) sets `@NAME` in every file,
+  overriding its definitions, and `{{$env.NAME}}` reads the server's
+  environment at render time (never from the request), warning at load when
+  the variable is unset. The flag is `-v` rather than `-var` because every
+  serve flag has a short and a long name.
 - **Answer `HEAD` from `GET` routes:** a `HEAD` request tries `HEAD` routes
   first, then the first matching `GET` route, which answers with its status
   and headers and no body. Unmatched `HEAD` diagnostics no longer blame the

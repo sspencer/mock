@@ -10,13 +10,13 @@ import (
 	"github.com/sspencer/mock/restclient"
 )
 
-func reloadMockFiles(mockServer *mockhttp.Server, files []string, plan *portPlan, logger *slog.Logger, out, errOut io.Writer) {
+func reloadMockFiles(mockServer *mockhttp.Server, files []string, opts restclient.Options, plan *portPlan, logger *slog.Logger, out, errOut io.Writer) {
 	mockServer.BeginReload()
 	load := func() ([]restclient.Method, error) {
 		if len(files) == 0 {
 			return nil, nil
 		}
-		return restclient.Load(files)
+		return opts.Load(files)
 	}
 	methods, err := load()
 	if err != nil {

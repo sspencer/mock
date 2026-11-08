@@ -208,7 +208,7 @@ func TestReloadRejectsNewPortAndKeepsRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	var errOut bytes.Buffer
-	reloadMockFiles(server, []string{path}, plan, slog.New(slog.NewTextHandler(io.Discard, nil)), io.Discard, &errOut)
+	reloadMockFiles(server, []string{path}, restclient.Options{}, plan, slog.New(slog.NewTextHandler(io.Discard, nil)), io.Discard, &errOut)
 	if !strings.Contains(errOut.String(), "restart mock to serve new ports") {
 		t.Fatalf("stderr = %q, want restart hint", errOut.String())
 	}

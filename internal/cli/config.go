@@ -9,6 +9,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/sspencer/mock/restclient"
 )
 
 type exitError struct {
@@ -38,6 +40,8 @@ type config struct {
 	// Strict reports unmatched requests and unused routes at shutdown and
 	// fails the run when any request went unmatched (-s).
 	Strict bool
+	// Vars override or supply @name variables in every request file (-v).
+	Vars varFlag
 	// Help holds the usage text when -h or --help was requested.
 	Help string
 }
@@ -50,7 +54,7 @@ const usageText = `usage:
   mock [flags] <file.http> [file.http...]
   mock [flags] <directory>
   cat file.http | mock
-  mock validate [-strict] [-json] <file.http> [file.http...]
+  mock validate [-strict] [-json] [-var name=value] <file.http> [file.http...]
 
 flags:
   -p, --port PORT      default HTTP port, for routes whose request target or
@@ -66,6 +70,8 @@ flags:
   -s, --strict         at shutdown, list requests no route matched and routes
                        that never matched, and exit 1 if any request was
                        unmatched
+  -v, --var NAME=VALUE set @NAME in every request file, overriding its
+                       definitions; repeat for more variables
       --version        print version and exit
   -h, --help           print this help and exit
 `
@@ -107,6 +113,9 @@ func parseConfig(args []string) (config, error) {
 	for _, name := range []string{"s", "strict"} {
 		flagSet.BoolVar(&cfg.Strict, name, false, "")
 	}
+	for _, name := range []string{"v", "var"} {
+		flagSet.Var(&cfg.Vars, name, "")
+	}
 	flagSet.BoolVar(&cfg.Version, "version", false, "")
 	if err := flagSet.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -141,6 +150,32 @@ func parseConfig(args []string) (config, error) {
 		return config{}, usageError("admin port %d is the same as the mock port; change -a or MOCK_UI_PORT (or -p or MOCK_PORT)", cfg.AdminPort)
 	}
 	return cfg, nil
+}
+
+// varFlag collects repeated -v NAME=VALUE flags.
+type varFlag map[string]string
+
+func (v *varFlag) String() string { return "" }
+
+func (v *varFlag) Set(raw string) error {
+	name, value, ok := strings.Cut(raw, "=")
+	name = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(name), "@"))
+	if !ok {
+		return fmt.Errorf("%q: use NAME=VALUE", raw)
+	}
+	if err := restclient.CheckVariableOverride(name); err != nil {
+		return err
+	}
+	if *v == nil {
+		*v = varFlag{}
+	}
+	(*v)[name] = value
+	return nil
+}
+
+// options returns the parse options that apply the variables.
+func (v varFlag) options() restclient.Options {
+	return restclient.Options{Vars: v}
 }
 
 // parseUpstream accepts an absolute http or https URL, optionally with a base

@@ -38,10 +38,10 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	if len(cfg.Args) == 0 {
 		if f, ok := stdin.(*os.File); ok && stdinIsTerminal(f) {
-			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-u url] [-s] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
+			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-u url] [-s] [-v name=value] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
 		}
 	}
-	input, err := loadInput(cfg.Args, stdin)
+	input, err := loadInput(cfg.Args, stdin, cfg.Vars.options())
 	if err != nil {
 		return runError("%v", err)
 	}
@@ -103,7 +103,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			ready := make(chan struct{})
 			reload := func() {
 				<-ready
-				reloadMockFiles(mockServer, files, plan, logger, stdout, stderr)
+				reloadMockFiles(mockServer, files, cfg.Vars.options(), plan, logger, stdout, stderr)
 				if err := watcher.Reconcile(resolveWatchPaths(files, mockServer.Methods())); err != nil {
 					logger.Error("failed to update dependency watches", "error", err)
 				}
