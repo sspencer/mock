@@ -10,9 +10,8 @@ separately below so they do not remain in the backlog; release history is in
 Reviewed 2026-11-08. Highest value first; sizes are rough (S, M, L). Each item
 is described in full under [Ideas](#ideas).
 
-1. **Validate the examples in CI** (S). Nothing checks `examples/` today, so the
-   files the README points new users to can silently stop loading or stop
-   demonstrating what their comments claim.
+1. ~~**Validate the examples in CI** (S).~~ Done; see
+   [Implemented](#implemented-from-the-original-ideas).
 2. **Answer `HEAD` from `GET` routes** (S). A correctness gap: health checkers,
    link checkers and some HTTP clients send `HEAD`, and today it only matches
    an explicit `HEAD` route.
@@ -95,11 +94,6 @@ so revisit them once the items above are done.
 
 ### Testing and CI
 
-- **Validate the examples in CI** (S): a Go test that loads every
-  `examples/**/*.http` with the same checks as `mock validate -strict`, and
-  runs the scenarios in `examples/matching/requests.sh` against an in-process
-  server with expected statuses and route names. Today the examples are only
-  checked by hand, although the README sends new users to them first.
 - **Request journal API** (S–M): `GET /requests` on the admin port returns the
   retained request events as JSON, filterable by method, path, route name,
   matched or unmatched, and a sequence cursor (`?since=`). Tests in any
@@ -252,6 +246,13 @@ Recorded so these are not proposed again without a new reason:
   Client-style tool.
 
 ## Implemented from the original ideas
+
+- **Validate the examples in CI:** `go test ./...` validates every
+  `examples/**/*.http` file with the `mock validate -strict` checks (only
+  `small.http` warns, on purpose) and replays every scenario in
+  `examples/matching/requests.sh` against an in-process server, checking the
+  status and the route that answered. A test fails if the script and the
+  Go scenario table drift apart.
 
 - **Close small test gaps:** the invalid generator argument warning has a
   direct `mockhttp` test, not only coverage through `mock validate`.
