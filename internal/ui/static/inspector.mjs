@@ -52,6 +52,8 @@ export function sampleParam(name) {
 }
 
 // Builds a curl command for the mock listener that can be pasted into a shell.
+// `mock check` builds the same sample request in Go (internal/cli/sample.go);
+// keep the two in step.
 // `origin` is the scheme, host, and port the mock routes are served from.
 // Matcher values: "*" (present), "!" (absent), "~pattern" (regexp),
 // "!text" and "!~pattern" (present but not that), else exact. A sample
@@ -199,6 +201,7 @@ export function formatRoute(route, sampleCurl = '') {
         route.proxy ? `Proxy: ${route.proxy}${route.delay && route.delay !== '0s' ? ` · delay ${route.delay}` : ''}` : `Response: ${route.status} · delay ${route.delay || '0s'}${route.stream ? ` · stream ${route.stream}` : ''}${route.fault ? ` · fault ${route.fault}` : ''}${route.compress ? ` · compress ${route.compress}` : ''}`,
         route.fixture ? `Fixture: ${route.fixture}` : '',
         route.callback ? `Callback: ${route.callback}` : '',
+        route.rateLimit ? `Rate limit: ${route.rateLimit} (then 429 with Retry-After)` : '',
         `Request header requirements\n${matchHeaders || '(none)'}`,
         matchQuery ? `Query requirements\n${matchQuery}` : '',
         matchPath ? `Path parameter requirements\n${matchPath}` : '',

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -134,6 +135,29 @@ func validateMethods(methods []restclient.Method, source string) error {
 func stdinIsTerminal(file *os.File) bool {
 	info, err := file.Stat()
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
+// showMethods prints the routes to out, or, when out is nil (JSON logs),
+// writes one "route" record per route to the logger.
+func showMethods(out io.Writer, logger *slog.Logger, methods []restclient.Method) {
+	if out != nil {
+		printMethods(out, methods)
+		return
+	}
+	for _, method := range methods {
+		target := method.Path
+		if query := method.Query.Encode(); query != "" {
+			target += "?" + query
+		}
+		attrs := []any{"method", method.Method, "path", target, "route", method.Name}
+		if method.Port != 0 {
+			attrs = append(attrs, "port", method.Port)
+		}
+		if method.Source != "" {
+			attrs = append(attrs, "source", fmt.Sprintf("%s:%d", method.Source, method.Line))
+		}
+		logger.Info("route", attrs...)
+	}
 }
 
 // printMethods lists the routes, grouped by port when they are served on

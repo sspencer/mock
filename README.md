@@ -232,6 +232,7 @@ mock [flags] <directory>
 cat file.http | mock
 mock validate [-strict] [-json] [-var name=value] <file.http|dir> [file.http|dir...]
 mock init [-force] [dir]
+mock check -upstream URL [-all] [-json] [-header 'Name: value'] [-var name=value] [-timeout 10s] <file.http|dir> [file.http|dir...]
 mock -version
 mock -h
 ```
@@ -251,6 +252,9 @@ Flags:
 | `-v`, `--var` | | `NAME=VALUE`: set the `@NAME` variable in every request file, overriding its definitions. Repeat for more variables (see [Variables from the command line](#variables-from-the-command-line)) |
 | `-d`, `--dir` | | Load every `.http` file under this directory, after any file arguments, and pick up added or removed files on reload. Repeat for more directories (see [A directory of request files](#a-directory-of-request-files)) |
 | `-i`, `--poll` | (off) | Also check the request files for changes this often, such as `1s` (at least `100ms`), for filesystems that do not deliver change events (see [Reloading](#reloading)) |
+| `-w`, `--delay` | (off) | Delay every route that has no `@delay` of its own, such as `250ms` or `50ms..300ms` (see [Latency and faults for every route](#latency-and-faults-for-every-route)) |
+| `-f`, `--fault` | (off) | Inject a fault into every route that has no `@fault` of its own: `reset` or `truncate`, optionally with a share such as `"reset 5%"` |
+| `-l`, `--log-format` | `text` | `text` or `json`. With `json`, stdout carries only JSON lines (see [JSON logs](#json-logs)) |
 | `--version` | | Print version and exit |
 | `-h`, `--help` | | Print usage and exit |
 
@@ -285,6 +289,22 @@ Request files passed on the command line are watched for changes, including
 relative `< path` response bodies. On save, `mock` reloads those files, swaps in
 the new routes without restarting the process, and prints the updated route list.
 SIGINT/SIGTERM shut the server down cleanly and stop the file watcher.
+
+### JSON logs
+
+`-l json` (`--log-format json`) makes every line on stdout one JSON object, so
+CI jobs and log tools can parse a test run. The startup banner and the route
+list become records (`"msg": "route"` with `method`, `path`, `route`, `port`
+and `source`), and each request is one record:
+
+```json
+{"time":"2026-11-08T14:03:27.13-08:00","level":"INFO","msg":"http request","method":"GET","path":"/users/7","status":200,"route":"Find user","duration":412000}
+```
+
+`route` is the matched section's name (empty when nothing matched), and
+`duration` is in nanoseconds. Faulted and proxied requests add `fault` and
+`upstream`. Warnings, reload errors and the `--strict` report still go to
+stderr as text.
 
 ### Reloading
 
@@ -377,6 +397,53 @@ supplied only by a request query (`?delay=`), so it reports two warnings and
 fails under `-strict`.
 
 A file literally named `validate` must be passed as `./validate`.
+
+### Checking mocks against the real API
+
+Mocks go stale when the real API changes. `mock check` sends each route's
+sample request (the one the admin UI's route details show) to the mock and to
+the real service, and reports where they differ:
+
+```sh
+mock check -upstream https://staging.example.com/api -header "Authorization: Bearer $TOKEN" api.http
+```
+
+```text
+drift  GET /users/1 (api.http:12 Find user)
+         json: missing from mock: created_at
+         json: only in mock: nickname
+ok     GET /users (api.http:3 List users)
+skip   POST /users (api.http:20 Create user): not a safe method; use -all to send it
+checked 3 routes: 1 ok, 1 drifted, 0 errors, 1 skipped
+```
+
+It compares:
+
+- the status code;
+- the `Content-Type` media type (parameters such as `charset` are ignored);
+- when both answers are JSON with the same status, the top-level object
+  fields, or the first element's fields when both are arrays.
+
+The sample request fills path parameters with an exact `@path` value or a
+sample (`1` for names such as `id` or `user_id`, else `example`), and adds
+required `@query`, `@header` and `@cookie` values and a body from `@json`,
+`@form` or an exact `@body`. The request path goes under the `-upstream` base
+path. The mock answers in-process without `@delay`, `@fault`, `@stream`,
+`@rate-limit` or `@callback`.
+
+| Flag | Description |
+|------|-------------|
+| `-upstream URL` | The real API's base URL (required) |
+| `-all` | Also send routes with unsafe methods (`POST`, `PUT`, `PATCH`, `DELETE`). Without it only `GET`, `HEAD` and `OPTIONS` routes are sent |
+| `-header 'Name: value'` | Add a header to every upstream request, such as credentials. Repeatable |
+| `-var name=value` | Set a variable in every request file, as with `mock -v` |
+| `-timeout 10s` | Time limit for each upstream request |
+| `-json` | Print the report as JSON: `ok` and one result per route with `result` (`ok`, `drift`, `skipped` or `error`), `differences`, and each side's `status` and `contentType` |
+
+`@proxy` routes are skipped. A route whose sample request cannot match it (a
+`~regex` or negated matcher the sample cannot guess) is an error. Redirects are
+not followed. The exit code is `0` when nothing drifted, `1` on drift or
+errors, and `2` for usage errors.
 
 ## Request File Format
 
@@ -584,6 +651,7 @@ in the file, or in a section, where it replaces the file value.
 | `@compress` | `gzip`, `deflate`, `auto` or `off` | `off` | Compress the response body; `auto` follows the request's `Accept-Encoding`. See [Compressed responses](#compressed-responses). |
 | `@stream` | non-negative duration such as `50ms` | off | Send the body in pieces (one event or line at a time) with this pause between them. See [Delays, streaming and faults](#delays-streaming-and-faults). |
 | `@fault` | `reset` or `truncate`, optionally followed by a share such as `reset 25%` | off | Break the response on purpose. See [Delays, streaming and faults](#delays-streaming-and-faults). |
+| `@rate-limit` | A count and a window, such as `5/1s`, `100/1m` or `10/s` | none | Answer `429` with `Retry-After` once the route is over its budget. See [Rate limits](#rate-limits). |
 | `@seed` | any non-empty text | random | Make generated values reproducible per request. See [Reproducible data](#reproducible-data). |
 | `@template` | `auto`, `on` or `off` | `auto` | Whether placeholders are expanded in the body. See [External response bodies](#external-response-bodies). |
 | `@trim` | `on` or `off` | `on` | With `off` the inline body keeps its exact text and line endings. See [Supported dialect](#supported-dialect). |
@@ -948,6 +1016,43 @@ any other body one line at a time. Streamed responses have no
 
 Faulted requests appear in the admin UI with the fault noted (`RST` in the
 status column for a reset).
+
+### Rate limits
+
+`@rate-limit = 5/1s` lets a route answer five requests in any one-second
+window; further requests get `429 Too Many Requests` with a `Retry-After`
+header (whole seconds until the oldest request leaves the window) until there
+is room again:
+
+```http
+### Search
+@rate-limit = 10/1m
+GET /search
+
+{"results": []}
+```
+
+The window slides: each answered request counts for one window after it
+arrives, and rejected requests do not count. The count is a request count and
+the window a Go duration, or `s`, `m` or `h` for one of that unit. Each section
+has its own budget, even when `@rate-limit` is defined at file scope. A reload
+that keeps the route keeps its count. Rejected requests appear in the admin UI
+as matched by the route, before any `@delay`.
+
+### Latency and faults for every route
+
+`-w` (`--delay`) and `-f` (`--fault`) apply a delay or fault to every route
+without editing the files, for a resilience run against the same fixtures your
+normal tests use:
+
+```sh
+mock --delay 50ms..300ms --fault "reset 5%" api.http
+```
+
+They take the same values as `@delay` and `@fault`. A route's own `@delay` or
+`@fault` takes precedence, so `@delay = 0` or `@fault = reset 0%` keeps one
+route fast and reliable. Unmatched requests (404s and `--upstream`
+forwarding) are not affected.
 
 ### Compressed responses
 

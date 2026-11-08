@@ -851,3 +851,27 @@ func TestRejectStatusVariable(t *testing.T) {
 		}
 	}
 }
+
+func TestParseRateLimit(t *testing.T) {
+	for raw, want := range map[string]struct {
+		limit  int
+		window time.Duration
+	}{"5/1s": {5, time.Second}, " 100 / 1m ": {100, time.Minute}, "10/s": {10, time.Second}, "3/h": {3, time.Hour}, "2/500ms": {2, 500 * time.Millisecond}} {
+		limit, window, err := ParseRateLimit(raw)
+		if err != nil || limit != want.limit || window != want.window {
+			t.Errorf("ParseRateLimit(%q) = %d, %s, %v", raw, limit, window, err)
+		}
+	}
+	for _, raw := range []string{"", "5", "0/1s", "-1/1s", "5/0s", "5/soon", "x/1s"} {
+		if _, _, err := ParseRateLimit(raw); err == nil {
+			t.Errorf("ParseRateLimit(%q) error = nil", raw)
+		}
+	}
+	methods, err := Parse("test.http", strings.NewReader("### Search\n@rate-limit = 5/1s\nGET /search\n\nok\n"))
+	if err != nil || methods[0].RateLimit != 5 || methods[0].RateWindow != time.Second {
+		t.Fatalf("Parse() = %+v, %v", methods, err)
+	}
+	if _, err := Parse("test.http", strings.NewReader("### Search\n@rate-limit = lots\nGET /search\n\nok\n")); err == nil || !strings.Contains(err.Error(), "test.http:2:") {
+		t.Errorf("bad @rate-limit error = %v", err)
+	}
+}
