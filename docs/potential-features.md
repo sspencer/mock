@@ -9,12 +9,7 @@ separately below so they do not remain in the backlog; release history is in
 
 Reviewed 2026-11-06. Highest value first; sizes are rough (S, M, L).
 
-1. **Publish the Docker image and a Homebrew formula** (S). Mostly GoReleaser
-   configuration.
-2. **Close small test gaps** (S). The invalid generator argument warning in
-   `warnUnknownPlaceholders` is only exercised through the `mock validate`
-   tests; add a direct test in `mockhttp`.
-3. **JSON array matching** (S). `@json.roles.* = admin` (any element matches);
+1. **JSON array matching** (S). `@json.roles.* = admin` (any element matches);
    today only fixed indexes such as `roles.0` work.
 
 Everything else is grouped by theme below. Stateful scenarios are deliberately
@@ -99,6 +94,7 @@ deferred; see [stateful-scenarios.md](stateful-scenarios.md).
   built locally (`make docker`). GoReleaser can push
   `ghcr.io/sspencer/mock:<version>` and a Homebrew tap from the existing release
   workflow, so `docker run ghcr.io/sspencer/mock` works without a checkout.
+  Deferred: not wanted yet, but worth doing later.
 - **Aggregate validation diagnostics:** `mock validate` reports warnings for
   every route but stops at the first load error, so fixing a file can reveal the
   next error. Collecting several parse errors per run would need the parser to
