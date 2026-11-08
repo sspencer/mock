@@ -19,7 +19,7 @@ go run . validate -strict examples/*.http   # lint request files without serving
 go run . init /tmp/demo                     # write the starter api.http
 ```
 
-Fuzz targets: `go test ./restclient -run '^$' -fuzz FuzzParse -fuzztime 10s` and `go test ./mockhttp -run '^$' -fuzz FuzzMatchEscapedPath -fuzztime 10s`.
+Benchmarks: `make bench` (`mockhttp/bench_test.go` matches against 3,000 routes and renders templates; `restclient/bench_test.go` parses). Fuzz targets: `go test ./restclient -run '^$' -fuzz FuzzParse -fuzztime 10s` and `go test ./mockhttp -run '^$' -fuzz FuzzMatchEscapedPath -fuzztime 10s`.
 
 Project hooks in `.claude/settings.json` run `gofmt -w` on edited `.go` files and `go run . validate` on edited `.http` files (both need `jq`).
 

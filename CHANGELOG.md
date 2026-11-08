@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add benchmarks for matching against 3,000 routes, template rendering, `ServeHTTP` and parsing (`make bench`).
+
 - Add `@rate-limit = N/window` (such as `5/1s` or `10/s`): once a route has answered N requests in a sliding window it answers `429 Too Many Requests` with `Retry-After`. The route details and `/routes` show the limit (`rateLimit`).
 
 - Add `-w` (`--delay`) and `-f` (`--fault`) to delay or fault every route that has no `@delay` or `@fault` of its own, such as `--delay 50ms..300ms --fault "reset 5%"`. Library users call `Server.SetRouteDefaults`.

@@ -44,9 +44,6 @@ and with the items above done they are the next thing to revisit.
   builds) to the real service and reports differences in status,
   `Content-Type` and top-level JSON fields. Mocks go stale when the real API
   changes; this tells you which fixtures to update.
-- **Benchmarks** (S): `go test -bench` cases for matching and rendering with a
-  few thousand routes, so performance regressions in the linear route scan or
-  the template renderer show up in review.
 - **Stateful scenarios** (deferred): `@times` for retry tests, then named
   scenarios with `@scenario`, `@state` and `@next-state`. Full plan in
   [stateful-scenarios.md](stateful-scenarios.md).
@@ -138,6 +135,8 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Benchmarks:** `make bench` runs matching benchmarks against 3,000 routes,
+  rendering benchmarks, a whole `ServeHTTP` request and the parser.
 - **Rate limit simulation:** `@rate-limit = 5/1s` answers `429` with
   `Retry-After` once a route is over its sliding-window budget. Counts are
   per route and survive reloads that keep the route.

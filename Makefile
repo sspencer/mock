@@ -11,7 +11,7 @@ GOBIN := $(shell $(GO) env GOPATH)/bin
 endif
 BINARY := $(GOBIN)/$(APP_NAME)
 
-.PHONY: all build fmt fmt-check vet update clean mod test test-ui verify vulncheck docker run lint dockerize
+.PHONY: all build fmt fmt-check vet update clean mod test test-ui bench verify vulncheck docker run lint dockerize
 
 all: verify build
 
@@ -52,6 +52,11 @@ mod:
 
 test:
 	$(GO) test ./...
+
+# Matching and rendering benchmarks (a few thousand routes) plus the parser.
+# Compare runs with benchstat to spot regressions.
+bench:
+	$(GO) test ./mockhttp ./restclient -run '^$$' -bench . -benchmem
 
 docker:
 	docker build --build-arg VERSION=$(VERSION) -t $(DOCKER_IMAGE) .

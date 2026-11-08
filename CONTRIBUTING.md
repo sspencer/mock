@@ -48,6 +48,19 @@ go test ./restclient -run '^$' -fuzz FuzzParse -fuzztime 10s
 go test ./mockhttp -run '^$' -fuzz FuzzMatchEscapedPath -fuzztime 10s
 ```
 
+Benchmarks cover matching against 3,000 routes (first, last, a miss with its
+near-miss ranking, and `@json` matchers), rendering (placeholders,
+`{{#repeat}}`, literal bodies), a whole `ServeHTTP` request and parsing. Run
+them with `make bench`. To check a change for regressions, compare runs with
+[benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat):
+
+```sh
+go test ./mockhttp ./restclient -run '^$' -bench . -count 10 > old.txt
+# make the change
+go test ./mockhttp ./restclient -run '^$' -bench . -count 10 > new.txt
+benchstat old.txt new.txt
+```
+
 The dashboard event-wiring tests use a small DOM adapter. They do not replace
 visual checks in a real browser at desktop/mobile widths, keyboard navigation,
 and native EventSource integration.
