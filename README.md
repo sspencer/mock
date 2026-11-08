@@ -1032,10 +1032,23 @@ Content-Type: application/json
 ```
 
 A route that can never answer gets a load-time warning, and `mock validate
--strict` fails on it. That happens when an earlier route has the same method,
-port and path, and all of its matchers are also on the later route. Two
-identical routes are the common case. Earlier versions of `mock` rotated
-through such duplicates; they now always return the first.
+-strict` fails on it. That happens when an earlier route has the same method
+and port, its path matches every path the later route's does, and all of its
+matchers are also on the later route. Paths are compared segment by segment: a
+`:param` segment covers any segment (whatever the parameter is called), and a
+trailing `*` covers the rest of the path. So each of these later routes is
+reported:
+
+- a second, identical route;
+- `GET /api/users/:id` after a catch-all `GET /api/*`;
+- `GET /users/me` after `GET /users/:id` (put the literal path first);
+- `GET /users/:userId` after `GET /users/:id`.
+
+A `@path.name` matcher on the earlier route narrows what it covers:
+`GET /users/:id` with `@path.id = ~[0-9]+` hides a later `/users/42`, but not
+`/users/me`. The check errs towards silence, so a route it does not report may
+still be unreachable. Earlier versions of `mock` rotated through duplicate
+routes; they now always return the first.
 
 ## Passing unmatched requests to a real API
 

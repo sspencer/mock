@@ -342,10 +342,15 @@ func warnShadowedRoutes(logger *slog.Logger, methods []restclient.Method) {
 }
 
 // shadows reports whether route a matches every request route b matches:
-// they share method, port and path pattern, and each of a's constraints is
-// also one of b's. It errs towards false; routes it misses still work.
+// they share method and port, a's path pattern covers b's (see
+// pathCovers), and each of a's constraints is also one of b's. It errs
+// towards false; routes it misses still work.
 func shadows(a, b restclient.Method) bool {
-	if a.Method != b.Method || (a.Port != 0 && a.Port != b.Port) || routePattern(a) != routePattern(b) {
+	if a.Method != b.Method || (a.Port != 0 && a.Port != b.Port) {
+		return false
+	}
+	segments, ok := pathCovers(routePattern(a), routePattern(b))
+	if !ok {
 		return false
 	}
 	if a.MatchBody != "" && a.MatchBody != b.MatchBody {
@@ -372,7 +377,69 @@ func shadows(a, b restclient.Method) bool {
 			}
 		}
 	}
-	return subsetMap(a.MatchPath, b.MatchPath) && subsetMap(a.MatchJSON, b.MatchJSON)
+	for name, raw := range a.MatchPath {
+		segment, ok := segments[name]
+		if !ok {
+			return false
+		}
+		if param, isParam := strings.CutPrefix(segment, ":"); isParam {
+			// b's parameter must carry the same constraint, under any name.
+			if b.MatchPath[param] != raw {
+				return false
+			}
+		} else if literal, err := url.PathUnescape(segment); err != nil || !restclient.MustMatcher(raw).Match([]string{literal}) {
+			return false
+		}
+	}
+	return subsetMap(a.MatchJSON, b.MatchJSON)
+}
+
+// pathCovers reports whether every request path that pattern b matches is
+// also matched by pattern a, comparing escaped patterns segment by segment:
+// a literal covers only the same literal, a :param covers any one segment, and
+// a trailing * covers the rest of the path, including nothing. It returns, for
+// each of a's :params, the segment of b it lines up with (a literal, or b's
+// own ":name"). A *name wildcard in a is not in the map.
+func pathCovers(a, b string) (map[string]string, bool) {
+	aParts, bParts := splitPath(a), splitPath(b)
+	aWild := len(aParts) > 0 && strings.HasPrefix(aParts[len(aParts)-1], "*")
+	bWild := len(bParts) > 0 && strings.HasPrefix(bParts[len(bParts)-1], "*")
+	if aWild {
+		aParts = aParts[:len(aParts)-1]
+	}
+	if bWild {
+		bParts = bParts[:len(bParts)-1]
+	}
+	switch {
+	case aWild && len(bParts) < len(aParts):
+		return nil, false
+	case !aWild && (bWild || len(aParts) != len(bParts)):
+		return nil, false
+	}
+	// A pattern ending in "/" also answers ".../index.html", which a pattern
+	// without the slash does not.
+	if strings.HasSuffix(b, "/") && !strings.HasSuffix(a, "/") && !aWild {
+		return nil, false
+	}
+	segments := make(map[string]string)
+	for i, part := range aParts {
+		if name, ok := strings.CutPrefix(part, ":"); ok {
+			if name == "" {
+				return nil, false
+			}
+			segments[name] = bParts[i]
+			continue
+		}
+		if strings.HasPrefix(bParts[i], ":") {
+			return nil, false
+		}
+		want, errA := url.PathUnescape(part)
+		got, errB := url.PathUnescape(bParts[i])
+		if errA != nil || errB != nil || want != got {
+			return nil, false
+		}
+	}
+	return segments, true
 }
 
 func subsetMap(a, b map[string]string) bool {

@@ -14,8 +14,7 @@ is described in full under [Ideas](#ideas).
    [Implemented](#implemented-from-the-original-ideas).
 2. ~~**Answer `HEAD` from `GET` routes** (S).~~ Done.
 3. ~~**Variables from the command line and environment** (S).~~ Done.
-4. **Smarter shadow warnings** (S). The current check misses the most common
-   ordering mistake, a catch-all such as `/api/*` placed first.
+4. ~~**Smarter shadow warnings** (S).~~ Done.
 5. **Request journal API** (S–M). `GET /requests` on the admin port turns the
    captured traffic into something tests in any language can assert on.
 6. **Go test helper and request assertions** (M). Builds on the journal so Go
@@ -47,11 +46,6 @@ so revisit them once the items above are done.
   JSON fields and form fields, plus trailing `*` path wildcards. The first
   matching route in load order wins, so catch-alls go last; shadowed routes get
   a load warning.
-- **Smarter shadow warnings** (S): a route is only reported as unreachable when
-  an earlier route has the identical path pattern. It misses an earlier
-  `/api/*` with no matchers hiding every later `/api/...` route, and
-  `/users/:id` versus `/users/:userId`. Compare patterns segment by segment,
-  treating wildcards and parameter names properly.
 - **Per-route proxying** (M): `@proxy = https://api.example.com` on a section
   forwards requests that match it to that URL, optionally rewriting the path.
   `--upstream` is all or nothing for unmatched requests; this lets one file
@@ -235,6 +229,11 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Smarter shadow warnings:** paths are compared segment by segment, so a
+  catch-all such as `/api/*`, a `:param` before a literal, or a renamed
+  parameter now produces the warning, and `@path.*` matchers on the earlier
+  route narrow what it covers. Regex matchers are still compared as text, so
+  `~[0-9]+` does not cover `~[1-9][0-9]*`.
 - **Variables from the command line and environment:** `-v` / `--var
   NAME=VALUE` (and `mock validate -var`) sets `@NAME` in every file,
   overriding its definitions, and `{{$env.NAME}}` reads the server's
