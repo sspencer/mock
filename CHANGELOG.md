@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add `@compress = gzip | deflate | auto | off` to compress response bodies. `gzip` and `deflate` always compress; `auto` follows the request's `Accept-Encoding` and adds `Vary: Accept-Encoding`.
+
 - `< path` response files served unchanged to `GET` and `HEAD` with a `200` status now support `Range`, `If-Range` and `If-Modified-Since` (via `http.ServeContent`): they answer `206`, `416` and `304` and send `Accept-Ranges` and `Last-Modified`.
 
 - Add a `{{$request}}` placeholder, which inserts the request (method, URL, path, query, host, headers, body and decoded JSON body) as a JSON object, for echo routes. `{{$request.headers.Accept.0}}` and other paths read one part.

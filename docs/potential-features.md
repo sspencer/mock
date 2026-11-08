@@ -35,9 +35,6 @@ and with the items above done they are the next thing to revisit.
 
 ### Responses and templating
 
-- **Compressed responses** (S): `@compress = gzip` (or honoring
-  `Accept-Encoding`) to test client decompression and `Content-Encoding`
-  handling. Today a body is always sent as written.
 - **Webhook callbacks** (M–L): `@callback = POST {{$json.callbackUrl}}` with a
   body template and delay, sent after the response, for flows where the real
   service calls back (payments, async jobs). Declarative, so it stays clear of
@@ -160,6 +157,8 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Compressed responses:** `@compress = gzip | deflate | auto` compresses
+  bodies; `auto` honors `Accept-Encoding`.
 - **Range requests for file bodies:** unchanged `< path` files answer
   `Range`, `If-Range` and `If-Modified-Since` through `http.ServeContent`.
 - **Echo the request:** `{{$request}}` inserts the request as a JSON object,

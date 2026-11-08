@@ -196,7 +196,7 @@ export function formatRoute(route, sampleCurl = '') {
         `Source: ${route.source || '(unknown)'}:${route.line || '?'} · revision ${route.revision}`,
         `Matched: ${hitsLabel(route.hits)}`,
         route.port ? `Port: ${route.port}` : '',
-        route.proxy ? `Proxy: ${route.proxy}${route.delay && route.delay !== '0s' ? ` · delay ${route.delay}` : ''}` : `Response: ${route.status} · delay ${route.delay || '0s'}${route.stream ? ` · stream ${route.stream}` : ''}${route.fault ? ` · fault ${route.fault}` : ''}`,
+        route.proxy ? `Proxy: ${route.proxy}${route.delay && route.delay !== '0s' ? ` · delay ${route.delay}` : ''}` : `Response: ${route.status} · delay ${route.delay || '0s'}${route.stream ? ` · stream ${route.stream}` : ''}${route.fault ? ` · fault ${route.fault}` : ''}${route.compress ? ` · compress ${route.compress}` : ''}`,
         route.fixture ? `Fixture: ${route.fixture}` : '',
         `Request header requirements\n${matchHeaders || '(none)'}`,
         matchQuery ? `Query requirements\n${matchQuery}` : '',

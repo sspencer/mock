@@ -88,6 +88,9 @@ type Method struct {
 	// Fixture is the @fixture JSON file that {{$fixture.path}} placeholders
 	// read, as written. Locate it with ResolveFile.
 	Fixture string
+	// Compress is the @compress mode: "" (off), "gzip", "deflate" or
+	// "auto" (chosen from the request's Accept-Encoding).
+	Compress string
 }
 
 // legacyVariablePattern matches the removed "# $name=value" comment variables.
@@ -863,6 +866,15 @@ func applyControlVariable(method *Method, def definition, source string) error {
 		if strings.TrimSpace(value) == "" {
 			return parseErrorf(source, def.line, `section %q: @seed needs a value, such as "@seed = 42"`, method.Name)
 		}
+	case "compress":
+		switch mode := strings.ToLower(strings.TrimSpace(value)); mode {
+		case "off":
+			method.Compress = ""
+		case "gzip", "deflate", "auto":
+			method.Compress = mode
+		default:
+			return parseErrorf(source, def.line, `section %q: @compress must be gzip, deflate, auto or off`, method.Name)
+		}
 	case "fixture":
 		fixture := strings.TrimSpace(value)
 		if fixture == "" || strings.Contains(fixture, "{{") {
@@ -1018,6 +1030,7 @@ var controlVariables = map[string]struct{}{
 	"trim":     {},
 	"proxy":    {},
 	"fixture":  {},
+	"compress": {},
 }
 
 // PlaceholderPattern matches {{name}}, {{%name}} and {{$name args}} placeholders

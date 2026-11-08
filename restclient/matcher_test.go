@@ -275,3 +275,15 @@ func TestParseProxy(t *testing.T) {
 		}
 	}
 }
+
+func TestParseCompress(t *testing.T) {
+	for value, want := range map[string]string{"gzip": "gzip", "GZIP": "gzip", "auto": "auto", "deflate": "deflate", "off": ""} {
+		methods, err := Parse("t.http", strings.NewReader("### C\n@compress = "+value+"\nGET /c\n"))
+		if err != nil || methods[0].Compress != want {
+			t.Errorf("@compress = %s: %q, %v", value, methods[0].Compress, err)
+		}
+	}
+	if _, err := Parse("t.http", strings.NewReader("### C\n@compress = br\nGET /c\n")); err == nil {
+		t.Error("@compress = br parsed")
+	}
+}

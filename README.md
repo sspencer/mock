@@ -566,6 +566,7 @@ in the file, or in a section, where it replaces the file value.
 | Directive | Values | Default | Effect |
 |-----------|--------|---------|--------|
 | `@delay` | Go duration such as `250ms` or `2s`, or a range `100ms..800ms` (both ends inclusive, picked afresh per request) | none | Wait before responding. Negative or invalid durations are load errors. See [Delays, streaming and faults](#delays-streaming-and-faults). |
+| `@compress` | `gzip`, `deflate`, `auto` or `off` | `off` | Compress the response body; `auto` follows the request's `Accept-Encoding`. See [Compressed responses](#compressed-responses). |
 | `@stream` | non-negative duration such as `50ms` | off | Send the body in pieces (one event or line at a time) with this pause between them. See [Delays, streaming and faults](#delays-streaming-and-faults). |
 | `@fault` | `reset` or `truncate`, optionally followed by a share such as `reset 25%` | off | Break the response on purpose. See [Delays, streaming and faults](#delays-streaming-and-faults). |
 | `@seed` | any non-empty text | random | Make generated values reproducible per request. See [Reproducible data](#reproducible-data). |
@@ -931,6 +932,36 @@ any other body one line at a time. Streamed responses have no
 
 Faulted requests appear in the admin UI with the fault noted (`RST` in the
 status column for a reset).
+
+### Compressed responses
+
+`@compress` compresses the response body, to test how a client decodes
+`Content-Encoding`:
+
+```http
+### Large report
+@compress = auto
+GET /reports/annual
+Content-Type: application/json
+
+< annual-report.json
+```
+
+- `@compress = gzip` or `@compress = deflate` always sends that encoding,
+  whatever the request's `Accept-Encoding` says, to test a client that must
+  cope with it. `deflate` is the zlib format.
+- `@compress = auto` sends gzip, or else deflate, when the request's
+  `Accept-Encoding` allows it (q-values and `*` are honored), and the body
+  as written otherwise. It always adds `Vary: Accept-Encoding`.
+- `@compress = off` (the default) sends the body as written.
+- An empty body, a status without a body, or a section whose response headers
+  already set `Content-Encoding` is sent as written. `@compress` is ignored
+  with `@stream`, with a load warning.
+- `Content-Length` is the compressed size, and `Content-Type` is worked out
+  from the uncompressed body. A compressed file body does not support
+  [range requests](#range-and-conditional-requests).
+- The request log shows the compressed bytes as sent, so the admin UI labels
+  the body binary.
 
 ## Multiple ports
 

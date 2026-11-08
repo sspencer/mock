@@ -168,6 +168,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if capture.Header().Get("Date") == "" {
 		capture.Header().Set("Date", time.Now().UTC().Format(http.TimeFormat))
 	}
+	if method.Compress == "auto" && method.Stream == 0 {
+		capture.Header().Add("Vary", "Accept-Encoding")
+	}
+	if encoding := responseEncoding(method, r); encoding != "" && method.Stream == 0 && len(body) > 0 && statusAllowsBody(status) && capture.Header().Get("Content-Encoding") == "" {
+		// Type the body before it is compressed, or sniffing sees gzip bytes.
+		if capture.Header().Get("Content-Type") == "" {
+			capture.Header().Set("Content-Type", http.DetectContentType(body))
+		}
+		body = compressBody(encoding, body)
+		capture.Header().Set("Content-Encoding", encoding)
+		render.verbatim = false // Ranges would apply to the compressed bytes.
+	}
 	if render.verbatim && status == http.StatusOK && method.Stream == 0 && method.Fault == "" &&
 		(r.Method == http.MethodGet || r.Method == http.MethodHead) {
 		s.serveFileContent(capture, r, file.path, body)
@@ -319,6 +331,9 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 			if _, _, err := restclient.ParseDelay(raw); err != nil {
 				logger.Warn("invalid @delay will be ignored", "delay", raw, "method", method.Name, "source", method.Source, "error", err)
 			}
+		}
+		if method.Compress != "" && method.Stream > 0 {
+			logger.Warn("@compress is ignored for a section with @stream, which sends its body in readable pieces", "method", method.Name, "source", method.Source, "line", method.Line)
 		}
 		var fixture any
 		if method.Fixture != "" {
