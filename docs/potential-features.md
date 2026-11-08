@@ -97,6 +97,7 @@ deferred; see [stateful-scenarios.md](stateful-scenarios.md).
   built locally (`make docker`). GoReleaser can push
   `ghcr.io/sspencer/mock:<version>` and a Homebrew tap from the existing release
   workflow, so `docker run ghcr.io/sspencer/mock` works without a checkout.
+  Deferred: not wanted yet, but worth doing later.
 - **Aggregate validation diagnostics:** `mock validate` reports warnings for
   every route but stops at the first load error, so fixing a file can reveal the
   next error. Collecting several parse errors per run would need the parser to
