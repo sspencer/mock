@@ -19,9 +19,7 @@ is described in full under [Ideas](#ideas).
 6. ~~**Go test helper and request assertions** (M).~~ Done.
 7. ~~**Lint rendered JSON bodies** (S).~~ Done.
 8. ~~**Directory of request files** (S–M).~~ Done.
-9. **Reload trigger and polling fallback** (S). File events are unreliable on
-   Docker bind mounts and some network filesystems; give users a way to force
-   a reload.
+9. ~~**Reload trigger and polling fallback** (S).~~ Done.
 10. **Directive reference and recipes** (S, docs only). One table of every
     `@` directive, plus recipes for needs that already work but are not obvious.
 
@@ -123,11 +121,6 @@ so revisit them once the items above are done.
 
 ### Configuration and inputs
 
-- **Reload trigger and polling fallback** (S): `POST /reload` on the admin
-  port, a `SIGHUP` handler, and a `--poll 1s` option. fsnotify misses changes
-  on Docker Desktop bind mounts, some network filesystems and editors that
-  save through renames into other directories, and today the only remedy is a
-  restart.
 - **Shared definitions across files** (S–M): `@import ./common.http` (or a
   variables-only file) so several request files can share `@host`, tokens and
   common response headers. The dialect table lists imports as unsupported.
@@ -204,6 +197,10 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Reload trigger and polling fallback:** `POST /reload` on the admin port
+  (same cross-site rules as `/clear`, `422` on a failed reload), `SIGHUP`,
+  and `-i` / `--poll 1s`, which compares sizes and modification times of the
+  request and body files. One reload runs at a time whatever triggers it.
 - **Directory of request files:** `-d` / `--dir` loads every `.http` file
   under a directory (lexical order, after file arguments, hidden entries
   skipped) and watches the tree, so new files and subdirectories reload.

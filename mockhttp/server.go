@@ -37,6 +37,8 @@ type Server struct {
 	mu             sync.Mutex
 	config         ConfigState
 	upstream       atomic.Pointer[upstreamProxy]
+	// reloader re-reads the request files for POST /reload.
+	reloader func()
 }
 
 func New(methods []restclient.Method, logger *slog.Logger) *Server {

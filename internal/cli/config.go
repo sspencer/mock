@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sspencer/mock/restclient"
 )
@@ -44,11 +45,17 @@ type config struct {
 	Vars varFlag
 	// Dirs are directories whose .http files are all loaded and watched (-d).
 	Dirs listFlag
+	// Poll, when set, checks the request files for changes on this interval
+	// in addition to file events (-i).
+	Poll time.Duration
 	// Help holds the usage text when -h or --help was requested.
 	Help string
 }
 
 const defaultBind = "127.0.0.1"
+
+// minPollInterval keeps -i from turning into a busy loop.
+const minPollInterval = 100 * time.Millisecond
 
 // usageText is printed by -h. Every flag has a short and a long name; Go's
 // flag package accepts either with one or two dashes.
@@ -78,6 +85,9 @@ flags:
   -d, --dir DIR        load every .http file under DIR, after any file
                        arguments, and pick up added or removed files on
                        reload; repeat for more directories
+  -i, --poll INTERVAL  also check request files for changes this often, such
+                       as 1s, where file events do not arrive (Docker bind
+                       mounts, network filesystems)
       --version        print version and exit
   -h, --help           print this help and exit
 `
@@ -125,6 +135,9 @@ func parseConfig(args []string) (config, error) {
 	for _, name := range []string{"d", "dir"} {
 		flagSet.Var(&cfg.Dirs, name, "")
 	}
+	for _, name := range []string{"i", "poll"} {
+		flagSet.DurationVar(&cfg.Poll, name, 0, "")
+	}
 	flagSet.BoolVar(&cfg.Version, "version", false, "")
 	if err := flagSet.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -137,6 +150,9 @@ func parseConfig(args []string) (config, error) {
 		if cfg.Upstream, err = parseUpstream(upstream); err != nil {
 			return config{}, err
 		}
+	}
+	if cfg.Poll != 0 && cfg.Poll < minPollInterval {
+		return config{}, usageError("-i (--poll) must be at least %s", minPollInterval)
 	}
 	if cfg.Port < 0 || cfg.Port > 65535 {
 		return config{}, usageError("port must be between 0 and 65535")

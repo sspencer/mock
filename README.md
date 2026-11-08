@@ -170,7 +170,9 @@ mounted the routes that use them return `500`; mount the directory as shown
 below to serve them. The bind mount keeps the request file outside the image. Rebuild the image only
 when the `mock` binary or static UI changes. Because the file is mounted from
 the host, edits to the host `.http` file are picked up by the running container
-and reloaded automatically.
+and reloaded automatically. Docker Desktop does not always pass file change
+events through a bind mount; if edits are not picked up, add `-i 1s` to poll
+for changes (see [Reloading](#reloading)).
 
 If the request file uses `< path` external response bodies, mount the whole
 directory so relative file references are available inside the container:
@@ -208,6 +210,7 @@ Flags:
 | `-s`, `--strict` | (off) | At shutdown, list requests no route matched and routes that never matched, and exit `1` if any request was unmatched (see [Strict mode and route coverage](#strict-mode-and-route-coverage)) |
 | `-v`, `--var` | | `NAME=VALUE`: set the `@NAME` variable in every request file, overriding its definitions. Repeat for more variables (see [Variables from the command line](#variables-from-the-command-line)) |
 | `-d`, `--dir` | | Load every `.http` file under this directory, after any file arguments, and pick up added or removed files on reload. Repeat for more directories (see [A directory of request files](#a-directory-of-request-files)) |
+| `-i`, `--poll` | (off) | Also check the request files for changes this often, such as `1s` (at least `100ms`), for filesystems that do not deliver change events (see [Reloading](#reloading)) |
 | `--version` | | Print version and exit |
 | `-h`, `--help` | | Print usage and exit |
 
@@ -242,6 +245,31 @@ Request files passed on the command line are watched for changes, including
 relative `< path` response bodies. On save, `mock` reloads those files, swaps in
 the new routes without restarting the process, and prints the updated route list.
 SIGINT/SIGTERM shut the server down cleanly and stop the file watcher.
+
+### Reloading
+
+File change events do not reach `mock` on every filesystem: Docker Desktop bind
+mounts, some network filesystems, and editors that save by renaming through
+another directory can miss them. Three other ways to reload:
+
+- `-i 1s` (`--poll`) checks the size and modification time of every request
+  and body file (and, with `-d`, the files under each directory) at that
+  interval, and reloads when any changed. File events still work alongside
+  it.
+- `kill -HUP <pid>` reloads at once.
+- `POST /reload` on the admin port reloads at once and answers with the same
+  JSON as `/state`: `200` when the reload succeeded, `422` when it failed
+  (the previous routes stay active and `error` says why). Like `/clear`, it
+  needs an `X-Requested-With` header or a JSON `Content-Type`, and rejects
+  cross-site requests:
+
+  ```sh
+  curl -s -X POST -H 'X-Requested-With: curl' http://127.0.0.1:8081/reload
+  ```
+
+A reload from any trigger re-reads every file, and only one runs at a time.
+With routes read from stdin there is nothing to reload: `-i` is rejected and
+`/reload` answers `409`.
 
 If you pass a single directory, `mock` serves that directory as a static file
 server from `/` instead of loading mock routes or the request-log UI.
@@ -1216,6 +1244,7 @@ The UI is served at the root of the admin port (`-a`, default `8081`):
 | `/` | Request log UI |
 | `/events` | Server-sent events stream (with event `id` / `Last-Event-ID`) |
 | `/clear` | `POST` clears stored events |
+| `/reload` | `POST` reloads the request files now and returns the new state (see [Reloading](#reloading)) |
 | `/state` | `GET` active revision, route count, last successful reload, and reload error |
 | `/routes` | `GET` route configuration, including source location, port, matchers, status, delay, body preview, and `hits` (requests answered) |
 | `/requests` | `GET` the request log as JSON, optionally filtered (see below) |
@@ -1235,8 +1264,8 @@ UI features: theme toggle, filter, pause stream, clear log,
 HAR export, a Help dialog, and a routes panel that refreshes after hot-reload.
 When `mock` listens on more than one port, the request table shows each
 request's host and port, and routes are labeled with their port.
-The `/clear` POST endpoint requires an `X-Requested-With` header or a JSON
-`Content-Type`, and reject cross-origin and cross-site requests.
+The `/clear` and `/reload` POST endpoints require an `X-Requested-With` header
+or a JSON `Content-Type`, and reject cross-origin and cross-site requests.
 
 ### Reading the request log
 

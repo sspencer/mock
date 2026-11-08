@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add three ways to reload request files when file change events do not arrive (Docker Desktop bind mounts, network filesystems): `-i` / `--poll INTERVAL` checks file sizes and modification times on an interval, `SIGHUP` reloads at once, and `POST /reload` on the admin port reloads and returns the new state (`422` if the reload failed). `/reload` has the same cross-site protections as `/clear`.
+
 - Add `-d` / `--dir DIR` to load every `.http` file under a directory, after any file arguments and in lexical path order. The directory tree is watched, so added, removed or renamed request files and new subdirectories are picked up on reload. `mock validate` also accepts directories. A positional directory still serves static files.
 
 - Warn at load time, and in `mock validate`, when a route with a JSON `Content-Type` has a body that does not parse once rendered with sample request values, naming the route and the line within the body.
