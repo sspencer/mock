@@ -23,7 +23,10 @@ import (
 )
 
 type Server struct {
-	methods        []restclient.Method
+	methods []restclient.Method
+	// hits counts the requests each route in methods answered.
+	hits           []*atomic.Uint64
+	unmatched      unmatchedLog
 	logger         *slog.Logger
 	events         []RequestEvent
 	subscribers    map[chan RequestEvent]struct{}
@@ -38,6 +41,7 @@ type Server struct {
 func New(methods []restclient.Method, logger *slog.Logger) *Server {
 	s := &Server{
 		methods:     cloneMethods(methods),
+		hits:        carryHits(methods, nil, nil),
 		session:     rand.Text(),
 		logger:      logger,
 		subscribers: make(map[chan RequestEvent]struct{}),
@@ -53,6 +57,7 @@ func (s *Server) SetMethods(methods []restclient.Method) {
 	warnMethodConfig(s.logger, compiled)
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.hits = carryHits(compiled, s.methods, s.hits)
 	s.methods = compiled
 	s.config.Revision++
 	s.config.RouteCount = len(compiled)
@@ -88,7 +93,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	status := http.StatusNotFound
 	if !ok {
 		_ = controller.SetWriteDeadline(time.Now().Add(30 * time.Second))
-		if up := s.upstream.Load(); up != nil {
+		up := s.upstream.Load()
+		s.recordUnmatched(r, up != nil)
+		if up != nil {
 			capture.match.Upstream = up.target.String()
 			up.serve(capture, r)
 		} else {

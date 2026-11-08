@@ -1,4 +1,4 @@
-import { formatMessage, bodyNotice, buildCurl, buildRouteCurl, formatRoute } from './inspector.mjs';
+import { formatMessage, bodyNotice, buildCurl, buildRouteCurl, formatRoute, hitsLabel } from './inspector.mjs';
 import { buildRouteDraft } from './draft.mjs';
 import { attachSplitter, alignedTrafficHeight } from './layout.mjs';
 import { buildHAR } from './har.mjs';
@@ -692,12 +692,17 @@ async function loadRoutes() {
             if (route.name) {
                 name.title = route.name;
             }
+            const hits = document.createElement('span');
+            hits.className = 'route-hits';
+            hits.classList.toggle('unused', !route.hits);
+            hits.textContent = String(route.hits || 0);
+            hits.title = `Matched ${hitsLabel(route.hits)}`;
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'route-button';
-            button.setAttribute('aria-label', `${route.method} ${routePath}: ${route.name}`);
+            button.setAttribute('aria-label', `${route.method} ${routePath}: ${route.name}, matched ${hitsLabel(route.hits)}`);
             button.setAttribute('aria-pressed', String(selectedRoute(selection)?.id === route.id));
-            button.append(method, path, name);
+            button.append(method, path, name, hits);
             button.addEventListener('click', () => {
                 selection = selectRoute(route);
                 returnFocus = button;

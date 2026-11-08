@@ -185,7 +185,9 @@ func (s *Server) ServeRoutes(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	routes := make([]RouteInfo, 0, len(s.methods))
 	for i, method := range s.methods {
-		routes = append(routes, describeRoute(method, i, s.config.Revision))
+		route := describeRoute(method, i, s.config.Revision)
+		route.Hits = s.hits[i].Load()
+		routes = append(routes, route)
 	}
 	s.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")

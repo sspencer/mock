@@ -104,12 +104,14 @@ test('unmatched requests copy a draft route', async () => {
 });
 
 test('routes open their configuration and copy a sample request', async () => {
- routesData=[{id:'2:0',revision:2,name:'Create user',method:'POST',path:'/users',port:8080,source:'users.http',line:1,status:201,delay:'1s',headers:{},matchHeaders:{},variables:{},body:'{"ok":true}'}];
+ routesData=[{id:'2:0',revision:2,name:'Create user',method:'POST',path:'/users',port:8080,source:'users.http',line:1,status:201,delay:'1s',headers:{},matchHeaders:{},variables:{},body:'{"ok":true}',hits:3}];
  click('refreshRoutesButton');await new Promise(resolve=>setImmediate(resolve));
  const button=element('routesList').querySelector('button');button.dispatchEvent(new Event('click'));
  assert.equal(element('routeView').hidden,false);
  assert.match(element('routeDetails').textContent,/POST \/users/);
  assert.equal(element('routeTitle').textContent,'Create user');
+ assert.equal(button.children.at(-1).textContent,'3');
+ assert.match(element('routeDetails').textContent,/Matched: 3 requests/);
  assert.match(element('routeSummary').textContent,/users.http:1/);
  let copied='';Object.defineProperty(globalThis,'navigator',{configurable:true,value:{clipboard:{writeText:async text=>{copied=text;}}}});
  click('copyRouteCurlButton');await Promise.resolve();assert.equal(copied,"curl --request POST 'http://localhost:8080/users'");

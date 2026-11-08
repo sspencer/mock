@@ -140,6 +140,11 @@ export function buildRouteCurl(route, origin) {
     return parts.join(' ');
 }
 
+// hitsLabel describes how many requests a route has answered.
+export function hitsLabel(hits = 0) {
+    return hits === 1 ? '1 request' : `${hits} requests`;
+}
+
 export function formatRoute(route, sampleCurl = '') {
     const responseHeaders = Object.entries(route.headers || {}).flatMap(([name, values]) => values.map(value => `${name}: ${value}`)).join('\n');
     const describe = value => value === '!' ? '! (must be absent)' : value.startsWith('~') ? `${value} (regular expression)` : value;
@@ -156,6 +161,7 @@ export function formatRoute(route, sampleCurl = '') {
         `${route.method} ${route.path}${route.query ? '?' + route.query : ''}`,
         sampleCurl ? `Sample request\n${sampleCurl}` : '',
         `Source: ${route.source || '(unknown)'}:${route.line || '?'} · revision ${route.revision}`,
+        `Matched: ${hitsLabel(route.hits)}`,
         route.port ? `Port: ${route.port}` : '',
         `Response: ${route.status} · delay ${route.delay || '0s'}${route.stream ? ` · stream ${route.stream}` : ''}${route.fault ? ` · fault ${route.fault}` : ''}`,
         `Request header requirements\n${matchHeaders || '(none)'}`,

@@ -35,6 +35,9 @@ type config struct {
 	Args             []string
 	// Upstream receives requests no route matches (-u); nil answers 404.
 	Upstream *url.URL
+	// Strict reports unmatched requests and unused routes at shutdown and
+	// fails the run when any request went unmatched (-s).
+	Strict bool
 	// Help holds the usage text when -h or --help was requested.
 	Help string
 }
@@ -60,6 +63,9 @@ flags:
                        (default 127.0.0.1, or MOCK_BIND)
   -u, --upstream URL   forward requests no route matches to this http or
                        https URL and return its response
+  -s, --strict         at shutdown, list requests no route matched and routes
+                       that never matched, and exit 1 if any request was
+                       unmatched
       --version        print version and exit
   -h, --help           print this help and exit
 `
@@ -97,6 +103,9 @@ func parseConfig(args []string) (config, error) {
 	var upstream string
 	for _, name := range []string{"u", "upstream"} {
 		flagSet.StringVar(&upstream, name, "", "")
+	}
+	for _, name := range []string{"s", "strict"} {
+		flagSet.BoolVar(&cfg.Strict, name, false, "")
 	}
 	flagSet.BoolVar(&cfg.Version, "version", false, "")
 	if err := flagSet.Parse(args); err != nil {

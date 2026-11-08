@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add `-s` / `--strict`. At shutdown, `mock` writes a report to stderr listing requests no route matched (including ones forwarded with `--upstream`) and routes that never matched a request, and exits `1` if any request was unmatched, so a call to an unmocked endpoint can fail a CI run.
+- Count how many requests each route answered. The admin UI's routes list and route details show the count, and `/routes` and request events report it as `hits`. Counts carry over a reload for routes that did not change.
+
 - Add **Copy as route** to the admin UI's inspector for unmatched requests. It copies a draft `.http` section with the request's method and path, `@query.*`, `@header.Authorization`, and `@json.*` or `@form.*` matchers that require the fields the request sent, and a placeholder `[200]` JSON response. A request proxied with `--upstream` drafts the upstream's real response instead.
 
 - Add `-u` / `--upstream URL` to pass requests that no route matches to a real API and return its response, so you can mock a few endpoints and use the real service for the rest. The upstream may be HTTP or HTTPS and may include a base path; the request path and query are appended to it. Forwarded requests keep their method, headers and body, and get the upstream's `Host` plus `X-Forwarded-*` and `Via` headers. An unreachable upstream answers `502`, and a request that loops back to `mock` answers `508`. The admin UI marks forwarded requests as **proxied**, and request events carry `match.upstream`. `--upstream` cannot be combined with a directory argument.

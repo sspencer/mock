@@ -204,6 +204,7 @@ Flags:
 | `-x`, `--no-ui` | (off) | Do not start the admin UI. Cannot be combined with `-a` |
 | `-b`, `--bind` | `127.0.0.1`, or `MOCK_BIND` | Bind address. Use `0.0.0.0` to listen on all interfaces |
 | `-u`, `--upstream` | (off) | Forward requests no route matches to this `http` or `https` URL and return its response (see [Passing unmatched requests to a real API](#passing-unmatched-requests-to-a-real-api)) |
+| `-s`, `--strict` | (off) | At shutdown, list requests no route matched and routes that never matched, and exit `1` if any request was unmatched (see [Strict mode and route coverage](#strict-mode-and-route-coverage)) |
 | `--version` | | Print version and exit |
 | `-h`, `--help` | | Print usage and exit |
 
@@ -1016,6 +1017,49 @@ mock --upstream https://api.example.com fixtures.http
 The admin UI marks forwarded requests as **proxied** and shows the upstream
 URL, the real response, and the nearby routes that didn't match.
 
+## Strict mode and route coverage
+
+`mock` counts how many requests each route answered. The admin UI's routes
+list shows the count next to each route, and `/routes` reports it as `hits`.
+Counts start at zero when `mock` starts and are kept when a reload leaves a
+route unchanged; a route is the same one if its file, name, method, port, path
+and query are the same, even if its line moved. Clearing the request log does
+not reset them.
+
+Pass `-s` (`--strict`) to use `mock` in tests and CI. When `mock` shuts down
+on SIGINT or SIGTERM it writes a report to stderr:
+
+```text
+strict: 3 requests no route matched
+  2x GET /v1/invoices
+  1x POST /v1/refunds
+strict: 1 of 6 routes never matched a request
+  api.http:42  DELETE /v1/users/:id  Delete user
+```
+
+- Unmatched requests are listed by method and path, in the order first seen,
+  so a call to an endpoint you haven't mocked fails the build instead of hiding
+  as a `404` in a log. Up to 100 distinct method and path pairs are listed;
+  later ones are still counted.
+- If any request was unmatched, `mock` exits `1`. Requests forwarded with
+  `--upstream` count as unmatched too, and are marked `(proxied)`.
+- Routes that never matched are listed but do not change the exit code. They
+  usually mean a stale fixture or a test that no longer runs.
+- When every request matched and every route was used, `mock` prints one line
+  saying so.
+- `--strict` needs request files; it cannot be combined with a directory
+  argument.
+
+For example, in a CI script:
+
+```sh
+mock --strict -x fixtures.http &
+mock_pid=$!
+npm test
+kill "$mock_pid"     # SIGTERM
+wait "$mock_pid"   # fails the job if any request went unmatched
+```
+
 ## Admin UI And API
 
 The UI is served at the root of the admin port (`-a`, default `8081`):
@@ -1026,7 +1070,7 @@ The UI is served at the root of the admin port (`-a`, default `8081`):
 | `/events` | Server-sent events stream (with event `id` / `Last-Event-ID`) |
 | `/clear` | `POST` clears stored events |
 | `/state` | `GET` active revision, route count, last successful reload, and reload error |
-| `/routes` | `GET` route configuration, including source location, port, matchers, status, delay, and body preview |
+| `/routes` | `GET` route configuration, including source location, port, matchers, status, delay, body preview, and `hits` (requests answered) |
 
 Selecting a route shows a sample `curl` command for that route's port (the
 default mock port when the route declares none), ready to paste
@@ -1080,6 +1124,8 @@ On narrow screens, selecting traffic or a route opens the inspector; use
   proxied with `--upstream`, whose real status, `Content-Type` and body are
   used when the body can be pasted inline (with `@template = off` if it
   contains `{{`).
+- The routes list shows how many requests each route has answered; dimmed `0`s
+  are routes nothing has matched yet.
 - Select a configured route to inspect its match requirements, response headers,
   variables, status, delay, and body template or file reference. File contents
   are not loaded into the route preview; large inline previews are truncated.

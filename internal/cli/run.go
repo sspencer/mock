@@ -38,7 +38,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	if len(cfg.Args) == 0 {
 		if f, ok := stdin.(*os.File); ok && stdinIsTerminal(f) {
-			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-u url] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
+			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-u url] [-s] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
 		}
 	}
 	input, err := loadInput(cfg.Args, stdin)
@@ -66,6 +66,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	if input.StaticDir != "" && cfg.Upstream != nil {
 		return usageError("-u (--upstream) needs request files; a directory argument serves static files only")
+	}
+	if input.StaticDir != "" && cfg.Strict {
+		return usageError("-s (--strict) needs request files; a directory argument serves static files only")
 	}
 	if input.StaticDir != "" {
 		handler = newStaticFileHandler(input.StaticDir)
@@ -173,6 +176,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		closeWatcher()
 		for range servers {
 			<-errCh
+		}
+		if cfg.Strict && mockServer != nil {
+			return strictReport(stderr, mockServer.Coverage())
 		}
 		return nil
 	case err := <-errCh:

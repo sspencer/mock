@@ -9,14 +9,12 @@ separately below so they do not remain in the backlog; release history is in
 
 Reviewed 2026-11-06. Highest value first; sizes are rough (S, M, L).
 
-1. **Strict mode and route coverage** (S). Fail CI on unmocked calls and find
-   fixtures that are never used.
-2. **Publish the Docker image and a Homebrew formula** (S). Mostly GoReleaser
+1. **Publish the Docker image and a Homebrew formula** (S). Mostly GoReleaser
    configuration.
-3. **Close small test gaps** (S). The invalid generator argument warning in
+2. **Close small test gaps** (S). The invalid generator argument warning in
    `warnUnknownPlaceholders` is only exercised through the `mock validate`
    tests; add a direct test in `mockhttp`.
-4. **JSON array matching** (S). `@json.roles.* = admin` (any element matches);
+3. **JSON array matching** (S). `@json.roles.* = admin` (any element matches);
    today only fixed indexes such as `roles.0` work.
 
 Everything else is grouped by theme below. Stateful scenarios are deliberately
@@ -54,12 +52,6 @@ deferred; see [stateful-scenarios.md](stateful-scenarios.md).
   requests. The same data could serve an admin endpoint for assertions from
   other languages: expected request counts, ordering, and matching
   constraints.
-- **Strict mode for unmatched requests** (S): `--strict` reports unmatched
-  requests at shutdown and exits non-zero if there were any, so a call to an
-  unmocked endpoint fails the build instead of hiding as a 404 in a log.
-- **Route hit counts and coverage** (S): `/routes` and the routes panel show how
-  many times each route answered; with `--strict`, shutdown also lists routes
-  that were never hit, which usually means a stale fixture.
 - **Structured JSON logs** (S): `--log-format json` writes one object per
   request (method, path, status, route, duration) for CI log collectors and
   `jq`. The server already logs through `slog`.
@@ -135,6 +127,9 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Strict mode and route coverage:** `-s` / `--strict` reports unmatched
+  requests and never-matched routes at shutdown and exits `1` on unmatched
+  requests; `/routes` and the routes panel show per-route hit counts.
 - **Copy an unmatched request as a route:** the inspector's **Copy as route**
   button copies a draft `.http` section for an unmatched request, with
   presence matchers for its query, `Authorization` header and top-level body

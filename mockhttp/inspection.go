@@ -42,6 +42,9 @@ type RouteInfo struct {
 	Variables     map[string]string `json:"variables"`
 	Body          string            `json:"body"`
 	BodyTruncated bool              `json:"bodyTruncated"`
+	// Hits counts the requests this route has answered, carried across
+	// reloads for unchanged routes.
+	Hits uint64 `json:"hits"`
 }
 
 type MatchInfo struct {

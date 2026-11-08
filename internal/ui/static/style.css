@@ -729,6 +729,17 @@ tbody tr[data-id]:focus-visible {
     white-space: nowrap;
 }
 
+.routes-list .route-hits {
+    flex: 0 0 auto;
+    min-width: 2ch;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+.routes-list .route-hits.unused { opacity: 0.55; }
+
 .routes-list .empty-state {
     justify-content: center;
     height: 80px;
