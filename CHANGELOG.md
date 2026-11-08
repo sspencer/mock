@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add `@xml.element.path` request matchers and `{{$xml.element.path}}` placeholders for XML bodies. Paths start at the root element, ignore namespace prefixes, accept `*` for any child, and end in `["@name"]` to read an attribute.
+
 - `@form.name` matchers and `{{$form.name}}` placeholders read `multipart/form-data` bodies: text parts by content, file parts by file name.
 
 - `@json` matchers and `{{$json.*}}` placeholders accept `["key"]` segments for object keys that contain dots or other punctuation, such as `@json.labels["app.kubernetes.io/name"] = web`.

@@ -245,3 +245,18 @@ func TestParseCookieMatcher(t *testing.T) {
 		t.Fatal("cookie matcher accepted as a --var override")
 	}
 }
+
+func TestParseXMLMatcher(t *testing.T) {
+	methods, err := Parse("test.http", strings.NewReader("### Order\n@xml.order.item = pen\n@xml.order[\"@id\"] = ~[0-9]+\nPOST /o\n\nok\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := methods[0].MatchXML; got["order.item"] != "pen" || got[`order["@id"]`] != "~[0-9]+" {
+		t.Fatalf("MatchXML = %v", got)
+	}
+	for _, bad := range []string{`@xml.order["@id"].x = 1`, `@xml.order["@"] = 1`, `@xml.a..b = 1`} {
+		if _, err := Parse("test.http", strings.NewReader("### Bad\n"+bad+"\nPOST /o\n")); err == nil {
+			t.Errorf("%s parsed", bad)
+		}
+	}
+}

@@ -158,6 +158,12 @@ test('describeMatcher explains negated matchers', () => {
     assert.equal(isSampleExact('!guest'), false);
 });
 
+test('formatRoute lists XML requirements', () => {
+    const text = formatRoute({ method: 'POST', path: '/soap', matchXml: { 'Envelope.Body.GetQuote.symbol': '*', 'order["@id"]': '!draft' } });
+    assert.ok(text.includes('xml Envelope.Body.GetQuote.symbol: '), text);
+    assert.ok(text.includes('xml order["@id"]: '), text);
+});
+
 test('route curl sends required cookies', () => {
     const route = { method: 'GET', path: '/me', matchCookies: { session: ['*'], theme: ['dark'], debug: ['!'] } };
     assert.equal(buildRouteCurl(route, 'http://localhost:8080'), "curl --cookie 'session=example; theme=dark' 'http://localhost:8080/me'");

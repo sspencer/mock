@@ -394,7 +394,7 @@ func shadows(a, b restclient.Method) bool {
 			return false
 		}
 	}
-	return subsetMap(a.MatchJSON, b.MatchJSON)
+	return subsetMap(a.MatchJSON, b.MatchJSON) && subsetMap(a.MatchXML, b.MatchXML)
 }
 
 // pathCovers reports whether every request path that pattern b matches is
@@ -524,6 +524,7 @@ func cloneMethods(methods []restclient.Method) []restclient.Method {
 		out[i].MatchQuery = cloneValues(methods[i].MatchQuery)
 		out[i].MatchPath = maps.Clone(methods[i].MatchPath)
 		out[i].MatchJSON = maps.Clone(methods[i].MatchJSON)
+		out[i].MatchXML = maps.Clone(methods[i].MatchXML)
 		out[i].MatchForm = cloneValues(methods[i].MatchForm)
 		out[i].MatchCookies = cloneValues(methods[i].MatchCookies)
 		out[i].Comments = append([]string(nil), methods[i].Comments...)
@@ -659,10 +660,10 @@ func (s *Server) clearLocked() {
 }
 
 // isRequestPlaceholder reports whether key reads the request at render time
-// ($query.name, $header.Name, $cookie.name, $json.field.path or $form.name). Its value
+// ($query.name, $header.Name, $cookie.name, $json.field.path, $xml.path or $form.name). Its value
 // depends on each request, so it is never reported as unknown.
 func isRequestPlaceholder(key string) bool {
-	for _, prefix := range []string{"query.", "header.", "cookie.", "json.", "form."} {
+	for _, prefix := range []string{"query.", "header.", "cookie.", "json.", "xml.", "form."} {
 		if name, ok := strings.CutPrefix(key, prefix); ok && name != "" {
 			return true
 		}
@@ -690,6 +691,9 @@ func matcherValues(method restclient.Method) []string {
 		out = append(out, value)
 	}
 	for _, value := range method.MatchJSON {
+		out = append(out, value)
+	}
+	for _, value := range method.MatchXML {
 		out = append(out, value)
 	}
 	if method.MatchBody != "" {

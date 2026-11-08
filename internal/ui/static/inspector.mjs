@@ -186,6 +186,7 @@ export function formatRoute(route, sampleCurl = '') {
     const matchBody = [
         route.matchBody ? `body: ${describe(route.matchBody)}` : '',
         ...Object.entries(route.matchJson || {}).map(([path, value]) => `json ${path}: ${describe(value)}`),
+        ...Object.entries(route.matchXml || {}).map(([path, value]) => `xml ${path}: ${describe(value)}`),
         ...Object.entries(route.matchForm || {}).flatMap(([name, values]) => values.map(value => `form ${name}: ${describe(value)}`)),
     ].filter(Boolean).join('\n');
     const variables = Object.entries(route.variables || {}).map(([key, value]) => `@${key} = ${value}`).join('\n');

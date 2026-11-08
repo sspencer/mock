@@ -23,8 +23,8 @@ import (
 // Headers on the Method are response headers. Use MatchHeaders (from
 // @header.Name = value variables) to require request headers when matching.
 // MatchQuery (@query.name), MatchPath (@path.name), MatchBody (@body) and
-// MatchJSON (@json.field.path), MatchForm (@form.name) and MatchCookies
-// (@cookie.name) add further request matchers. Matcher values
+// MatchJSON (@json.field.path), MatchXML (@xml.element.path), MatchForm
+// (@form.name) and MatchCookies (@cookie.name) add further request matchers. Matcher values
 // are kept as written; see ParseMatcher and ParseBodyMatcher.
 //
 // Target is the request target as written, with any {{name}} references
@@ -65,6 +65,7 @@ type Method struct {
 	MatchPath     map[string]string
 	MatchBody     string
 	MatchJSON     map[string]string
+	MatchXML      map[string]string
 	MatchForm     url.Values
 	MatchCookies  url.Values
 	Headers       http.Header
@@ -87,12 +88,15 @@ var legacyVariablePattern = regexp.MustCompile(`^\$([A-Za-z_][A-Za-z0-9_.-]*)\s*
 
 var variableNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*$`)
 
-// jsonMatcherName reports whether name is a @json matcher whose path uses
-// "*" segments or ["key"] segments, which the usual name rule rejects. The
-// path must start with a plain field so the name still starts like a
+// jsonMatcherName reports whether name is a @json or @xml matcher whose path
+// uses "*" segments or ["key"] segments, which the usual name rule rejects.
+// The path must start with a plain field so the name still starts like a
 // variable name.
 func jsonMatcherName(name string) bool {
 	path, ok := strings.CutPrefix(name, "json.")
+	if !ok {
+		path, ok = strings.CutPrefix(name, "xml.")
+	}
 	if !ok || path == "" || path[0] == '[' {
 		return false
 	}
@@ -138,7 +142,7 @@ type Options struct {
 
 // CheckVariableOverride reports whether name can be set with Options.Vars:
 // a variable name that is not a request matcher (@header.*, @query.*,
-// @path.*, @body, @json.*, @form.*, @cookie.*).
+// @path.*, @body, @json.*, @xml.*, @form.*, @cookie.*).
 func CheckVariableOverride(name string) error {
 	if !variableNamePattern.MatchString(name) {
 		return fmt.Errorf("invalid variable name %q (use letters, digits, _, . and -, starting with a letter or _)", name)
@@ -255,6 +259,7 @@ func (o Options) Parse(source string, r io.Reader) ([]Method, error) {
 				MatchQuery:    make(url.Values),
 				MatchPath:     make(map[string]string),
 				MatchJSON:     make(map[string]string),
+				MatchXML:      make(map[string]string),
 				MatchForm:     make(url.Values),
 				MatchCookies:  make(url.Values),
 				Headers:       make(http.Header),
@@ -623,13 +628,13 @@ func parseSection(pending pendingSection, fileDefs []definition, overrides map[s
 const fileVariableRemoved = `$file and @file are no longer supported; start the response body with "< path" instead (example: "< ./users.json")`
 
 // isMatcherName reports whether a variable name is a request matcher
-// (@header.Name, @query.name, @path.name, @body, @json.path, @form.name or
-// @cookie.name) rather than a {{name}} variable.
+// (@header.Name, @query.name, @path.name, @body, @json.path, @xml.path,
+// @form.name or @cookie.name) rather than a {{name}} variable.
 func isMatcherName(name string) bool {
 	if name == "body" {
 		return true
 	}
-	for _, prefix := range []string{"header.", "query.", "path.", "json.", "form.", "cookie."} {
+	for _, prefix := range []string{"header.", "query.", "path.", "json.", "xml.", "form.", "cookie."} {
 		if strings.HasPrefix(name, prefix) {
 			return true
 		}
@@ -752,6 +757,25 @@ func applyControlVariable(method *Method, def definition, source string) error {
 			return err
 		}
 		method.MatchJSON[path] = value
+		return nil
+	}
+	if path, ok := strings.CutPrefix(def.name, "xml."); ok {
+		segments, err := ParseJSONPath(path)
+		if err == nil {
+			for i, segment := range segments {
+				if segment.Quoted && strings.HasPrefix(segment.Name, "@") && (i != len(segments)-1 || len(segment.Name) == 1) {
+					err = fmt.Errorf("attribute must be the last segment")
+				}
+			}
+		}
+		if err != nil || path == "" {
+			return parseErrorf(source, def.line,
+				`section %q: @%s needs a dot-separated XML element path starting at the root element (example: "@xml.order.customer.id = 42", or @xml.order["@id"] for an attribute)`, method.Name, def.name)
+		}
+		if err := parseMatcherValue(method, def, value, source); err != nil {
+			return err
+		}
+		method.MatchXML[path] = value
 		return nil
 	}
 	if name, ok := strings.CutPrefix(def.name, "form."); ok {

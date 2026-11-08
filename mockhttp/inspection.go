@@ -39,6 +39,7 @@ type RouteInfo struct {
 	MatchPath     map[string]string `json:"matchPath,omitempty"`
 	MatchBody     string            `json:"matchBody,omitempty"`
 	MatchJSON     map[string]string `json:"matchJson,omitempty"`
+	MatchXML      map[string]string `json:"matchXml,omitempty"`
 	MatchForm     url.Values        `json:"matchForm,omitempty"`
 	MatchCookies  url.Values        `json:"matchCookies,omitempty"`
 	Variables     map[string]string `json:"variables"`
@@ -87,7 +88,7 @@ func describeRoute(method restclient.Method, index int, revision uint64) RouteIn
 		Path: (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath(), Query: method.Query.Encode(), Port: method.Port, Source: method.Source, Line: method.Line, Status: method.Status,
 		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
 		MatchQuery: cloneValues(method.MatchQuery), MatchPath: cloneOptional(method.MatchPath),
-		MatchBody: method.MatchBody, MatchJSON: cloneOptional(method.MatchJSON), MatchForm: cloneValues(method.MatchForm), MatchCookies: cloneValues(method.MatchCookies),
+		MatchBody: method.MatchBody, MatchJSON: cloneOptional(method.MatchJSON), MatchXML: cloneOptional(method.MatchXML), MatchForm: cloneValues(method.MatchForm), MatchCookies: cloneValues(method.MatchCookies),
 		Variables: cloneVariables(method.Variables), Body: body, BodyTruncated: truncated}
 }
 
@@ -262,6 +263,20 @@ func mismatch(method restclient.Method, facts *requestFacts) RouteMismatch {
 			reason += err.Error()
 		} else {
 			reason += matcherReason(restclient.MustMatcher(method.MatchJSON[path]), values, true)
+		}
+		result.Reasons = append(result.Reasons, reason)
+		result.score++
+	}
+	for _, path := range slices.Sorted(maps.Keys(method.MatchXML)) {
+		if facts.xmlMatches(path, method.MatchXML[path]) {
+			continue
+		}
+		values, err := facts.xmlValues(path)
+		reason := "XML " + path + ": "
+		if err != nil {
+			reason += err.Error()
+		} else {
+			reason += matcherReason(restclient.MustMatcher(method.MatchXML[path]), values, true)
 		}
 		result.Reasons = append(result.Reasons, reason)
 		result.score++

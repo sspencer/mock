@@ -47,6 +47,10 @@ type requestFacts struct {
 
 	cookiesDone bool
 	cookies     map[string][]string
+
+	xmlDone bool
+	xml     *xmlNode
+	xmlErr  error
 }
 
 func newRequestFacts(r *http.Request, body requestBody) *requestFacts {
@@ -119,6 +123,11 @@ func (f *requestFacts) match(method *restclient.Method, requestMethod string) (m
 			return nil, false
 		}
 	}
+	for path, expected := range method.MatchXML {
+		if !f.xmlMatches(path, expected) {
+			return nil, false
+		}
+	}
 	for name, expectedValues := range method.MatchForm {
 		for _, expected := range expectedValues {
 			if !f.formMatches(name, expected) {
@@ -145,7 +154,8 @@ func (f *requestFacts) match(method *restclient.Method, requestMethod string) (m
 
 // captures collects named regexp groups from a matched route's matchers.
 // Later matchers win when two groups share a name: path, query, headers,
-// cookies, body, JSON fields, then form fields, each in name order.
+// cookies, body, JSON fields, XML fields, then form fields, each in name
+// order.
 func (f *requestFacts) captures(method *restclient.Method) map[string]string {
 	out := make(map[string]string)
 	add := func(m restclient.Matcher, values []string) {
@@ -178,6 +188,10 @@ func (f *requestFacts) captures(method *restclient.Method) map[string]string {
 	for _, path := range slices.Sorted(maps.Keys(method.MatchJSON)) {
 		values, _ := f.jsonValues(path)
 		add(restclient.MustMatcher(method.MatchJSON[path]), values)
+	}
+	for _, path := range slices.Sorted(maps.Keys(method.MatchXML)) {
+		values, _ := f.xmlValues(path)
+		add(restclient.MustMatcher(method.MatchXML[path]), values)
 	}
 	for _, name := range slices.Sorted(maps.Keys(method.MatchForm)) {
 		values, _ := f.formValues(name)
@@ -279,7 +293,8 @@ func (f *requestFacts) formValues(name string) ([]string, error) {
 // lookup resolves a {{$name}} placeholder: $env.NAME from the server's
 // environment (never from the request), then path, capture and query values,
 // then the explicit namespaces $path.name, $query.name, $header.Name and
-// $cookie.name, then $json.field.path and $form.name from the request body.
+// $cookie.name, then $json.field.path, $xml.element.path and $form.name from
+// the request body.
 func (v templateValues) lookup(key string) (string, bool) {
 	if name, ok := strings.CutPrefix(key, "env."); ok && name != "" {
 		return os.LookupEnv(name)
@@ -303,6 +318,8 @@ func (v templateValues) lookup(key string) (string, bool) {
 		values = v.facts.cookieValues(name)
 	} else if path, ok := strings.CutPrefix(key, "json."); ok && path != "" {
 		values, _ = v.facts.jsonValues(path)
+	} else if path, ok := strings.CutPrefix(key, "xml."); ok && path != "" {
+		values, _ = v.facts.xmlValues(path)
 	} else if name, ok := strings.CutPrefix(key, "form."); ok && name != "" {
 		values, _ = v.facts.formValues(name)
 	}

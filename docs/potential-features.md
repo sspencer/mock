@@ -31,12 +31,6 @@ and with the items above done they are the next thing to revisit.
 
 ### Matching and routing
 
-- **Richer matching:** XML bodies. Current matching covers methods, encoded paths and path
-  parameters, declared query values, and exact, present (`*`), absent (`!`),
-  regex (`~regex`) and negated (`!text`, `!~regex`) matchers on headers, cookies, query and path parameters, the raw body,
-  JSON fields and form fields, plus trailing `*` path wildcards. The first
-  matching route in load order wins, so catch-alls go last; shadowed routes get
-  a load warning.
 - **Per-route proxying** (M): `@proxy = https://api.example.com` on a section
   forwards requests that match it to that URL, optionally rewriting the path.
   `--upstream` is all or nothing for unmatched requests; this lets one file
@@ -184,6 +178,9 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **XML body matchers:** `@xml.element.path` matchers and
+  `{{$xml.element.path}}` placeholders, starting at the root element, ignoring
+  namespace prefixes, with `*` for any child and `["@name"]` for attributes.
 - **Multipart bodies:** `@form.name` and `{{$form.name}}` read
   `multipart/form-data` parts (file parts by file name).
 - **JSON paths with dotted keys:** `["key"]` segments in `@json` matchers and

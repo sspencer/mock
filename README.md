@@ -418,7 +418,7 @@ only digits, such as `### [beta] Users`, stay part of the name. The old
 | `@name = value` file and method variables, `-v name=value` overrides and `{{$env.NAME}}` | Environment files / `{{env}}` from IDE |
 | Request line `METHOD /path` | Full multi-step scripts |
 | Response headers after the request line | Separate request vs response documents |
-| `@header.Name`, `@cookie.name`, `@query.name`, `@path.name`, `@body`, `@json.path`, `@form.name` request matchers (exact, `*`, `!`, `~regex`, `!text`, `!~regex`) | XML body matchers |
+| `@header.Name`, `@cookie.name`, `@query.name`, `@path.name`, `@body`, `@json.path`, `@xml.path`, `@form.name` request matchers (exact, `*`, `!`, `~regex`, `!text`, `!~regex`) | none |
 | `{{name}}`, `{{%name}}` and `{{$placeholder}}` in bodies, response headers and `< path` file paths, with [filters](#filters) and [`{{#repeat}}` blocks](#generated-lists) | Request variables (`{{login.response.body.token}}`) |
 | `< path` external body files | Mixing inline text and `< path` in one body; imports of other `.http` files |
 
@@ -560,6 +560,7 @@ in the file, or in a section, where it replaces the file value.
 | `@body` | matcher value | none | Require the whole request body to match. See [Body matching](#body-matching). |
 | `@json.field.path` | matcher value | none | Require a field of a JSON request body to match; `@json.roles.* = admin` matches any array element. See [Body matching](#body-matching). |
 | `@form.name` | matcher value | none | Require a field of a URL-encoded form body to match. See [Body matching](#body-matching). |
+| `@xml.element.path` | matcher value | none | Require an element's text, or an attribute with `["@name"]`, in an XML request body to match. See [Body matching](#body-matching). |
 
 The removed `@status` and `@file` names are load errors that point to their
 replacements (`### [204] Name` and `< path`).
@@ -614,8 +615,9 @@ Response bodies **and response headers** can contain placeholders:
     `@header.Authorization = ~Bearer (?P<token>.+)`.
   - Query parameters, such as `type` in `/names?type=cat`.
   - Request body fields: `{{$json.user.name}}` reads a JSON body field (same
-    paths as [`@json.*`](#body-matching)) and `{{$form.username}}` reads a
-    URL-encoded form field.
+    paths as [`@json.*`](#body-matching)), `{{$form.username}}` reads a
+    URL-encoded form field, and `{{$xml.order.id}}` reads an XML element or
+    attribute (same paths as `@xml.*`).
   - Built-in generated values.
 
 Earlier sources in that list win when names collide: path parameters beat
@@ -1072,8 +1074,9 @@ because the first matching route wins.
 ### Body matching
 
 `@body` matches the whole request body as text, `@json.field.path` matches
-one field of a JSON body, and `@form.name` matches a field of a URL-encoded
-form body. All three take the [matcher values](#matcher-values) above.
+one field of a JSON body, `@xml.element.path` matches an element or attribute
+of an XML body, and `@form.name` matches a field of a URL-encoded form body.
+All of them take the [matcher values](#matcher-values) above.
 
 ```http
 ### Admin login
@@ -1136,12 +1139,23 @@ pong
   instead. A text part's value is its content; a file part's value is its file
   name, so `@form.avatar = ~(?i).*\.png` matches a PNG upload. File contents
   are not matched.
+- **`@xml.element.path`**: the first segment names the root element, and each
+  later segment a child element: `@xml.order.customer.id = 42` matches
+  `<order><customer><id>42</id></customer></order>`. An element's value is its
+  text with surrounding whitespace trimmed, including the text of nested
+  elements. A final `["@name"]` segment selects an attribute:
+  `@xml.order["@status"] = new`. Names are compared without their namespace
+  prefix, so `@xml.Envelope.Body.GetQuote.symbol` reads a SOAP request whatever
+  prefix it uses. Repeated elements are all selected, and `*` selects any
+  child, so `@xml.order.item = pen` accepts an order with any `pen` item. A
+  body that is not well-formed XML with one root element matches no `@xml.*`
+  matcher; a blank body matches `!`.
 - Other bodies are parsed as JSON or URL-encoded form data whatever their `Content-Type`. A blank
   body has no fields, so `@json.name = !` and `@form.name = !` match it. A body
   that does not parse matches no `@json.*` (or `@form.*`) matcher, not even
   `!`.
 - Body matchers see the first 1 MiB of a request. A larger body matches no
-  `@body`, `@json.*` or `@form.*` matcher. The admin log still captures 64 KiB per body.
+  `@body`, `@json.*`, `@xml.*` or `@form.*` matcher. The admin log still captures 64 KiB per body.
 
 Matchers and body placeholders combine into an OAuth-style token endpoint:
 
