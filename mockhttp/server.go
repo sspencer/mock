@@ -607,6 +607,9 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method, fixt
 			case repeatNode:
 				check(node.children, true)
 				continue
+			case eachNode:
+				check(node.children, true)
+				continue
 			case textNode:
 				continue
 			}
@@ -648,6 +651,9 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method, fixt
 				continue
 			}
 			if key == "index" && inRepeat {
+				continue
+			}
+			if _, ok := itemPath(key); ok && inRepeat {
 				continue
 			}
 			if known[key] || isGeneratedKey(key) || isRequestPlaceholder(key) {

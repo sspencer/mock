@@ -66,6 +66,19 @@ type renderScope struct {
 	index    int
 	inRepeat bool
 	kept     map[string]string
+	// item is the current element of an each block, when hasItem is set.
+	item    any
+	hasItem bool
+}
+
+// currentItem returns the element of the innermost each block.
+func (s *renderScope) currentItem() (any, bool) {
+	for ; s != nil; s = s.parent {
+		if s.hasItem {
+			return s.item, true
+		}
+	}
+	return nil, false
 }
 
 // rngGenerator adapts math/rand/v2 to faker's generator interface.
@@ -299,12 +312,74 @@ func (r *renderer) render(nodes []templateNode, scope *renderScope, out *templat
 					return err
 				}
 			}
+		case eachNode:
+			items := r.eachItems(node.source, scope)
+			if len(items) == 0 && r.sample {
+				// Lint one copy, with placeholders standing in for the item.
+				if err := r.render(node.children, &renderScope{parent: scope, inRepeat: true}, out); err != nil {
+					return err
+				}
+			}
+			for i, item := range items {
+				if i > 0 {
+					out.separate()
+				}
+				copyScope := &renderScope{parent: scope, index: i, inRepeat: true, item: item, hasItem: true}
+				if err := r.render(node.children, copyScope, out); err != nil {
+					return err
+				}
+			}
 		}
 		if len(out.buf) > maxRenderedBytes {
 			return errRenderedTooLarge
 		}
 	}
 	return nil
+}
+
+// eachItems returns the elements an each block iterates over: the elements of
+// the array at source, or the one value there when it is not an array.
+// Missing values, null, and bodies that are not JSON give none.
+func (r *renderer) eachItems(source string, scope *renderScope) []any {
+	var root any
+	var path string
+	if p, ok := strings.CutPrefix(source, "json."); ok {
+		if r.values.facts == nil {
+			return nil
+		}
+		doc, err := r.values.facts.jsonDocument()
+		if err != nil {
+			return nil
+		}
+		root, path = doc, p
+	} else if p, ok := fixturePath(source); ok {
+		doc, found := r.fixtureDocument()
+		if !found {
+			return nil
+		}
+		root, path = doc, p
+	} else if p, ok := itemPath(source); ok {
+		item, found := scope.currentItem()
+		if !found {
+			return nil
+		}
+		root, path = item, p
+	} else {
+		return nil
+	}
+	nodes := selectJSONNodes(root, path)
+	if len(nodes) == 1 {
+		if array, ok := nodes[0].([]any); ok {
+			return array
+		}
+	}
+	items := nodes[:0:0]
+	for _, node := range nodes {
+		if node != nil {
+			items = append(items, node)
+		}
+	}
+	return items
 }
 
 // resolve evaluates a placeholder and its filters. ok is false when it stays
@@ -405,6 +480,16 @@ func (r *renderer) evaluate(node templateNode, scope *renderScope) (string, bool
 	}
 	if path, ok := fixturePath(node.name); ok {
 		return r.fixtureValue(path)
+	}
+	if path, ok := itemPath(node.name); ok {
+		if item, found := scope.currentItem(); found {
+			for _, value := range selectJSONNodes(item, path) {
+				if text, ok := jsonText(value); ok {
+					return text, true
+				}
+			}
+			return "", false
+		}
 	}
 	if value, ok := r.values.lookup(node.name); ok {
 		return value, true

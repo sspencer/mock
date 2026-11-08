@@ -35,10 +35,6 @@ and with the items above done they are the next thing to revisit.
 
 ### Responses and templating
 
-- **Iterate over request arrays** (M): `{{#each $json.items}} ... {{/each}}`
-  with `{{$item.sku}}` inside, for batch endpoints that answer one entry per
-  submitted item. `{{#repeat}}` only produces generated copies, and
-  `{{$json.items}}` can only copy the whole array back unchanged.
 - **Echo the request** (S): a `{{$request}}` placeholder (or a `| json`-ready
   object) with the method, path, query, headers and body, for an
   httpbin-style `/echo` route that shows a client exactly what it sent.
@@ -171,6 +167,8 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Iterate over request arrays:** `{{#each $json.items}} ... {{/each}}` with
+  `{{$item.*}}` and `{{$index}}`, also over `$fixture` and nested `$item` arrays.
 - **Fixture namespace:** `@fixture = data.json` and `{{$fixture.path}}`
   placeholders read values from a JSON data file.
 - **Per-route proxying:** `@proxy = URL` forwards the requests a section

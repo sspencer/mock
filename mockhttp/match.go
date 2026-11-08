@@ -369,6 +369,15 @@ func (f *requestFacts) jsonMatches(path, expected string) bool {
 // body has no fields; any other body that is not JSON is an error, and then no
 // @json matcher matches.
 func (f *requestFacts) jsonValues(path string) ([]string, error) {
+	root, err := f.jsonDocument()
+	if err != nil {
+		return nil, err
+	}
+	return selectJSON(root, path), nil
+}
+
+// jsonDocument decodes the request body as JSON once. A blank body is nil.
+func (f *requestFacts) jsonDocument() (any, error) {
 	if f.body.unavailable {
 		return nil, errBodyUnavailable
 	}
@@ -384,21 +393,46 @@ func (f *requestFacts) jsonValues(path string) ([]string, error) {
 			}
 		}
 	}
-	if f.jsonErr != nil {
-		return nil, f.jsonErr
-	}
-	return selectJSON(f.json, path), nil
+	return f.json, f.jsonErr
 }
 
 // selectJSON returns the values at path in a decoded JSON document: strings as
 // their text, and numbers, booleans, objects and arrays as compact JSON.
 // Missing values and null are left out.
 func selectJSON(root any, path string) []string {
+	var values []string
+	for _, node := range selectJSONNodes(root, path) {
+		if text, ok := jsonText(node); ok {
+			values = append(values, text)
+		}
+	}
+	return values
+}
+
+// jsonText is a decoded JSON value as placeholder text. ok is false for null.
+func jsonText(node any) (string, bool) {
+	switch node := node.(type) {
+	case nil:
+		return "", false
+	case string:
+		return node, true
+	default:
+		text, err := json.Marshal(node)
+		return string(text), err == nil
+	}
+}
+
+// selectJSONNodes returns the decoded values at path. An empty path selects
+// root itself.
+func selectJSONNodes(root any, path string) []any {
+	nodes := []any{root}
+	if path == "" {
+		return nodes
+	}
 	segments, err := restclient.ParseJSONPath(path)
 	if err != nil {
 		return nil
 	}
-	nodes := []any{root}
 	for _, segment := range segments {
 		var next []any
 		for _, node := range nodes {
@@ -420,19 +454,7 @@ func selectJSON(root any, path string) []string {
 		}
 		nodes = next
 	}
-	var values []string
-	for _, node := range nodes {
-		switch node := node.(type) {
-		case nil:
-		case string:
-			values = append(values, node)
-		default:
-			if text, err := json.Marshal(node); err == nil {
-				values = append(values, string(text))
-			}
-		}
-	}
-	return values
+	return nodes
 }
 
 var (

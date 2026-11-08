@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add `{{#each $json.path}} ... {{/each}}` blocks, which render once per element of a request body array (or a `$fixture` or `$item` array), with `{{$item}}`, `{{$item.field}}` and `{{$index}}` inside. JSON responses get commas between copies.
+
 - Add `@fixture = data.json` and `{{$fixture.path}}` placeholders, which read values from a JSON data file using the same paths as `{{$json.*}}`. The file is re-read for each response and watched for reloads.
 
 - Add `@proxy = URL`, which forwards the requests a section matches to a real service. A plain URL gets the request path appended, like `--upstream`; a URL with placeholders, such as `https://api.example.com/v2/{{$path.rest}}`, rewrites the path. Proxied requests count as matched and are marked **proxied** in the admin UI.

@@ -790,6 +790,36 @@ blank line in the output. A tag without its partner, or with a bad count, is
 left literal and logs a load-time warning. A rendered body over 16 MiB returns
 a 500.
 
+### One copy per request item
+
+`{{#each $json.path}} ... {{/each}}` renders its contents once per element of
+an array in the JSON request body, so a batch endpoint can answer each item it
+was sent. Inside, `{{$item}}` is the element, `{{$item.field}}` reads a field of
+it (same paths as [`@json.*`](#body-matching)), and `{{$index}}` is its position
+from 0:
+
+```http
+### Batch create
+POST /orders/batch
+Content-Type: application/json
+
+{"orders":[
+  {{#each $json.orders}}
+  {"id":"ord-{{$index | add 1}}","sku":"{{$item.sku}}","qty":{{$item.qty | default 1}},"status":"accepted"}
+  {{/each}}
+]}
+```
+
+- `{{#each $fixture.path}}` iterates over an array in the route's
+  [`@fixture`](#fixture-data) file, and `{{#each $item.path}}` over an array
+  inside the current element, for nested lists.
+- A path with `*` segments iterates over every value it selects:
+  `{{#each $json.orders.*.sku}}`. A value that is not an array renders the
+  block once, with that value as `{{$item}}`.
+- A missing array, `null`, or a body that isn't JSON renders no copies.
+- Commas, standalone tag lines, nesting and the 16 MiB limit work as for
+  `{{#repeat}}`; `{{$index}}` and `{{$item}}` belong to the innermost block.
+
 ## Reproducible data
 
 Generated values are random by default. Set `@seed` to any text to make them

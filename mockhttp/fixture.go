@@ -42,19 +42,41 @@ func fixturePath(key string) (string, bool) {
 	return "", false
 }
 
-// fixtureValue resolves {{$fixture.path}} from the route's fixture file.
-func (r *renderer) fixtureValue(path string) (string, bool) {
+// itemPath returns the JSON path of an each block's $item placeholder key:
+// "" for $item itself, or the part after "item." (or after "item" for a
+// quoted key).
+func itemPath(key string) (string, bool) {
+	if key == "item" {
+		return "", true
+	}
+	if path, ok := strings.CutPrefix(key, "item."); ok && path != "" {
+		return path, true
+	}
+	if path, ok := strings.CutPrefix(key, "item"); ok && strings.HasPrefix(path, "[") {
+		return path, true
+	}
+	return "", false
+}
+
+// fixtureDocument loads the route's fixture file once per response.
+func (r *renderer) fixtureDocument() (any, bool) {
 	if r.method.Fixture == "" {
-		return "", false
+		return nil, false
 	}
 	if !r.fixtureDone {
 		r.fixtureDone = true
 		r.fixture, r.fixtureErr = loadFixture(r.method)
 	}
-	if r.fixtureErr != nil {
+	return r.fixture, r.fixtureErr == nil
+}
+
+// fixtureValue resolves {{$fixture.path}} from the route's fixture file.
+func (r *renderer) fixtureValue(path string) (string, bool) {
+	root, ok := r.fixtureDocument()
+	if !ok {
 		return "", false
 	}
-	values := selectJSON(r.fixture, path)
+	values := selectJSON(root, path)
 	if len(values) == 0 {
 		return "", false
 	}
