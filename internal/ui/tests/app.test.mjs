@@ -80,12 +80,27 @@ test('inspector toggles Pretty/Raw, shows match metadata, and copies original bo
  const row=element('requestTableBody').children[0];
  const key=new Event('keydown');Object.defineProperty(key,'target',{value:row});Object.defineProperty(key,'key',{value:'Enter'});element('requestTableBody').dispatchEvent(key);
  assert.match(element('matchSummary').textContent,/users.http:12 · revision 2/);
+ assert.equal(element('copyRouteDraftButton').hidden,true);
  assert.ok(element('requestDetails').textContent.includes('\n  "name": "Alex"'));
  click('requestRaw');assert.ok(element('requestDetails').textContent.endsWith('{"name":"Alex"}'));
  let copied='';Object.defineProperty(globalThis,'navigator',{configurable:true,value:{clipboard:{writeText:async text=>{copied=text;}}}});
  click('copyRequestBody');await Promise.resolve();assert.equal(copied,'{"name":"Alex"}');
  click('copyCurlButton');await Promise.resolve();assert.ok(copied.includes('https://example.test/x/1003'));
  click('backToList');assert.equal(element('workspace').classList.contains('show-inspector'),false);
+});
+
+test('unmatched requests copy a draft route', async () => {
+ const sample=event(1004,'two');
+ sample.request={...sample.request,method:'POST',url:'/orders?expand=items',host:'localhost:8080',headers:{'Content-Type':['application/json']},body:{text:'{"sku":"A1","qty":2}',size:20,capturedSize:20,truncated:false}};
+ sample.response={...sample.response,status:404,statusText:'Not Found',headers:{},body:{text:'',size:0,capturedSize:0,truncated:false}};
+ sample.match={revision:2};
+ source.onmessage({data:JSON.stringify(sample)});flush();
+ const row=element('requestTableBody').children[0];
+ const key=new Event('keydown');Object.defineProperty(key,'target',{value:row});Object.defineProperty(key,'key',{value:'Enter'});element('requestTableBody').dispatchEvent(key);
+ assert.equal(element('copyRouteDraftButton').hidden,false);
+ let copied='';Object.defineProperty(globalThis,'navigator',{configurable:true,value:{clipboard:{writeText:async text=>{copied=text;}}}});
+ click('copyRouteDraftButton');await Promise.resolve();
+ assert.equal(copied,'### [200] POST /orders\n@query.expand = *\n@json.sku = *\n@json.qty = *\nPOST /orders\nContent-Type: application/json\n\n{}\n');
 });
 
 test('routes open their configuration and copy a sample request', async () => {

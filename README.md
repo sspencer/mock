@@ -1068,6 +1068,18 @@ On narrow screens, selecting traffic or a route opens the inspector; use
   nearby routes with method, path, query, header, and body mismatch explanations.
   Requests forwarded with `--upstream` are marked **proxied** in the table (the
   filter matches `proxied`), and the inspector names the upstream URL.
+- **Copy as route** appears on unmatched requests and copies a draft `.http`
+  section to paste into a request file. The draft has the request's method and
+  path, and requires the fields the request had without fixing their values:
+  `@query.name = *` for each query parameter, `@header.Authorization = *` when
+  the request sent one, and `@json.key = *` (or `@form.name = *`) for each
+  top-level body field, up to eight of each. Path characters that have a
+  meaning in routes (`*`, a leading `:`, `{`, `}`) are escaped, and `@port` is
+  set when the request arrived on a port other than the default. The response
+  is a placeholder `[200]` with an empty JSON object, except for a request
+  proxied with `--upstream`, whose real status, `Content-Type` and body are
+  used when the body can be pasted inline (with `@template = off` if it
+  contains `{{`).
 - Select a configured route to inspect its match requirements, response headers,
   variables, status, delay, and body template or file reference. File contents
   are not loaded into the route preview; large inline previews are truncated.
