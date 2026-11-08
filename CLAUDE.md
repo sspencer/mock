@@ -18,6 +18,7 @@ go run . examples/user.http                 # run locally; UI at http://127.0.0.
 go run . validate -strict examples/*.http   # lint request files without serving
 go run . init /tmp/demo                     # write the starter api.http
 go run . check -upstream URL api.http       # drift check against a real API
+go run . import -host api.example.com x.har # draft .http sections from a HAR file
 ```
 
 Benchmarks: `make bench` (`mockhttp/bench_test.go` matches against 3,000 routes and renders templates; `restclient/bench_test.go` parses). Fuzz targets: `go test ./restclient -run '^$' -fuzz FuzzParse -fuzztime 10s` and `go test ./mockhttp -run '^$' -fuzz FuzzMatchEscapedPath -fuzztime 10s`.
@@ -37,6 +38,7 @@ The pipeline is: parse `.http` → assign each route a port → serve all ports 
 - **`mocktest/`**: public Go test helper. `Start`/`StartSource`/`StartWith` load routes (ports zeroed so all answer on one `httptest.Server`), and `AssertCalled`/`AssertAllMatched` query `Server.Requests`.
 - **`internal/cli/init.go`**: `mock init` writes the embedded `internal/cli/starter/` files (`api.http`, `users.json`), refusing to overwrite without `-force`. `TestInitWritesValidStarter` runs `validate -strict` on the output, so keep the starter warning-free.
 - **`internal/cli/check.go`**: `mock check -upstream URL` (drift check). `buildSampleRequest` (`sample.go`) is the Go port of the UI's `buildRouteCurl`/`sampleJSONBody`/`sampleFormBody` in `inspector.mjs`; keep the two in step. Each route is answered in-process by a one-route `mockhttp.Server` (delay, fault, stream, rate limit and callback stripped) and sent to the upstream; `compareResponses` diffs status, media type and top-level JSON keys. Exit 1 on drift or errors.
+- **`internal/cli/draft.go`**: the Go port of `buildRouteDraft`/`buildRouteDrafts` in `draft.mjs` (keep the two in step). `draftSection` turns an `exchange` (a captured request and response) into a `.http` section; `draftSections` deduplicates by method and path. `mock import` (`import.go`) converts HAR entries into exchanges.
 - **`internal/cli/validate.go`**: `mock validate` reuses the same load and warning checks as startup. Exit codes: 0 = ok, 1 = errors (or warnings with `-strict`), 2 = usage error.
 - **`internal/ui/`**: the admin UI. `ui.NewHandler` mounts the admin API endpoints and serves `static/`, vanilla ES modules embedded via `embed.go` (`ui.Assets`). It injects `ui.Config` (version, mock port, `multiPort`) into the page as the `<script id="mock-config">` JSON. Keep pure logic in small modules (`traffic.mjs`, `har.mjs`, `inspector.mjs`, `selection.mjs`, `draft.mjs`) so `internal/ui/tests/*.test.mjs` can unit test it. The stream client (`TrafficStream` in `traffic.mjs`) and inspector selection (`selection.mjs`) are explicit state machines: `app.mjs` applies the effects they return and should not grow its own stream or selection globals. `app.mjs` loads once per test run, so config-dependent behavior must be extracted into testable helpers.
 

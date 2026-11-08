@@ -232,6 +232,7 @@ mock [flags] <directory>
 cat file.http | mock
 mock validate [-strict] [-json] [-var name=value] <file.http|dir> [file.http|dir...]
 mock init [-force] [dir]
+mock import [-host HOST] [-path PREFIX] <file.har|->
 mock check -upstream URL [-all] [-json] [-header 'Name: value'] [-var name=value] [-timeout 10s] <file.http|dir> [file.http|dir...]
 mock -version
 mock -h
@@ -444,6 +445,35 @@ path. The mock answers in-process without `@delay`, `@fault`, `@stream`,
 `~regex` or negated matcher the sample cannot guess) is an error. Redirects are
 not followed. The exit code is `0` when nothing drifted, `1` on drift or
 errors, and `2` for usage errors.
+
+### Importing traffic from a HAR file
+
+`mock import` turns a HAR file, saved from browser devtools ("Save all as
+HAR"), a proxy such as mitmproxy or Charles, or `mock`'s own **Export HAR**,
+into `.http` sections on stdout:
+
+```sh
+mock import -host api.example.com traffic.har > api.http
+```
+
+Each distinct method and path becomes one section, drafted the same way as the
+admin UI's **Copy as route**: the section requires the query parameters,
+`Authorization` header and top-level JSON or form fields the request had
+(`@query.page = *`, without fixing their values) and answers with the captured
+status, `Content-Type` and body. When a path was requested more than once, the
+first request with a usable response is drafted. A body that is binary, was
+left out of the HAR, or can't be pasted inline becomes a placeholder `[200]`
+with `{}`; a body containing `{{` gets `@template = off`. Path characters that
+mean something in routes (`*`, a leading `:`, `{`, `}`) are escaped.
+
+| Flag | Description |
+|------|-------------|
+| `-host HOST` | Import only requests to this host (`api.example.com`, or with a port) |
+| `-path PREFIX` | Import only request paths starting with this prefix, such as `/api/` |
+
+CORS preflight requests and non-HTTP entries are skipped. Pass `-` to read the
+HAR from stdin. A summary of imported and skipped requests goes to stderr. The
+exit code is `1` when nothing could be imported.
 
 ## Request File Format
 

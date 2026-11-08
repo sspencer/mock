@@ -48,11 +48,6 @@ and with the items above done they are the next thing to revisit.
 - **Recording** (L): capture proxied traffic and write it out as `.http`
   sections to start a fixture file. Builds on `--upstream` pass-through; lower
   priority.
-- **HAR import** (M): `mock import traffic.har > api.http` converts a HAR file
-  saved from browser devtools or a proxy into `.http` sections, so fixtures
-  can be built from traffic captured anywhere. Unlike the rejected OpenAPI
-  import it starts from real responses, but it is another converter to
-  maintain, so it should share the draft logic with Copy as route.
 - **Broader REST Client import:** unnamed sections, comments before the first
   section, HTTP versions on request lines (all currently load errors),
   environment files and request variables, and explicit request-to-response
@@ -126,6 +121,10 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **HAR import:** `mock import -host api.example.com traffic.har > api.http`
+  drafts one section per distinct method and path from a HAR file, with the
+  captured responses. The Go draft logic (`internal/cli/draft.go`) is a port
+  of the UI's Copy as route (`draft.mjs`).
 - **Copy all unmatched requests as routes:** the traffic panel's **Copy
   unmatched as routes** button drafts one section per distinct method and path
   among unmatched (or proxied) requests, using the Copy as route logic

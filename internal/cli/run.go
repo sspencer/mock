@@ -29,6 +29,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if len(args) > 0 && args[0] == "check" {
 		return runCheck(ctx, args[1:], stdout)
 	}
+	if len(args) > 0 && args[0] == "import" {
+		return runImport(args[1:], stdin, stdout, stderr)
+	}
 	if len(args) > 0 && args[0] == "init" {
 		return runInit(args[1:], stdout)
 	}

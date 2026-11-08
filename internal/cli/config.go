@@ -73,6 +73,7 @@ const usageText = `usage:
   cat file.http | mock
   mock validate [-strict] [-json] [-var name=value] <file.http|dir> [file.http|dir...]
   mock init [-force] [dir]
+  mock import [-host HOST] [-path PREFIX] <file.har|->
   mock check -upstream URL [-all] [-json] [-header 'Name: value'] [-var name=value] [-timeout 10s] <file.http|dir> [file.http|dir...]
 
 flags:
