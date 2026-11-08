@@ -39,9 +39,6 @@ and with the items above done they are the next thing to revisit.
 
 ### Testing and CI
 
-- **Structured JSON logs** (S): `--log-format json` writes one object per
-  request (method, path, status, route, duration) for CI log collectors and
-  `jq`. The server already logs through `slog`.
 - **Global latency and faults** (S): `--delay 50ms..300ms` and `--fault reset
   5%` apply to every route without editing files, for a resilience run
   against the same fixtures the normal tests use. Route-level `@delay` and
@@ -149,6 +146,9 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Structured JSON logs:** `-l json` (`--log-format json`) makes stdout pure
+  JSON lines: the startup banner, one `route` record per route, and one
+  `http request` record per request (method, path, status, route, duration).
 - **Starter file:** `mock init [-force] [dir]` writes a commented `api.http`
   and `users.json` showing routes, matchers, placeholders and a file body.
 - **Webhook callbacks:** `@callback = POST {{$json.callbackUrl}}` with

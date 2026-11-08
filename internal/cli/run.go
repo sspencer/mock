@@ -17,6 +17,7 @@ import (
 
 	"github.com/sspencer/mock/internal/ui"
 	"github.com/sspencer/mock/mockhttp"
+	"github.com/sspencer/mock/restclient"
 )
 
 // Run executes the mock command line: it serves until ctx is done or a server
@@ -40,9 +41,17 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		fmt.Fprintln(stdout, currentVersion())
 		return nil
 	}
+	// With JSON logs every stdout line is a JSON object; routes listed on
+	// reload become records too (a nil routesOut).
+	jsonLogs := cfg.LogFormat == "json"
+	routesOut := stdout
+	if jsonLogs {
+		logger = slog.New(slog.NewJSONHandler(stdout, nil))
+		routesOut = nil
+	}
 	if len(cfg.Args) == 0 && len(cfg.Dirs) == 0 {
 		if f, ok := stdin.(*os.File); ok && stdinIsTerminal(f) {
-			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-u url] [-s] [-v name=value] [-d dir] [-i 1s] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
+			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-u url] [-s] [-v name=value] [-d dir] [-i 1s] [-l json] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
 		}
 	}
 	input, err := loadInput(cfg.Args, cfg.Dirs, stdin, cfg.Vars.options())
@@ -107,7 +116,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		mockServer.SetUpstream(cfg.Upstream)
 		handler = mockServer
 		if input.watched() {
-			reloads = &reloader{server: mockServer, input: input, opts: cfg.Vars.options(), plan: plan, logger: logger, out: stdout, err: stderr}
+			reloads = &reloader{server: mockServer, input: input, opts: cfg.Vars.options(), plan: plan, logger: logger, out: routesOut, err: stderr}
 			// Holding the lock until the watcher is assigned keeps an early
 			// file event from reloading before the reloader is complete.
 			reloads.mu.Lock()
@@ -151,24 +160,28 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if mockServer == nil {
 		logger.Info("starting static HTTP server", "addr", boundAddress(cfg.Bind, mockListeners[0]), "dir", input.StaticDir)
 	} else {
-		for _, ln := range mockListeners {
-			fmt.Fprintf(stdout, "starting mock HTTP server on %s\n", boundAddress(cfg.Bind, ln))
-		}
-		if adminHandler != nil {
-			fmt.Fprintf(stdout, "admin UI at http://%s/\n", boundAddress(cfg.Bind, adminListener))
-		}
 		if adminHandler != nil && bindsAllInterfaces(cfg.Bind) {
 			fmt.Fprintln(stderr, "warning: bound to all interfaces; admin UI is unauthenticated and request logs may include Authorization headers and bodies")
 		}
-		if cfg.Upstream != nil {
-			fmt.Fprintf(stdout, "forwarding unmatched requests to %s\n", cfg.Upstream)
+		if jsonLogs {
+			announceJSON(logger, cfg, mockListeners, adminListener, watchCloser != nil, input.Methods)
+		} else {
+			for _, ln := range mockListeners {
+				fmt.Fprintf(stdout, "starting mock HTTP server on %s\n", boundAddress(cfg.Bind, ln))
+			}
+			if adminHandler != nil {
+				fmt.Fprintf(stdout, "admin UI at http://%s/\n", boundAddress(cfg.Bind, adminListener))
+			}
+			if cfg.Upstream != nil {
+				fmt.Fprintf(stdout, "forwarding unmatched requests to %s\n", cfg.Upstream)
+			}
+			if watchCloser != nil && cfg.Poll > 0 {
+				fmt.Fprintf(stdout, "watching request files for changes (and polling every %s)\n", cfg.Poll)
+			} else if watchCloser != nil {
+				fmt.Fprintln(stdout, "watching request files for changes")
+			}
+			printMethods(stdout, input.Methods)
 		}
-		if watchCloser != nil && cfg.Poll > 0 {
-			fmt.Fprintf(stdout, "watching request files for changes (and polling every %s)\n", cfg.Poll)
-		} else if watchCloser != nil {
-			fmt.Fprintln(stdout, "watching request files for changes")
-		}
-		printMethods(stdout, input.Methods)
 	}
 
 	// stopTriggers stops polling and SIGHUP reloads and waits for one in
@@ -220,4 +233,23 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		return nil
 	}
+}
+
+// announceJSON writes the startup banner as log records for -l json.
+func announceJSON(logger *slog.Logger, cfg config, mockListeners []net.Listener, adminListener net.Listener, watching bool, methods []restclient.Method) {
+	for _, ln := range mockListeners {
+		logger.Info("starting mock HTTP server", "addr", boundAddress(cfg.Bind, ln))
+	}
+	if adminListener != nil {
+		logger.Info("admin UI", "url", "http://"+boundAddress(cfg.Bind, adminListener)+"/")
+	}
+	if cfg.Upstream != nil {
+		logger.Info("forwarding unmatched requests", "upstream", cfg.Upstream.String())
+	}
+	if watching && cfg.Poll > 0 {
+		logger.Info("watching request files for changes", "poll", cfg.Poll.String())
+	} else if watching {
+		logger.Info("watching request files for changes")
+	}
+	showMethods(nil, logger, methods)
 }

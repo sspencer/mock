@@ -48,6 +48,9 @@ type config struct {
 	// Poll, when set, checks the request files for changes on this interval
 	// in addition to file events (-i).
 	Poll time.Duration
+	// LogFormat is "text" (the default) or "json" (-l). JSON writes one
+	// object per line to stdout, including the startup banner and routes.
+	LogFormat string
 	// Help holds the usage text when -h or --help was requested.
 	Help string
 }
@@ -89,6 +92,8 @@ flags:
   -i, --poll INTERVAL  also check request files for changes this often, such
                        as 1s, where file events do not arrive (Docker bind
                        mounts, network filesystems)
+  -l, --log-format FMT text (default) or json: one JSON object per line on
+                       stdout for startup, routes and each request
       --version        print version and exit
   -h, --help           print this help and exit
 `
@@ -139,6 +144,9 @@ func parseConfig(args []string) (config, error) {
 	for _, name := range []string{"i", "poll"} {
 		flagSet.DurationVar(&cfg.Poll, name, 0, "")
 	}
+	for _, name := range []string{"l", "log-format"} {
+		flagSet.StringVar(&cfg.LogFormat, name, "text", "")
+	}
 	flagSet.BoolVar(&cfg.Version, "version", false, "")
 	if err := flagSet.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -151,6 +159,9 @@ func parseConfig(args []string) (config, error) {
 		if cfg.Upstream, err = parseUpstream(upstream); err != nil {
 			return config{}, err
 		}
+	}
+	if cfg.LogFormat != "text" && cfg.LogFormat != "json" {
+		return config{}, usageError("-l (--log-format) must be text or json, not %q", cfg.LogFormat)
 	}
 	if cfg.Poll != 0 && cfg.Poll < minPollInterval {
 		return config{}, usageError("-i (--poll) must be at least %s", minPollInterval)

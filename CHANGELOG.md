@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add `-l json` (`--log-format json`): stdout carries only JSON lines, with the startup banner and route list as records and one `http request` record per request. The request log's matched-route key is now `route` (was `mock`), and `duration` is logged as a duration value (nanoseconds in JSON).
+
 - Add `mock init [-force] [dir]`, which writes a commented starter `api.http` and the `users.json` it serves, so a new API runs in one command. It refuses to overwrite existing files without `-force`.
 
 - Add `@callback = METHOD URL` webhook callbacks, with `@callback.delay`, `@callback.header.Name` and `@callback.body` templates rendered from the triggering request. Each callback is sent once after the response, times out after 10 seconds, and is logged in the admin UI marked **callback**. `GET /requests?callbacks=true` and `RequestFilter.Callbacks` list them.

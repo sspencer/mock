@@ -251,6 +251,7 @@ Flags:
 | `-v`, `--var` | | `NAME=VALUE`: set the `@NAME` variable in every request file, overriding its definitions. Repeat for more variables (see [Variables from the command line](#variables-from-the-command-line)) |
 | `-d`, `--dir` | | Load every `.http` file under this directory, after any file arguments, and pick up added or removed files on reload. Repeat for more directories (see [A directory of request files](#a-directory-of-request-files)) |
 | `-i`, `--poll` | (off) | Also check the request files for changes this often, such as `1s` (at least `100ms`), for filesystems that do not deliver change events (see [Reloading](#reloading)) |
+| `-l`, `--log-format` | `text` | `text` or `json`. With `json`, stdout carries only JSON lines (see [JSON logs](#json-logs)) |
 | `--version` | | Print version and exit |
 | `-h`, `--help` | | Print usage and exit |
 
@@ -285,6 +286,22 @@ Request files passed on the command line are watched for changes, including
 relative `< path` response bodies. On save, `mock` reloads those files, swaps in
 the new routes without restarting the process, and prints the updated route list.
 SIGINT/SIGTERM shut the server down cleanly and stop the file watcher.
+
+### JSON logs
+
+`-l json` (`--log-format json`) makes every line on stdout one JSON object, so
+CI jobs and log tools can parse a test run. The startup banner and the route
+list become records (`"msg": "route"` with `method`, `path`, `route`, `port`
+and `source`), and each request is one record:
+
+```json
+{"time":"2026-11-08T14:03:27.13-08:00","level":"INFO","msg":"http request","method":"GET","path":"/users/7","status":200,"route":"Find user","duration":412000}
+```
+
+`route` is the matched section's name (empty when nothing matched), and
+`duration` is in nanoseconds. Faulted and proxied requests add `fault` and
+`upstream`. Warnings, reload errors and the `--strict` report still go to
+stderr as text.
 
 ### Reloading
 
