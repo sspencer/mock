@@ -187,3 +187,45 @@ func TestMatcherMatchAny(t *testing.T) {
 		}
 	}
 }
+
+func TestNegatedMatchers(t *testing.T) {
+	tests := []struct {
+		raw    string
+		values []string
+		want   bool
+	}{
+		{"!guest", []string{"admin"}, true},
+		{"!guest", []string{"guest"}, false},
+		{"!guest", []string{"admin", "guest"}, false}, // no value may be excluded
+		{"!guest", nil, false},                        // present but not X needs a value
+		{"!guest", []string{" "}, false},
+		{"!~test-.*", []string{"prod-1"}, true},
+		{"!~test-.*", []string{"test-1"}, false},
+		{"!~test-.*", nil, false},
+		{"!~test-.*", []string{"xtest-1"}, true}, // anchored like ~pattern
+	}
+	for _, tt := range tests {
+		m, err := ParseMatcher(tt.raw)
+		if err != nil {
+			t.Fatalf("ParseMatcher(%q) error = %v", tt.raw, err)
+		}
+		if !m.Negated() {
+			t.Fatalf("ParseMatcher(%q) is not negated: %+v", tt.raw, m)
+		}
+		if got := m.Match(tt.values); got != tt.want {
+			t.Errorf("ParseMatcher(%q).Match(%q) = %v, want %v", tt.raw, tt.values, got, tt.want)
+		}
+		if got := m.MatchAny(tt.values); got != tt.want {
+			t.Errorf("ParseMatcher(%q).MatchAny(%q) = %v, want %v", tt.raw, tt.values, got, tt.want)
+		}
+	}
+	if _, err := ParseMatcher("!~("); err == nil {
+		t.Fatal("invalid negated regexp parsed")
+	}
+	if _, err := ParseMatcher("!~"); err == nil {
+		t.Fatal("empty negated regexp parsed")
+	}
+	if m := MustBodyMatcher("!~.*secret.*"); m.Match([]string{"a\nsecret\nb"}) || !m.Match([]string{"a\nb"}) {
+		t.Fatal("negated body matcher should let . match newlines")
+	}
+}

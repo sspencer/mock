@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sampleFormBody, sampleJSONBody, buildCurl, buildRouteCurl, formatMessage, formatRoute, bodyNotice, sampleParam } from '../static/inspector.mjs';
+import { sampleFormBody, sampleJSONBody, buildCurl, buildRouteCurl, formatMessage, formatRoute, bodyNotice, sampleParam, describeMatcher, isSampleExact } from '../static/inspector.mjs';
 import { attachSplitter, clampPercent, alignedTrafficHeight } from '../static/layout.mjs';
 
 const message = {
@@ -148,4 +148,12 @@ test('Route cURL fills wildcards and sends form bodies', () => {
     assert.equal(sampleFormBody({}), '');
     const text = formatRoute({ method: 'POST', path: '/token', source: 't.http', line: 1, revision: 1, status: 200, matchForm: { grant_type: ['client_credentials'] } });
     assert.ok(text.includes('Body requirements\nform grant_type: client_credentials'), text);
+});
+
+test('describeMatcher explains negated matchers', () => {
+    assert.equal(describeMatcher('!'), '! (must be absent)');
+    assert.equal(describeMatcher('!guest'), '!guest (present, not guest)');
+    assert.equal(describeMatcher('!~test-.*'), '!~test-.* (present, not matching the regular expression)');
+    assert.equal(describeMatcher('~x'), '~x (regular expression)');
+    assert.equal(isSampleExact('!guest'), false);
 });

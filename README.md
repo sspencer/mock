@@ -418,7 +418,7 @@ only digits, such as `### [beta] Users`, stay part of the name. The old
 | `@name = value` file and method variables, `-v name=value` overrides and `{{$env.NAME}}` | Environment files / `{{env}}` from IDE |
 | Request line `METHOD /path` | Full multi-step scripts |
 | Response headers after the request line | Separate request vs response documents |
-| `@header.Name`, `@query.name`, `@path.name`, `@body`, `@json.path`, `@form.name` request matchers (exact, `*`, `!`, `~regex`) | Multipart and XML body matchers |
+| `@header.Name`, `@query.name`, `@path.name`, `@body`, `@json.path`, `@form.name` request matchers (exact, `*`, `!`, `~regex`, `!text`, `!~regex`) | Multipart and XML body matchers |
 | `{{name}}`, `{{%name}}` and `{{$placeholder}}` in bodies, response headers and `< path` file paths, with [filters](#filters) and [`{{#repeat}}` blocks](#generated-lists) | Request variables (`{{login.response.body.token}}`) |
 | `< path` external body files | Mixing inline text and `< path` in one body; imports of other `.http` files |
 
@@ -553,7 +553,7 @@ in the file, or in a section, where it replaces the file value.
 | `@template` | `auto`, `on` or `off` | `auto` | Whether placeholders are expanded in the body. See [External response bodies](#external-response-bodies). |
 | `@trim` | `on` or `off` | `on` | With `off` the inline body keeps its exact text and line endings. See [Supported dialect](#supported-dialect). |
 | `@port` | port number | `-p` (`8080`) | Serve the section on this port. A port in the request URL takes precedence. See [Multiple ports](#multiple-ports). |
-| `@header.Name` | [matcher value](#matcher-values): `text`, `*`, `!` or `~regex` | none | Require the incoming request header to match. A section's header matcher replaces a file one of the same name. See [Header matching](#header-matching). |
+| `@header.Name` | [matcher value](#matcher-values): `text`, `*`, `!`, `~regex`, `!text` or `!~regex` | none | Require the incoming request header to match. A section's header matcher replaces a file one of the same name. See [Header matching](#header-matching). |
 | `@query.name` | matcher value | none | Require the query parameter to match. See [Query and path parameter matching](#query-and-path-parameter-matching). |
 | `@path.name` | `text` or `~regex` | none | Require the `:name` path parameter or `*name` wildcard to match. At file scope it applies only to sections whose path has that parameter. |
 | `@body` | matcher value | none | Require the whole request body to match. See [Body matching](#body-matching). |
@@ -957,6 +957,8 @@ Content-Type: application/json
 | `*` | the value is present and not blank |
 | `!` | the value is absent or blank (the opposite of `*`) |
 | `~regex` | a value matches the Go regular expression `regex` in full |
+| `!text` | the value is present and not blank, and no value equals `text` |
+| `!~regex` | the value is present and not blank, and no value matches `regex` in full |
 
 A regex must match the whole value; it is anchored at both ends, so
 `~[0-9]+` rejects `12a`. Write `~.*token.*` to match anywhere in the value. Start the
@@ -965,7 +967,23 @@ When a header or query parameter is repeated, exact and regex matchers accept
 any one of the values. An invalid or empty regex is a load error. `\\` in a
 variable value is an escaped backslash, so write `\\\\` for a literal backslash in
 a pattern; other escapes such as `\d` pass through unchanged. To match a value
-that literally is `*` or `!`, or starts with `~`, use a regex such as `~\*`.
+that literally is `*`, or starts with `!` or `~`, use a regex such as `~\*` or
+`~!draft`.
+
+`!text` and `!~regex` mean "present, but not this". A missing or blank value
+never matches them; add a separate route with `!` for that case. When a header
+or query parameter is repeated, every value must avoid the excluded one, and a
+`@json` path with `*` must select no excluded element:
+
+```http
+### Paying customer
+@header.X-Plan = !free
+GET /reports
+
+### Real orders only
+@json.id = !~test-.*
+POST /orders
+```
 
 `!` lets one route handle requests without a header:
 

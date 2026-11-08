@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/sspencer/mock/restclient"
@@ -292,7 +293,20 @@ func matcherReason(matcher restclient.Matcher, actual []string, showValues bool)
 	case len(actual) == 0:
 		return "required value is missing"
 	case matcher.Kind == restclient.MatchRegexp:
-		return fmt.Sprintf("does not match pattern %q", matcher.Raw[1:]) + received
+		return fmt.Sprintf("does not match pattern %q", matcher.Pattern()) + received
+	case matcher.Kind == restclient.MatchNotRegexp:
+		if strings.TrimSpace(strings.Join(actual, "")) == "" {
+			return "must not be blank"
+		}
+		return fmt.Sprintf("must not match pattern %q", matcher.Pattern()) + received
+	case matcher.Kind == restclient.MatchNotExact:
+		if strings.TrimSpace(strings.Join(actual, "")) == "" {
+			return "must not be blank"
+		}
+		if showValues {
+			return fmt.Sprintf("must not be %q", matcher.Raw[1:]) + received
+		}
+		return "value is excluded"
 	case matcher.Kind == restclient.MatchPresent:
 		return "must not be blank"
 	}

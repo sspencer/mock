@@ -32,10 +32,10 @@ and with the items above done they are the next thing to revisit.
 ### Matching and routing
 
 - **Richer matching:** JSON paths with dotted keys,
-  cookies (`@cookie.name`), "present but not X" predicates, and multipart or
+  cookies (`@cookie.name`), and multipart or
   XML bodies. Current matching covers methods, encoded paths and path
-  parameters, declared query values, and exact, present (`*`), absent (`!`) and
-  regex (`~regex`) matchers on headers, query and path parameters, the raw body,
+  parameters, declared query values, and exact, present (`*`), absent (`!`),
+  regex (`~regex`) and negated (`!text`, `!~regex`) matchers on headers, query and path parameters, the raw body,
   JSON fields and form fields, plus trailing `*` path wildcards. The first
   matching route in load order wins, so catch-alls go last; shadowed routes get
   a load warning.
@@ -186,6 +186,9 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **"Present but not X" matchers:** `!text` and `!~regex` accept a present,
+  non-blank value other than `text` (or not matching `regex`), for every
+  matcher type. A value starting with `!` is no longer an exact match.
 - **Directive reference and recipes:** a README table of contents, one
   reference table of every `@` directive, and recipes for GraphQL operations,
   content negotiation, case-insensitive matchers, per-test `X-Test` routing

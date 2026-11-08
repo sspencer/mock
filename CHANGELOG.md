@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add "present but not X" matcher values: `!text` and `!~regex` accept a present, non-blank value that is not `text` (or does not match `regex`), for every matcher type. **Breaking:** a matcher value that starts with `!`, such as `@header.X = !draft`, used to be an exact match for that text; write `~!draft` for that now.
+
 - Docs: the README has a table of contents, one directive reference table for every `@` directive (values, defaults, effect), and a Recipes section: GraphQL operations, content negotiation, case-insensitive matchers, per-test routing with an `X-Test` header, and readiness checks for CI and Docker Compose.
 
 - Add three ways to reload request files when file change events do not arrive (Docker Desktop bind mounts, network filesystems): `-i` / `--poll INTERVAL` checks file sizes and modification times on an interval, `SIGHUP` reloads at once, and `POST /reload` on the admin port reloads and returns the new state (`422` if the reload failed). `/reload` has the same cross-site protections as `/clear`.

@@ -53,10 +53,20 @@ export function sampleParam(name) {
 
 // Builds a curl command for the mock listener that can be pasted into a shell.
 // `origin` is the scheme, host, and port the mock routes are served from.
-// Matcher values: "*" (present), "!" (absent), "~pattern" (regexp), else exact.
-// A sample request uses exact values as written and a placeholder otherwise;
-// a placeholder may not satisfy a regexp.
-const isSampleExact = value => value !== '*' && value !== '!' && !value.startsWith('~');
+// Matcher values: "*" (present), "!" (absent), "~pattern" (regexp),
+// "!text" and "!~pattern" (present but not that), else exact. A sample
+// request uses exact values as written and a placeholder otherwise; a
+// placeholder may not satisfy a regexp.
+export const isSampleExact = value => value !== '*' && !value.startsWith('!') && !value.startsWith('~');
+
+// Describes a matcher value for the route details panel.
+export function describeMatcher(value) {
+    if (value === '!') return '! (must be absent)';
+    if (value.startsWith('!~')) return `${value} (present, not matching the regular expression)`;
+    if (value.startsWith('!')) return `${value} (present, not ${value.slice(1)})`;
+    if (value.startsWith('~')) return `${value} (regular expression)`;
+    return value;
+}
 
 // Builds a sample JSON body from @json matchers. Exact values are used as
 // written (JSON literals such as 42 or true stay unquoted); "*" and regexp
@@ -148,7 +158,7 @@ export function hitsLabel(hits = 0) {
 
 export function formatRoute(route, sampleCurl = '') {
     const responseHeaders = Object.entries(route.headers || {}).flatMap(([name, values]) => values.map(value => `${name}: ${value}`)).join('\n');
-    const describe = value => value === '!' ? '! (must be absent)' : value.startsWith('~') ? `${value} (regular expression)` : value;
+    const describe = describeMatcher;
     const matchHeaders = Object.entries(route.matchHeaders || {}).flatMap(([name, values]) => values.map(value => `${name}: ${describe(value)}`)).join('\n');
     const matchQuery = Object.entries(route.matchQuery || {}).flatMap(([name, values]) => values.map(value => `${name}: ${describe(value)}`)).join('\n');
     const matchPath = Object.entries(route.matchPath || {}).map(([name, value]) => `:${name}: ${describe(value)}`).join('\n');

@@ -21,6 +21,12 @@ const (
 	MatchAbsent
 	// MatchRegexp ("~pattern") requires a value matched in full by pattern.
 	MatchRegexp
+	// MatchNotExact ("!text") requires a present, non-blank value, none of
+	// whose values equals text.
+	MatchNotExact
+	// MatchNotRegexp ("!~pattern") requires a present, non-blank value, none
+	// of whose values pattern matches in full.
+	MatchNotRegexp
 )
 
 // Matcher is a parsed request matcher value from @header.Name, @query.name or
@@ -32,14 +38,23 @@ type Matcher struct {
 }
 
 // ParseMatcher parses a matcher value: "*" (present), "!" (absent),
-// "~pattern" (a Go regular expression that must match the whole value), or
-// any other text (exact).
+// "~pattern" (a Go regular expression that must match the whole value),
+// "!text" or "!~pattern" (present, but not that value or pattern), or any
+// other text (exact).
 func ParseMatcher(raw string) (Matcher, error) {
 	switch {
 	case raw == "*":
 		return Matcher{Raw: raw, Kind: MatchPresent}, nil
 	case raw == "!":
 		return Matcher{Raw: raw, Kind: MatchAbsent}, nil
+	case strings.HasPrefix(raw, "!~"):
+		re, err := compileMatcherRegexp(raw[2:])
+		if err != nil {
+			return Matcher{}, err
+		}
+		return Matcher{Raw: raw, Kind: MatchNotRegexp, re: re}, nil
+	case strings.HasPrefix(raw, "!"):
+		return Matcher{Raw: raw, Kind: MatchNotExact}, nil
 	case strings.HasPrefix(raw, "~"):
 		re, err := compileMatcherRegexp(raw[1:])
 		if err != nil {
@@ -67,6 +82,9 @@ func MustBodyMatcher(raw string) Matcher {
 }
 
 func bodyMatcherSource(raw string) string {
+	if pattern, ok := strings.CutPrefix(raw, "!~"); ok && pattern != "" {
+		return "!~(?s)" + pattern
+	}
 	if pattern, ok := strings.CutPrefix(raw, "~"); ok && pattern != "" {
 		return "~(?s)" + pattern
 	}
@@ -84,11 +102,51 @@ func MustMatcher(raw string) Matcher {
 	return m
 }
 
+// Negated reports whether the matcher is a "!text" or "!~pattern" matcher.
+func (m Matcher) Negated() bool {
+	return m.Kind == MatchNotExact || m.Kind == MatchNotRegexp
+}
+
+// Pattern returns the regular expression of a "~pattern" or "!~pattern"
+// matcher as written, or "" for other matchers.
+func (m Matcher) Pattern() string {
+	switch m.Kind {
+	case MatchRegexp:
+		return strings.TrimPrefix(m.Raw, "~")
+	case MatchNotRegexp:
+		return strings.TrimPrefix(m.Raw, "!~")
+	}
+	return ""
+}
+
+// negatedMatch is Match for "!text" and "!~pattern": some value is non-blank
+// and no value equals text or matches pattern.
+func (m Matcher) negatedMatch(values []string) bool {
+	if !slices.ContainsFunc(values, func(value string) bool { return strings.TrimSpace(value) != "" }) {
+		return false
+	}
+	text := m.Raw[1:]
+	for _, value := range values {
+		if m.Kind == MatchNotRegexp {
+			if m.re == nil || m.re.MatchString(value) {
+				return false
+			}
+		} else if value == text {
+			return false
+		}
+	}
+	return true
+}
+
 // Match reports whether values, every value the request carries for the
 // header or query parameter (nil when it is missing), satisfy the matcher.
 // Exact and regexp matchers accept any one matching value; present and absent
-// matchers look at the first value.
+// matchers look at the first value. Negated matchers ("!text", "!~pattern")
+// need a non-blank value and reject the request if any value is excluded.
 func (m Matcher) Match(values []string) bool {
+	if m.Negated() {
+		return m.negatedMatch(values)
+	}
 	present := len(values) > 0 && strings.TrimSpace(values[0]) != ""
 	switch m.Kind {
 	case MatchPresent:
