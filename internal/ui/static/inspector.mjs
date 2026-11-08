@@ -198,6 +198,7 @@ export function formatRoute(route, sampleCurl = '') {
         route.port ? `Port: ${route.port}` : '',
         route.proxy ? `Proxy: ${route.proxy}${route.delay && route.delay !== '0s' ? ` · delay ${route.delay}` : ''}` : `Response: ${route.status} · delay ${route.delay || '0s'}${route.stream ? ` · stream ${route.stream}` : ''}${route.fault ? ` · fault ${route.fault}` : ''}${route.compress ? ` · compress ${route.compress}` : ''}`,
         route.fixture ? `Fixture: ${route.fixture}` : '',
+        route.callback ? `Callback: ${route.callback}` : '',
         `Request header requirements\n${matchHeaders || '(none)'}`,
         matchQuery ? `Query requirements\n${matchQuery}` : '',
         matchPath ? `Path parameter requirements\n${matchPath}` : '',

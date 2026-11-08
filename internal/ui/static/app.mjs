@@ -2,7 +2,7 @@ import { formatMessage, bodyNotice, buildCurl, buildRouteCurl, formatRoute, hits
 import { buildRouteDraft } from './draft.mjs';
 import { attachSplitter, alignedTrafficHeight } from './layout.mjs';
 import { buildHAR } from './har.mjs';
-import { TrafficStream, requestHost } from './traffic.mjs';
+import { TrafficStream, requestHost, eventBadge } from './traffic.mjs';
 import { noSelection, selectRequest, selectRoute, selectedRequestId, selectedRoute, afterEventsChanged, afterRoutesLoaded } from './selection.mjs';
 
 const MAX_EVENTS = 1000;
@@ -418,10 +418,10 @@ function eventMatchesFilter(http) {
     }
     const hay = [
         http.request.method,
-        `${requestHost(http.request, multiPort)}${http.request.url}`,
+        `${requestHost(http.request, multiPort, !!http.callback)}${http.request.url}`,
         String(http.response.status),
         http.response.statusText || '',
-        http.match?.upstream ? 'proxied' : '',
+        eventBadge(http)?.text || '',
         http.response.fault ? `fault ${http.response.fault}` : '',
     ].join(' ').toLowerCase();
     return hay.includes(filterText);
@@ -467,7 +467,8 @@ function renderTable() {
         const statusSpan = document.createElement('span');
         const statusText = http.response.statusText || '';
         // A reset fault sends no response, so there is no status to show.
-        statusSpan.textContent = http.response.fault === 'reset' ? 'RST' : `${http.response.status}`;
+        // A failed callback got no response either.
+        statusSpan.textContent = http.response.fault === 'reset' ? 'RST' : http.callback?.error ? 'ERR' : `${http.response.status}`;
         statusSpan.className = 'status-code';
         if (statusText) {
             statusSpan.title = statusText;
@@ -477,7 +478,7 @@ function renderTable() {
         if (status >= 200 && status < 300) statusSpan.classList.add('status-2xx');
         else if (status >= 300 && status < 400) statusSpan.classList.add('status-3xx');
         else if (status >= 400 && status < 500) statusSpan.classList.add('status-4xx');
-        else if (status >= 500 || http.response.fault === 'reset') statusSpan.classList.add('status-5xx');
+        else if (status >= 500 || http.response.fault === 'reset' || http.callback?.error) statusSpan.classList.add('status-5xx');
         c1.appendChild(statusSpan);
 
         const c2 = row.insertCell(2);
@@ -486,7 +487,7 @@ function renderTable() {
         methodSpan.textContent = http.request.method;
         methodSpan.className = `method-${(http.request.method || '').toLowerCase()}`;
         c2.appendChild(methodSpan);
-        const host = requestHost(http.request, multiPort);
+        const host = requestHost(http.request, multiPort, !!http.callback);
         const target = `${host}${http.request.url}`;
         if (host) {
             const hostSpan = document.createElement('span');
@@ -499,13 +500,14 @@ function renderTable() {
         urlSpan.title = target;
         row.title = `${http.request.method} ${target} · ${http.response.time}`;
         c2.appendChild(urlSpan);
-        if (http.match?.upstream) {
-            const proxiedSpan = document.createElement('span');
-            proxiedSpan.className = 'proxied-badge';
-            proxiedSpan.textContent = 'proxied';
-            proxiedSpan.title = `Forwarded to ${http.match.upstream}`;
-            c2.appendChild(proxiedSpan);
-            row.title += ` · proxied to ${http.match.upstream}`;
+        const badge = eventBadge(http);
+        if (badge) {
+            const badgeSpan = document.createElement('span');
+            badgeSpan.className = 'proxied-badge';
+            badgeSpan.textContent = badge.text;
+            badgeSpan.title = badge.title;
+            c2.appendChild(badgeSpan);
+            row.title += ` · ${badge.title}`;
         }
     }
 
@@ -572,7 +574,9 @@ function renderInspector() {
     if (!event) { resetInspector(); return; }
     const match = event.match;
     const route = match?.route;
-    matchSummary.textContent = route
+    matchSummary.textContent = event.callback
+        ? `Callback ${eventBadge(event).title.replace(/^Sent/, 'sent')} · ${event.response.time}`
+        : route
         ? `${route.name} · ${route.source}:${route.line} · revision ${match.revision} · ${event.response.time}`
         : `${match?.upstream ? `Proxied to ${match.upstream} · no` : 'No'} matching route · revision ${match?.revision ?? '?'} · ${event.response.time}`;
     mismatchPanel.hidden = !!route;

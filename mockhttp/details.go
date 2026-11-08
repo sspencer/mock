@@ -146,8 +146,9 @@ func readRequestBody(r *http.Request) (loggedBody, requestBody) {
 	return loggedBody{text: string(body[:maxLoggedBodyBytes]), truncated: true, readError: readError}, match
 }
 
-func (s *Server) logRequest(r *http.Request, requestBody loggedBody, response *responseCapture, status int, methodName string, arrivedAt time.Time, elapsed time.Duration) {
-	s.publishRequest(newRequestEvent(r, requestBody, response, status, arrivedAt, elapsed))
+// logRequest records a handled request and returns its event ID.
+func (s *Server) logRequest(r *http.Request, requestBody loggedBody, response *responseCapture, status int, methodName string, arrivedAt time.Time, elapsed time.Duration) uint64 {
+	id := s.publishRequest(newRequestEvent(r, requestBody, response, status, arrivedAt, elapsed))
 
 	logger := s.logger
 	if logger == nil {
@@ -167,6 +168,7 @@ func (s *Server) logRequest(r *http.Request, requestBody loggedBody, response *r
 		attrs = append(attrs, "upstream", upstream)
 	}
 	logger.Info("http request", attrs...)
+	return id
 }
 
 func (s *Server) logResponseRenderError(err error) {

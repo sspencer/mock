@@ -27,6 +27,7 @@ Prism, or Mockoon, and not the Go unit-test mocking libraries (gomock, mockery).
 - [Matching](#matching)
 - [Route order](#route-order)
 - [Passing unmatched requests to a real API](#passing-unmatched-requests-to-a-real-api)
+- [Webhook callbacks](#webhook-callbacks)
 - [Strict mode and route coverage](#strict-mode-and-route-coverage)
 - [Recipes](#recipes)
 - [Using mock in Go tests](#using-mock-in-go-tests)
@@ -573,6 +574,7 @@ in the file, or in a section, where it replaces the file value.
 | `@template` | `auto`, `on` or `off` | `auto` | Whether placeholders are expanded in the body. See [External response bodies](#external-response-bodies). |
 | `@trim` | `on` or `off` | `on` | With `off` the inline body keeps its exact text and line endings. See [Supported dialect](#supported-dialect). |
 | `@fixture` | JSON file path | none | Data file that `{{$fixture.path}}` placeholders read. See [Fixture data](#fixture-data). |
+| `@callback` | `METHOD URL` | none | Send a request after responding, with `@callback.delay`, `@callback.header.Name` and `@callback.body`. See [Webhook callbacks](#webhook-callbacks). |
 | `@proxy` | `http` or `https` URL | none | Forward the requests this section matches to the URL instead of answering. See [Per-route proxying](#per-route-proxying). |
 | `@port` | port number | `-p` (`8080`) | Serve the section on this port. A port in the request URL takes precedence. See [Multiple ports](#multiple-ports). |
 | `@header.Name` | [matcher value](#matcher-values): `text`, `*`, `!`, `~regex`, `!text` or `!~regex` | none | Require the incoming request header to match. A section's header matcher replaces a file one of the same name. See [Header matching](#header-matching). |
@@ -1441,6 +1443,60 @@ GET /legacy/users/:id
   and route hit counts. The admin UI marks it **proxied** and names the URL it
   was sent to.
 
+## Webhook callbacks
+
+Some services answer at once and report the outcome later by calling your
+webhook: payment providers, async job runners. `@callback` makes a route do
+the same. After the route responds, `mock` sends a request of its own:
+
+```http
+### [202] Create payment
+@callback = POST {{$json.callbackUrl}}
+@callback.delay = 2s
+@callback.header.X-Signature = test-signature
+@callback.body = {"id": "{{$json.id}}", "status": "succeeded"}
+POST /payments
+Content-Type: application/json
+
+{"id": "{{$json.id}}", "status": "pending"}
+```
+
+| Directive | Value | Default |
+|-----------|-------|---------|
+| `@callback` | `METHOD URL`, such as `POST https://localhost:3000/hooks` or `POST {{$json.callbackUrl}}` | none |
+| `@callback.delay` | non-negative duration, such as `500ms` | `0s` (right after the response) |
+| `@callback.header.Name` | header value | none |
+| `@callback.body` | body template on one line | empty |
+
+- The URL, header values and body are templates rendered against the request
+  that triggered the callback, with every [placeholder](#placeholders) the
+  response body can use, including `{{variables}}`. A callback body is
+  JSON-escaped like a JSON response body when its `Content-Type` is JSON.
+- The URL must be an absolute `http` or `https` URL without credentials. A
+  literal URL is checked when the file loads; a URL from a placeholder is
+  checked when the callback is sent.
+- Without `@callback.header.Content-Type`, a body that starts with `{` or `[`
+  is sent as `application/json`, anything else as `text/plain`. Callbacks
+  carry `User-Agent: mock-callback` unless you set one, and a `Via` header.
+- One request is sent per response, with no retries. It times out after 10
+  seconds and does not follow redirects. A route whose response failed to
+  render sends no callback; one with `@fault` still does.
+- Callbacks are logged in the admin UI, marked **callback** (the filter
+  matches `callback`), with the request sent and the response received, or
+  `ERR` and the reason when none came back: a timeout, a refused connection,
+  an invalid URL or a placeholder with no value. The inspector names the
+  route and the request that triggered it.
+- A request carrying this `mock`'s own `Via` header sends no callback, so a
+  callback aimed back at its own route doesn't loop; the log records why.
+- Callbacks still waiting for their delay are cancelled when `mock` shuts
+  down. A route with `@proxy` ignores `@callback`, with a load warning.
+- Callbacks are not requests the mock received, so `/requests` leaves them
+  out unless you ask for `callbacks=true`, and they don't count for
+  [strict mode](#strict-mode-and-route-coverage) or route hits.
+
+`mock` sends callbacks to whatever URL the request names, so only point
+clients you trust at a `mock` that has `@callback` routes.
+
 ## Strict mode and route coverage
 
 `mock` counts how many requests each route answered. The admin UI's routes
@@ -1693,6 +1749,7 @@ combine:
 | `path=/users/7` | whose URL path is exactly this, ignoring the query string |
 | `route=Create user` | answered by the route with this name |
 | `matched=true` / `matched=false` | a route answered, or none did (requests forwarded with `--upstream` count as unmatched) |
+| `callbacks=true` | the outbound [webhook callbacks](#webhook-callbacks) instead, with `callback.trigger` (the event `id` of the request that sent each) and `callback.error` |
 | `since=42` | with an event `id` greater than this |
 
 ```sh
@@ -1702,7 +1759,7 @@ curl -s 'http://127.0.0.1:8081/requests?matched=false' | jq -r '.[].request.url'
 
 A test can assert what its code under test sent: `POST /clear` (with
 `X-Requested-With`) before the test, then read `/requests` after it. An
-invalid `matched` or `since` value returns `400`.
+invalid `matched`, `callbacks` or `since` value returns `400`.
 
 ### Resizing and mobile navigation
 
@@ -1726,7 +1783,8 @@ On narrow screens, selecting traffic or a route opens the inspector; use
   nearby routes with method, path, query, header, and body mismatch explanations.
   Requests forwarded with `--upstream` or by a `@proxy` route are marked
   **proxied** in the table (the filter matches `proxied`), and the inspector
-  names the URL they were sent to.
+  names the URL they were sent to. [Webhook callbacks](#webhook-callbacks) are
+  marked **callback**, with the route and request that sent them.
 - **Copy as route** appears on unmatched requests and copies a draft `.http`
   section to paste into a request file. The draft has the request's method and
   path, and requires the fields the request had without fixing their values:

@@ -39,6 +39,13 @@ type Server struct {
 	upstream       atomic.Pointer[upstreamProxy]
 	// reloader re-reads the request files for POST /reload.
 	reloader func()
+	// callbacks tracks @callback requests in flight; callbackCtx is cancelled
+	// by Close.
+	callbacks       sync.WaitGroup
+	callbackCtx     context.Context
+	cancelCallbacks context.CancelFunc
+	callbackMu      sync.Mutex
+	closed          bool
 }
 
 func New(methods []restclient.Method, logger *slog.Logger) *Server {
@@ -49,6 +56,7 @@ func New(methods []restclient.Method, logger *slog.Logger) *Server {
 		logger:      logger,
 		subscribers: make(map[chan RequestEvent]struct{}),
 	}
+	s.callbackCtx, s.cancelCallbacks = context.WithCancel(context.Background())
 	s.config = ConfigState{Revision: 1, RouteCount: len(methods), LastSuccess: time.Now().UTC().Format(time.RFC3339Nano)}
 	warnMethodConfig(logger, methods)
 	return s
@@ -183,7 +191,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if render.verbatim && status == http.StatusOK && method.Stream == 0 && method.Fault == "" &&
 		(r.Method == http.MethodGet || r.Method == http.MethodHead) {
 		s.serveFileContent(capture, r, file.path, body)
-		s.logRequest(r, requestBody, capture, capture.statusCode(), method.Name, arrivedAt, time.Since(arrivedAt))
+		id := s.logRequest(r, requestBody, capture, capture.statusCode(), method.Name, arrivedAt, time.Since(arrivedAt))
+		s.scheduleCallback(r, method, render, id, capture.match)
 		return
 	}
 	sendsBody := r.Method != http.MethodHead && len(body) > 0 && statusAllowsBody(status)
@@ -192,7 +201,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Log first: the handler does not return normally after a reset.
 		capture.fault = fault
 		capture.headers = http.Header{}
-		s.logRequest(r, requestBody, capture, 0, method.Name, arrivedAt, time.Since(arrivedAt))
+		id := s.logRequest(r, requestBody, capture, 0, method.Name, arrivedAt, time.Since(arrivedAt))
+		s.scheduleCallback(r, method, render, id, capture.match)
 		resetConnection(capture)
 		return
 	}
@@ -225,7 +235,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = capture.Write(body)
 	}
 
-	s.logRequest(r, requestBody, capture, status, method.Name, arrivedAt, time.Since(arrivedAt))
+	id := s.logRequest(r, requestBody, capture, status, method.Name, arrivedAt, time.Since(arrivedAt))
+	s.scheduleCallback(r, method, render, id, capture.match)
 	if fault == "truncate" {
 		_ = controller.Flush()
 		panic(http.ErrAbortHandler)
@@ -341,6 +352,9 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 			if fixture, err = loadFixture(&method); err != nil {
 				logger.Warn("{{$fixture.*}} placeholders will stay literal", "method", method.Name, "source", method.Source, "line", method.Line, "error", err)
 			}
+		}
+		if method.Proxy != "" && method.Callback != nil {
+			logger.Warn("@callback is ignored for a section with @proxy", "method", method.Name, "source", method.Source, "line", method.Line)
 		}
 		if method.Proxy != "" && (method.Body != "" || method.File != "" || len(method.Headers) > 0 || method.Stream > 0 || method.Fault != "") {
 			logger.Warn("@proxy forwards the request, so this section's response body, file, headers, @stream and @fault are ignored", "method", method.Name, "source", method.Source, "line", method.Line)
@@ -576,6 +590,11 @@ func cloneMethods(methods []restclient.Method) []restclient.Method {
 			out[i].Variables[k] = v
 		}
 		out[i].VariableLines = maps.Clone(methods[i].VariableLines)
+		if c := methods[i].Callback; c != nil {
+			callback := *c
+			callback.Headers = c.Headers.Clone()
+			out[i].Callback = &callback
+		}
 		out[i].Query = make(map[string][]string, len(methods[i].Query))
 		for k, v := range methods[i].Query {
 			out[i].Query[k] = append([]string(nil), v...)

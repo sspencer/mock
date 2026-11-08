@@ -91,6 +91,20 @@ type Method struct {
 	// Compress is the @compress mode: "" (off), "gzip", "deflate" or
 	// "auto" (chosen from the request's Accept-Encoding).
 	Compress string
+	// Callback is the @callback request sent after the response, if any.
+	Callback *Callback
+}
+
+// Callback is an outbound request a route sends after it responds, set by
+// @callback = METHOD URL and the @callback.delay, @callback.header.Name and
+// @callback.body directives. URL, header values and Body are templates
+// rendered against the triggering request.
+type Callback struct {
+	Method  string
+	URL     string
+	Delay   time.Duration
+	Headers http.Header
+	Body    string
 }
 
 // legacyVariablePattern matches the removed "# $name=value" comment variables.
@@ -492,10 +506,18 @@ func parseSection(pending pendingSection, fileDefs []definition, overrides map[s
 		method.Variables[def.name] = def.value
 		method.VariableLines[def.name] = def.line
 	}
+	var callbackLine int
 	for _, def := range defs {
 		if err := applyControlVariable(&method, def, source); err != nil {
 			return method, err
 		}
+		if strings.HasPrefix(def.name, "callback.") && callbackLine == 0 {
+			callbackLine = def.line
+		}
+	}
+	if method.Callback != nil && method.Callback.Method == "" {
+		return method, parseErrorf(source, callbackLine,
+			`section %q: @callback.* directives need "@callback = METHOD URL" (example: "@callback = POST {{$json.callbackUrl}}")`, method.Name)
 	}
 
 	if i >= len(lines) {
@@ -810,6 +832,9 @@ func applyControlVariable(method *Method, def definition, source string) error {
 		method.MatchCookies.Set(name, value)
 		return nil
 	}
+	if key, ok := strings.CutPrefix(def.name, "callback."); ok {
+		return applyCallbackDirective(method, def, key, value, source)
+	}
 	if name, ok := strings.CutPrefix(def.name, "path."); ok {
 		if name == "" {
 			return parseErrorf(source, def.line,
@@ -881,6 +906,13 @@ func applyControlVariable(method *Method, def definition, source string) error {
 			return parseErrorf(source, def.line, `section %q: @fixture needs a JSON file path without placeholders, such as "@fixture = data/users.json"`, method.Name)
 		}
 		method.Fixture = fixture
+	case "callback":
+		callbackMethod, target, err := ParseCallback(value)
+		if err != nil {
+			return parseErrorf(source, def.line, "section %q: @callback %v", method.Name, err)
+		}
+		callback := method.callback()
+		callback.Method, callback.URL = callbackMethod, target
 	case "proxy":
 		proxy := strings.TrimSpace(value)
 		if err := ValidateProxy(proxy); err != nil {
@@ -893,6 +925,72 @@ func applyControlVariable(method *Method, def definition, source string) error {
 			return parseErrorf(source, def.line, "section %q: @port %v", method.Name, err)
 		}
 		method.Port = port
+	}
+	return nil
+}
+
+// callback returns the method's Callback, creating it for the first
+// @callback directive.
+func (m *Method) callback() *Callback {
+	if m.Callback == nil {
+		m.Callback = &Callback{Headers: make(http.Header)}
+	}
+	return m.Callback
+}
+
+// applyCallbackDirective handles @callback.delay, @callback.header.Name and
+// @callback.body.
+func applyCallbackDirective(method *Method, def definition, key, value, source string) error {
+	callback := method.callback()
+	switch {
+	case key == "delay":
+		delay, err := time.ParseDuration(strings.TrimSpace(value))
+		if err != nil || delay < 0 {
+			return parseErrorf(source, def.line, `section %q: @callback.delay must be a non-negative duration, such as "500ms"`, method.Name)
+		}
+		callback.Delay = delay
+	case key == "body":
+		callback.Body = value
+	case strings.HasPrefix(key, "header."):
+		name := strings.TrimPrefix(key, "header.")
+		if !ValidHeaderName(name) {
+			return parseErrorf(source, def.line, `section %q: @callback.header. needs a valid header name (example: "@callback.header.Content-Type = application/json")`, method.Name)
+		}
+		callback.Headers.Set(name, value)
+	default:
+		return parseErrorf(source, def.line, `section %q: unknown directive @%s (use @callback.delay, @callback.header.Name or @callback.body)`, method.Name, def.name)
+	}
+	return nil
+}
+
+// ParseCallback parses an @callback value, "METHOD URL", such as
+// "POST {{$json.callbackUrl}}". The URL may be entirely a placeholder, so
+// only a literal URL is checked here: it must be an absolute http or https
+// URL. A placeholder URL is checked when the callback is sent.
+func ParseCallback(raw string) (method, target string, err error) {
+	const usage = `must be "METHOD URL", such as "POST https://example.com/webhook" or "POST {{$json.callbackUrl}}"`
+	method, target, ok := strings.Cut(strings.TrimSpace(raw), " ")
+	target = strings.TrimSpace(target)
+	if !ok || target == "" || !isHTTPMethod(method) || method == http.MethodConnect {
+		return "", "", errors.New(usage)
+	}
+	if !PlaceholderPattern.MatchString(target) {
+		if err := ValidateCallbackURL(target); err != nil {
+			return "", "", err
+		}
+	}
+	return method, target, nil
+}
+
+// ValidateCallbackURL checks a callback target: an absolute http or https URL
+// without credentials.
+func ValidateCallbackURL(raw string) error {
+	target, err := url.Parse(raw)
+	if err != nil || (target.Scheme != "http" && target.Scheme != "https") || target.Hostname() == "" {
+		return fmt.Errorf("URL %q must be an absolute http or https URL", raw)
+	}
+	if target.User != nil {
+		return fmt.Errorf("URL %q must not include user credentials", raw)
 	}
 	return nil
 }
@@ -1031,6 +1129,7 @@ var controlVariables = map[string]struct{}{
 	"proxy":    {},
 	"fixture":  {},
 	"compress": {},
+	"callback": {},
 }
 
 // PlaceholderPattern matches {{name}}, {{%name}} and {{$name args}} placeholders
@@ -1129,7 +1228,7 @@ func UnusedVariables(methods []Method) []UnusedVariable {
 			collectPlaceholders(value, referenced)
 		}
 		for name, line := range method.VariableLines {
-			if _, ok := controlVariables[name]; ok || line == 0 {
+			if _, ok := controlVariables[name]; ok || line == 0 || strings.HasPrefix(name, "callback.") {
 				// Line 0 is a command-line variable with no definition in
 				// the file; it need not be used by every file.
 				continue

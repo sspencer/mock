@@ -3,6 +3,7 @@ package restclient
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMatcherMatch(t *testing.T) {
@@ -285,5 +286,40 @@ func TestParseCompress(t *testing.T) {
 	}
 	if _, err := Parse("t.http", strings.NewReader("### C\n@compress = br\nGET /c\n")); err == nil {
 		t.Error("@compress = br parsed")
+	}
+}
+
+func TestParseCallback(t *testing.T) {
+	methods, err := Parse("t.http", strings.NewReader(`@host = https://hooks.example.com
+### C
+@callback = PUT {{host}}/done/{{$json.id}}
+@callback.delay = 1s
+@callback.header.X-Token = abc
+@callback.body = {"id": "{{$json.id}}"}
+POST /c
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := methods[0].Callback
+	if c == nil || c.Method != "PUT" || c.URL != "https://hooks.example.com/done/{{$json.id}}" || c.Delay != time.Second ||
+		c.Headers.Get("X-Token") != "abc" || c.Body != `{"id": "{{$json.id}}"}` {
+		t.Fatalf("callback = %+v", c)
+	}
+	if unused := UnusedVariables(methods); len(unused) != 0 {
+		t.Errorf("unused = %+v", unused)
+	}
+	for _, bad := range []string{
+		"@callback = https://example.com",
+		"@callback = FETCH https://example.com",
+		"@callback = POST ftp://example.com",
+		"@callback = POST https://user:pw@example.com",
+		"@callback = POST https://example.com\n@callback.delay = soon",
+		"@callback = POST https://example.com\n@callback.retries = 3",
+		"@callback.body = {}",
+	} {
+		if _, err := Parse("t.http", strings.NewReader("### C\n"+bad+"\nPOST /c\n")); err == nil {
+			t.Errorf("%q parsed", bad)
+		}
 	}
 }

@@ -35,12 +35,7 @@ and with the items above done they are the next thing to revisit.
 
 ### Responses and templating
 
-- **Webhook callbacks** (M–L): `@callback = POST {{$json.callbackUrl}}` with a
-  body template and delay, sent after the response, for flows where the real
-  service calls back (payments, async jobs). Declarative, so it stays clear of
-  the rejected scripted responses, but it is the first outbound traffic
-  `mock` would originate: it needs its own events in the admin UI, timeouts,
-  and no retries by default.
+(All response and templating ideas are implemented; see below.)
 
 ### Testing and CI
 
@@ -157,6 +152,9 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Webhook callbacks:** `@callback = POST {{$json.callbackUrl}}` with
+  `@callback.delay`, `.header.*` and `.body`, sent once after the response
+  and logged in the admin UI.
 - **Compressed responses:** `@compress = gzip | deflate | auto` compresses
   bodies; `auto` honors `Accept-Encoding`.
 - **Range requests for file bodies:** unchanged `< path` files answer

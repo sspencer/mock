@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add `@callback = METHOD URL` webhook callbacks, with `@callback.delay`, `@callback.header.Name` and `@callback.body` templates rendered from the triggering request. Each callback is sent once after the response, times out after 10 seconds, and is logged in the admin UI marked **callback**. `GET /requests?callbacks=true` and `RequestFilter.Callbacks` list them.
+
 - Add `@compress = gzip | deflate | auto | off` to compress response bodies. `gzip` and `deflate` always compress; `auto` follows the request's `Accept-Encoding` and adds `Vary: Accept-Encoding`.
 
 - `< path` response files served unchanged to `GET` and `HEAD` with a `200` status now support `Range`, `If-Range` and `If-Modified-Since` (via `http.ServeContent`): they answer `206`, `416` and `304` and send `Accept-Ranges` and `Last-Modified`.
