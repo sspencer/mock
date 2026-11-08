@@ -52,7 +52,7 @@ func (s *Server) findMethod(r *http.Request, body requestBody) (*restclient.Meth
 	// Routes are immutable once installed; SetMethods swaps the slice, so a
 	// snapshot keeps one request within one configuration revision.
 	s.mu.Lock()
-	methods, revision := s.methods, s.config.Revision
+	methods, hits, revision := s.methods, s.hits, s.config.Revision
 	s.mu.Unlock()
 
 	facts := newRequestFacts(r, body)
@@ -61,6 +61,7 @@ func (s *Server) findMethod(r *http.Request, body requestBody) (*restclient.Meth
 			method := &methods[i]
 			if values, ok := facts.match(method); ok {
 				route := describeRoute(*method, i, revision)
+				route.Hits = hits[i].Add(1)
 				path, _ := matchPath(routePattern(*method), r.URL.EscapedPath())
 				return method, templateValues{values: values, path: path, facts: facts}, MatchInfo{Route: &route, Revision: revision}, true
 			}

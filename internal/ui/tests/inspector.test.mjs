@@ -31,7 +31,9 @@ test('Copy cURL quotes shell metacharacters and omits transport-managed headers'
 
 test('Route view includes source, requirements, file and template', () => {
     const text = formatRoute({ method: 'GET', path: '/x', name: 'Example', source: 'test.http', line: 3, revision: 2, status: 201, delay: '1s', file: 'body.json', matchHeaders: { Authorization: ['*'] }, body: '{"x":1}' });
-    for (const value of ['test.http:3', 'Authorization: *', '201', '1s', 'body.json', '{"x":1}']) assert.ok(text.includes(value));
+    for (const value of ['test.http:3', 'Authorization: *', '201', '1s', 'body.json', '{"x":1}', 'Matched: 0 requests']) assert.ok(text.includes(value));
+    assert.ok(formatRoute({ method: 'GET', path: '/x', hits: 1 }).includes('Matched: 1 request\n'));
+    assert.ok(formatRoute({ method: 'GET', path: '/x', hits: 12 }).includes('Matched: 12 requests'));
 });
 
 test('Route view shows delay ranges, streaming and faults', () => {
