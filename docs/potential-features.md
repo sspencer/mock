@@ -9,16 +9,14 @@ separately below so they do not remain in the backlog; release history is in
 
 Reviewed 2026-11-06. Highest value first; sizes are rough (S, M, L).
 
-1. **Copy an unmatched request as a route** (S). Turns the admin UI's "why
-   nothing matched" into a one-click fix.
-2. **Strict mode and route coverage** (S). Fail CI on unmocked calls and find
+1. **Strict mode and route coverage** (S). Fail CI on unmocked calls and find
    fixtures that are never used.
-3. **Publish the Docker image and a Homebrew formula** (S). Mostly GoReleaser
+2. **Publish the Docker image and a Homebrew formula** (S). Mostly GoReleaser
    configuration.
-4. **Close small test gaps** (S). The invalid generator argument warning in
+3. **Close small test gaps** (S). The invalid generator argument warning in
    `warnUnknownPlaceholders` is only exercised through the `mock validate`
    tests; add a direct test in `mockhttp`.
-5. **JSON array matching** (S). `@json.roles.* = admin` (any element matches);
+4. **JSON array matching** (S). `@json.roles.* = admin` (any element matches);
    today only fixed indexes such as `roles.0` work.
 
 Everything else is grouped by theme below. Stateful scenarios are deliberately
@@ -95,10 +93,6 @@ deferred; see [stateful-scenarios.md](stateful-scenarios.md).
 
 ### Admin UI
 
-- **Copy an unmatched request as a route** (S): a button on unmatched requests
-  that copies a draft `.http` section: the method and path, `@json.*` matchers
-  guessed from the body, and a placeholder `[200]` response. Uses data the
-  request event already has.
 - **Credential redaction:** optional redaction for diagnostic history, copied
   requests, and exports. Current captures and Copy cURL include credentials.
 - **Browser-level UI tests:** the admin UI's logic is unit tested in Node
@@ -141,6 +135,10 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Copy an unmatched request as a route:** the inspector's **Copy as route**
+  button copies a draft `.http` section for an unmatched request, with
+  presence matchers for its query, `Authorization` header and top-level body
+  fields, and either a placeholder `[200]` or the real upstream response.
 - **Responses and templating:** placeholders in body file paths
   (`< ./users/{{$id}}.json`, `404` when no file matches), `{{#repeat}}`
   generated lists with `{{$index}}`, placeholder filters (`upper`, `default`,

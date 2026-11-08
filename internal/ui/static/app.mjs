@@ -1,4 +1,5 @@
 import { formatMessage, bodyNotice, buildCurl, buildRouteCurl, formatRoute } from './inspector.mjs';
+import { buildRouteDraft } from './draft.mjs';
 import { attachSplitter, alignedTrafficHeight } from './layout.mjs';
 import { buildHAR } from './har.mjs';
 import { TrafficStream, requestHost } from './traffic.mjs';
@@ -48,6 +49,7 @@ const routeView = document.getElementById('routeView');
 const routeDetails = document.getElementById('routeDetails');
 const copyNotice = document.getElementById('copyNotice');
 const copyCurlButton = document.getElementById('copyCurlButton');
+const copyRouteDraftButton = document.getElementById('copyRouteDraftButton');
 const mismatchPanel = document.getElementById('mismatchPanel');
 const mismatchDetails = document.getElementById('mismatchDetails');
 const backToList = document.getElementById('backToList');
@@ -539,6 +541,7 @@ function resetInspector() {
     copyGeneration++;
     matchSummary.textContent = '';
     copyCurlButton.disabled = true;
+    copyRouteDraftButton.hidden = true;
     mismatchPanel.hidden = true;
     copyNotice.textContent = '';
     for (const kind of ['request', 'response']) {
@@ -573,6 +576,7 @@ function renderInspector() {
         ? `${route.name} · ${route.source}:${route.line} · revision ${match.revision} · ${event.response.time}`
         : `${match?.upstream ? `Proxied to ${match.upstream} · no` : 'No'} matching route · revision ${match?.revision ?? '?'} · ${event.response.time}`;
     mismatchPanel.hidden = !!route;
+    copyRouteDraftButton.hidden = !!route;
     mismatchDetails.replaceChildren();
     if (!route) {
         const candidates = match?.candidates || [];
@@ -624,6 +628,10 @@ for (const kind of ['request', 'response']) {
 }
 copyCurlButton.addEventListener('click', () => {
     try { copyText(buildCurl(eventsById.get(selectedRequestId(selection))?.request)); }
+    catch (error) { copyNotice.textContent = error.message; }
+});
+copyRouteDraftButton.addEventListener('click', () => {
+    try { copyText(buildRouteDraft(eventsById.get(selectedRequestId(selection)), { mockPort: MOCK_CONFIG.mockPort })); }
     catch (error) { copyNotice.textContent = error.message; }
 });
 copyRouteCurlButton.addEventListener('click', () => {

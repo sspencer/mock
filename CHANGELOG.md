@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add **Copy as route** to the admin UI's inspector for unmatched requests. It copies a draft `.http` section with the request's method and path, `@query.*`, `@header.Authorization`, and `@json.*` or `@form.*` matchers that require the fields the request sent, and a placeholder `[200]` JSON response. A request proxied with `--upstream` drafts the upstream's real response instead.
+
 - Add `-u` / `--upstream URL` to pass requests that no route matches to a real API and return its response, so you can mock a few endpoints and use the real service for the rest. The upstream may be HTTP or HTTPS and may include a base path; the request path and query are appended to it. Forwarded requests keep their method, headers and body, and get the upstream's `Host` plus `X-Forwarded-*` and `Via` headers. An unreachable upstream answers `502`, and a request that loops back to `mock` answers `508`. The admin UI marks forwarded requests as **proxied**, and request events carry `match.upstream`. `--upstream` cannot be combined with a directory argument.
 
 - Add placeholders in body file paths: `< ./users/{{$id}}.json` serves a different file per request. The expanded path gets the same containment checks as a fixed path, and a path that names no usable file (missing, absolute, or with a `..` segment) answers `404`.
