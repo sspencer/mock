@@ -221,7 +221,6 @@ var callbackClient = &http.Client{
 	Transport:     &http.Transport{Proxy: http.ProxyFromEnvironment, MaxIdleConnsPerHost: 4, IdleConnTimeout: 30 * time.Second},
 }
 
-
 // describeCallback summarizes a route's @callback for the admin UI.
 func describeCallback(method restclient.Method) string {
 	c := method.Callback
