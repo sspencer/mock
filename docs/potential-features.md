@@ -44,10 +44,6 @@ and with the items above done they are the next thing to revisit.
   builds) to the real service and reports differences in status,
   `Content-Type` and top-level JSON fields. Mocks go stale when the real API
   changes; this tells you which fixtures to update.
-- **Rate limit simulation** (M): `@rate-limit = 5/1s` answers `429` with
-  `Retry-After` once a route is over its budget. It needs per-route counters,
-  so it belongs with `@times` in the stateful work, although it is
-  time-based, which the stateful plan currently leaves out.
 - **Benchmarks** (S): `go test -bench` cases for matching and rendering with a
   few thousand routes, so performance regressions in the linear route scan or
   the template renderer show up in review.
@@ -142,6 +138,9 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Rate limit simulation:** `@rate-limit = 5/1s` answers `429` with
+  `Retry-After` once a route is over its sliding-window budget. Counts are
+  per route and survive reloads that keep the route.
 - **Global latency and faults:** `-w` (`--delay`) and `-f` (`--fault`) apply
   to every route without its own `@delay` or `@fault`.
 - **Structured JSON logs:** `-l json` (`--log-format json`) makes stdout pure

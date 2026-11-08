@@ -603,6 +603,7 @@ in the file, or in a section, where it replaces the file value.
 | `@compress` | `gzip`, `deflate`, `auto` or `off` | `off` | Compress the response body; `auto` follows the request's `Accept-Encoding`. See [Compressed responses](#compressed-responses). |
 | `@stream` | non-negative duration such as `50ms` | off | Send the body in pieces (one event or line at a time) with this pause between them. See [Delays, streaming and faults](#delays-streaming-and-faults). |
 | `@fault` | `reset` or `truncate`, optionally followed by a share such as `reset 25%` | off | Break the response on purpose. See [Delays, streaming and faults](#delays-streaming-and-faults). |
+| `@rate-limit` | A count and a window, such as `5/1s`, `100/1m` or `10/s` | none | Answer `429` with `Retry-After` once the route is over its budget. See [Rate limits](#rate-limits). |
 | `@seed` | any non-empty text | random | Make generated values reproducible per request. See [Reproducible data](#reproducible-data). |
 | `@template` | `auto`, `on` or `off` | `auto` | Whether placeholders are expanded in the body. See [External response bodies](#external-response-bodies). |
 | `@trim` | `on` or `off` | `on` | With `off` the inline body keeps its exact text and line endings. See [Supported dialect](#supported-dialect). |
@@ -967,6 +968,28 @@ any other body one line at a time. Streamed responses have no
 
 Faulted requests appear in the admin UI with the fault noted (`RST` in the
 status column for a reset).
+
+### Rate limits
+
+`@rate-limit = 5/1s` lets a route answer five requests in any one-second
+window; further requests get `429 Too Many Requests` with a `Retry-After`
+header (whole seconds until the oldest request leaves the window) until there
+is room again:
+
+```http
+### Search
+@rate-limit = 10/1m
+GET /search
+
+{"results": []}
+```
+
+The window slides: each answered request counts for one window after it
+arrives, and rejected requests do not count. The count is a request count and
+the window a Go duration, or `s`, `m` or `h` for one of that unit. Each section
+has its own budget, even when `@rate-limit` is defined at file scope. A reload
+that keeps the route keeps its count. Rejected requests appear in the admin UI
+as matched by the route, before any `@delay`.
 
 ### Latency and faults for every route
 

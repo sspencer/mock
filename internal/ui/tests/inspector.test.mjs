@@ -42,6 +42,11 @@ test('Route view shows delay ranges, streaming and faults', () => {
     assert.ok(!formatRoute({ method: 'GET', path: '/x', status: 200, delay: '0s' }).includes('stream'));
 });
 
+test('Route view shows the rate limit', () => {
+    assert.ok(formatRoute({ method: 'GET', path: '/x', rateLimit: '5/1s' }).includes('Rate limit: 5/1s'));
+    assert.ok(!formatRoute({ method: 'GET', path: '/x' }).includes('Rate limit'));
+});
+
 test('Route cURL targets the mock origin with sample path parameters', () => {
     const origin = 'http://localhost:8080';
     assert.equal(buildRouteCurl({ method: 'GET', path: '/users/:id' }, origin), "curl 'http://localhost:8080/users/1'");
