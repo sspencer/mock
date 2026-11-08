@@ -89,9 +89,6 @@ and with the items above done they are the next thing to revisit.
 - **Shared definitions across files** (S–M): `@import ./common.http` (or a
   variables-only file) so several request files can share `@host`, tokens and
   common response headers. The dialect table lists imports as unsupported.
-- **Starter file** (S): `mock init` writes a commented `api.http` showing a
-  route, a matcher, a placeholder and a file body, so a new user has something
-  that runs in one command.
 
 ### Admin UI
 
@@ -152,6 +149,8 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Starter file:** `mock init [-force] [dir]` writes a commented `api.http`
+  and `users.json` showing routes, matchers, placeholders and a file body.
 - **Webhook callbacks:** `@callback = POST {{$json.callbackUrl}}` with
   `@callback.delay`, `.header.*` and `.body`, sent once after the response
   and logged in the admin UI.

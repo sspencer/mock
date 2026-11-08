@@ -53,7 +53,20 @@ the new one will shadow it or be shadowed, depending on install order.
 
 ## Quick Start
 
-Run the example API:
+Start a new mock API from a commented starter file:
+
+```sh
+mock init          # writes api.http and users.json here
+mock api.http
+curl localhost:8080/users/7
+```
+
+`api.http` has four routes showing a path parameter, generated values, a
+variable, a `< file` body, a `@json` matcher and route order. Its comments
+explain each part. `mock init dir` writes into `dir` (creating it), and
+`mock init` refuses to overwrite either file unless you pass `-force`.
+
+Or run the example API from a checkout:
 
 ```sh
 go run . examples/user.http
@@ -218,6 +231,7 @@ mock [flags] -d <dir> [-d <dir>...] [file.http...]
 mock [flags] <directory>
 cat file.http | mock
 mock validate [-strict] [-json] [-var name=value] <file.http|dir> [file.http|dir...]
+mock init [-force] [dir]
 mock -version
 mock -h
 ```
