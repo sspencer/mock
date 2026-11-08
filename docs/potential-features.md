@@ -14,8 +14,6 @@ Reviewed 2026-11-06. Highest value first; sizes are rough (S, M, L).
 2. **Close small test gaps** (S). The invalid generator argument warning in
    `warnUnknownPlaceholders` is only exercised through the `mock validate`
    tests; add a direct test in `mockhttp`.
-3. **JSON array matching** (S). `@json.roles.* = admin` (any element matches);
-   today only fixed indexes such as `roles.0` work.
 
 Everything else is grouped by theme below. Stateful scenarios are deliberately
 deferred; see [stateful-scenarios.md](stateful-scenarios.md).
@@ -24,7 +22,7 @@ deferred; see [stateful-scenarios.md](stateful-scenarios.md).
 
 ### Matching and routing
 
-- **Richer matching:** JSON paths with dotted keys or any-element wildcards,
+- **Richer matching:** JSON paths with dotted keys,
   cookies (`@cookie.name`), "present but not X" predicates, and multipart or
   XML bodies. Current matching covers methods, encoded paths and path
   parameters, declared query values, and exact, present (`*`), absent (`!`) and
@@ -127,6 +125,8 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **JSON array matching:** a `*` segment in a `@json` path matches any array
+  element, as in `@json.roles.* = admin` or `@json.items.*.sku = ~A[0-9]+`.
 - **Strict mode and route coverage:** `-s` / `--strict` reports unmatched
   requests and never-matched routes at shutdown and exits `1` on unmatched
   requests; `/routes` and the routes panel show per-route hit counts.

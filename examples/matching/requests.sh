@@ -74,8 +74,8 @@ show 'Express shipping, echoes customer name' POST /orders "${json[@]}" \
     --data '{"customer":{"name":"Avery"},"shipping":{"method":"express"},"items":[{"sku":"TEA-001","qty":2}]}'
 show 'VIP customer (boolean true)'           POST /orders "${json[@]}" \
     --data '{"customer":{"vip":true},"items":[{"sku":"TEA-002","qty":1}]}'
-show 'Gift card SKU, amount captured'        POST /orders "${json[@]}" \
-    --data '{"items":[{"sku":"GIFT-50","qty":1}]}'
+show 'Gift card in any item, amount captured' POST /orders "${json[@]}" \
+    --data '{"items":[{"sku":"TEA-001","qty":1},{"sku":"GIFT-50","qty":1}]}'
 show 'Standard order, items copied back'     POST /orders "${json[@]}" \
     --data '{"items":[{"sku":"TEA-003","qty":3}]}'
 show 'No items'                              POST /orders "${json[@]}" --data '{"customer":{"name":"Avery"}}'

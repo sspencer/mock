@@ -457,7 +457,7 @@ Variable names with a special meaning, which `mock` consumes itself:
 - `@query.name`: require the query parameter to match the value, with the same value forms as `@header.*`. See [Query and path parameter matching](#query-and-path-parameter-matching).
 - `@path.name`: require the `:name` path parameter to match the value: exact text or `~regex`. Set at file scope, it applies only to sections whose path has `:name`.
 - `@body`: require the request body to match the value. See [Body matching](#body-matching).
-- `@json.field.path`: require a field of a JSON request body to match the value. See [Body matching](#body-matching).
+- `@json.field.path`: require a field of a JSON request body to match the value; `@json.roles.* = admin` matches any array element. See [Body matching](#body-matching).
 - `@form.name`: require a field of a URL-encoded form body to match the value. See [Body matching](#body-matching).
 
 Every other variable is only used through `{{name}}` references. `mock` warns
@@ -928,6 +928,15 @@ pong
   compared as compact JSON text, so `@json.age = 42` and `@json.active = true`
   work, and `@json.age = ~[0-9]+` accepts `42` and `"42"`. A missing field or
   `null` counts as absent for `*` and `!`.
+- **`*` in a `@json` path** selects every element of an array, and the matcher
+  accepts the request when any selected element matches:
+  `@json.roles.* = admin` accepts `{"roles":["dev","admin"]}`, and
+  `@json.items.*.sku = ~A[0-9]+` checks the `sku` of every item. Wildcards can
+  nest (`@json.items.*.tags.* = sale`). `*` means at least one element is
+  present and non-blank; `!` means none is, so it accepts an empty array or a
+  missing field. A `*` segment only selects array elements, never object
+  fields. Named regex groups capture from the first element that matches.
+  Response placeholders don't take `*`; use an index such as `{{$json.roles.0}}`.
 - **`@form.name`**: matches a field of an `a=1&b=2` body, decoded, in any
   order. A repeated field matches when any of its values does. Field names must
   be valid variable names, so `user[name]` cannot be matched.

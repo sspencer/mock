@@ -73,7 +73,8 @@ export function sampleJSONBody(matchJson) {
     let root;
     try {
         for (const [path, value] of entries) {
-            const segments = path.split('.');
+            // A "*" segment accepts any element, so the sample puts the value first.
+            const segments = path.split('.').map(segment => segment === '*' ? '0' : segment);
             if (root === undefined) root = isIndex(segments[0]) ? [] : {};
             let node = root;
             segments.forEach((segment, i) => {

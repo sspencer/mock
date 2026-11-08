@@ -114,6 +114,19 @@ func (m Matcher) Match(values []string) bool {
 	return false
 }
 
+// MatchAny is Match for a set of values that are alternatives, such as every
+// element a @json path with a "*" segment selects: present and absent
+// matchers look at all of them, so "*" accepts any non-blank value and "!"
+// requires that there is none. Exact and regexp matchers behave as in Match.
+func (m Matcher) MatchAny(values []string) bool {
+	switch m.Kind {
+	case MatchPresent, MatchAbsent:
+		present := slices.ContainsFunc(values, func(value string) bool { return strings.TrimSpace(value) != "" })
+		return present == (m.Kind == MatchPresent)
+	}
+	return m.Match(values)
+}
+
 // Captures returns the named groups, such as id in ~(?P<id>[0-9]+), of the
 // first value a regexp matcher matches. It returns nil for other matchers,
 // for patterns without named groups, and when nothing matches.
