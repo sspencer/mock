@@ -20,13 +20,12 @@ is described in full under [Ideas](#ideas).
 7. ~~**Lint rendered JSON bodies** (S).~~ Done.
 8. ~~**Directory of request files** (S–M).~~ Done.
 9. ~~**Reload trigger and polling fallback** (S).~~ Done.
-10. **Directive reference and recipes** (S, docs only). One table of every
-    `@` directive, plus recipes for needs that already work but are not obvious.
+10. ~~**Directive reference and recipes** (S, docs only).~~ Done.
 
 Stateful scenarios (`@times`, then named scenarios) remain deliberately
 deferred; see [stateful-scenarios.md](stateful-scenarios.md). They are the
 largest remaining gap in what routes can express (retry tests in particular),
-so revisit them once the items above are done.
+and with the items above done they are the next thing to revisit.
 
 ## Ideas
 
@@ -168,16 +167,6 @@ so revisit them once the items above are done.
   machine-readable diagnostics. A small VS Code extension or language server
   could highlight directives and show load errors and shadow warnings while
   editing.
-- **Directive reference and recipes** (S, docs only): the README is about
-  1,200 lines and each `@` directive is explained in its own section, so there
-  is no single place to look one up. Add one reference table (`@port`,
-  `@delay`, `@stream`, `@fault`, `@seed`, `@template`, `@trim` and the
-  matcher prefixes, with values and defaults) and a table of contents. Then
-  add recipes for common needs that already work but are not obvious:
-  GraphQL operations (`@json.operationName = GetUser`), content negotiation
-  (`@header.Accept = ~(?i).*csv.*`), case-insensitive regexes, per-test
-  routing with an `X-Test` header matcher, and readiness checks in CI and
-  Docker Compose (poll `/state` on the admin port).
 - **Request file formatter** (M): `mock fmt` normalizes spacing, directive
   order and blank lines in `.http` files, like `gofmt`. Lower priority; most
   value once files are large or shared across a team.
@@ -197,6 +186,10 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Directive reference and recipes:** a README table of contents, one
+  reference table of every `@` directive, and recipes for GraphQL operations,
+  content negotiation, case-insensitive matchers, per-test `X-Test` routing
+  and readiness checks (`GET /state`) in CI and Docker Compose.
 - **Reload trigger and polling fallback:** `POST /reload` on the admin port
   (same cross-site rules as `/clear`, `422` on a failed reload), `SIGHUP`,
   and `-i` / `--poll 1s`, which compares sizes and modification times of the

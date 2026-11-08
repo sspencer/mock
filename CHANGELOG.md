@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Docs: the README has a table of contents, one directive reference table for every `@` directive (values, defaults, effect), and a Recipes section: GraphQL operations, content negotiation, case-insensitive matchers, per-test routing with an `X-Test` header, and readiness checks for CI and Docker Compose.
+
 - Add three ways to reload request files when file change events do not arrive (Docker Desktop bind mounts, network filesystems): `-i` / `--poll INTERVAL` checks file sizes and modification times on an interval, `SIGHUP` reloads at once, and `POST /reload` on the admin port reloads and returns the new state (`422` if the reload failed). `/reload` has the same cross-site protections as `/clear`.
 
 - Add `-d` / `--dir DIR` to load every `.http` file under a directory, after any file arguments and in lexical path order. The directory tree is watched, so added, removed or renamed request files and new subdirectories are picked up on reload. `mock validate` also accepts directories. A positional directory still serves static files.

@@ -9,6 +9,31 @@ reload and a request-log UI. It is a single binary for the gap between
 hand-written test doubles and a real backend — not a replacement for WireMock,
 Prism, or Mockoon, and not the Go unit-test mocking libraries (gomock, mockery).
 
+## Contents
+
+- [Install](#install)
+- [Quick Start](#quick-start)
+- [Building From Source](#building-from-source)
+- [Docker](#docker)
+- [CLI](#cli)
+- [Request File Format](#request-file-format)
+- [External response bodies](#external-response-bodies)
+- [Variables](#variables)
+- [Placeholders](#placeholders)
+- [Generated lists](#generated-lists)
+- [Reproducible data](#reproducible-data)
+- [Delays, streaming and faults](#delays-streaming-and-faults)
+- [Multiple ports](#multiple-ports)
+- [Matching](#matching)
+- [Route order](#route-order)
+- [Passing unmatched requests to a real API](#passing-unmatched-requests-to-a-real-api)
+- [Strict mode and route coverage](#strict-mode-and-route-coverage)
+- [Recipes](#recipes)
+- [Using mock in Go tests](#using-mock-in-go-tests)
+- [Admin UI And API](#admin-ui-and-api)
+- [Clients and safety](#clients-and-safety)
+- [Development](#development)
+
 ## Install
 
 Requires [Go](https://go.dev/dl/) 1.26 or newer:
@@ -513,21 +538,30 @@ required. Plain `# comment` lines may also appear there. The old
 `# $name=value` comment variables are no longer supported and are a load error
 that points to the `@name = value` form.
 
-Variable names with a special meaning, which `mock` consumes itself:
+### Directive reference
 
-- `@delay`: response delay parsed with Go duration syntax, such as `250ms` or `2s`, or a random range such as `100ms..800ms` (both ends inclusive, picked afresh per request). Negative or invalid durations are load errors. Set at file scope, it is the default for every section. See [Delays, streaming and faults](#delays-streaming-and-faults).
-- `@stream`: send the body in pieces with this pause between them, such as `50ms`. See [Delays, streaming and faults](#delays-streaming-and-faults).
-- `@fault`: break the response on purpose: `reset` or `truncate`, optionally followed by the share of requests, such as `reset 25%`. See [Delays, streaming and faults](#delays-streaming-and-faults).
-- `@seed`: make generated values reproducible. See [Reproducible data](#reproducible-data).
-- `@template`: `auto`, `on` or `off`, whether placeholders are expanded. See [External response bodies](#external-response-bodies).
-- `@trim`: `on` (the default) or `off`. With `off` the inline body keeps its exact text and line endings. See [Supported dialect](#supported-dialect).
-- `@port`: serve the section on this port instead of the default port (`-p`). Set at file scope, it applies to every section. See [Multiple ports](#multiple-ports).
-- `@header.Name`: require the incoming request header to match the value: exact text, `*` (any non-empty value), `!` (absent), or `~regex`. Set at file scope, it applies to every section; a method-scoped header of the same name replaces it. See [Header matching](#header-matching).
-- `@query.name`: require the query parameter to match the value, with the same value forms as `@header.*`. See [Query and path parameter matching](#query-and-path-parameter-matching).
-- `@path.name`: require the `:name` path parameter to match the value: exact text or `~regex`. Set at file scope, it applies only to sections whose path has `:name`.
-- `@body`: require the request body to match the value. See [Body matching](#body-matching).
-- `@json.field.path`: require a field of a JSON request body to match the value; `@json.roles.* = admin` matches any array element. See [Body matching](#body-matching).
-- `@form.name`: require a field of a URL-encoded form body to match the value. See [Body matching](#body-matching).
+Some variable names have a special meaning; `mock` consumes them itself. Every
+directive can be set at file scope, where it is the default for every section
+in the file, or in a section, where it replaces the file value.
+
+| Directive | Values | Default | Effect |
+|-----------|--------|---------|--------|
+| `@delay` | Go duration such as `250ms` or `2s`, or a range `100ms..800ms` (both ends inclusive, picked afresh per request) | none | Wait before responding. Negative or invalid durations are load errors. See [Delays, streaming and faults](#delays-streaming-and-faults). |
+| `@stream` | non-negative duration such as `50ms` | off | Send the body in pieces (one event or line at a time) with this pause between them. See [Delays, streaming and faults](#delays-streaming-and-faults). |
+| `@fault` | `reset` or `truncate`, optionally followed by a share such as `reset 25%` | off | Break the response on purpose. See [Delays, streaming and faults](#delays-streaming-and-faults). |
+| `@seed` | any non-empty text | random | Make generated values reproducible per request. See [Reproducible data](#reproducible-data). |
+| `@template` | `auto`, `on` or `off` | `auto` | Whether placeholders are expanded in the body. See [External response bodies](#external-response-bodies). |
+| `@trim` | `on` or `off` | `on` | With `off` the inline body keeps its exact text and line endings. See [Supported dialect](#supported-dialect). |
+| `@port` | port number | `-p` (`8080`) | Serve the section on this port. A port in the request URL takes precedence. See [Multiple ports](#multiple-ports). |
+| `@header.Name` | [matcher value](#matcher-values): `text`, `*`, `!` or `~regex` | none | Require the incoming request header to match. A section's header matcher replaces a file one of the same name. See [Header matching](#header-matching). |
+| `@query.name` | matcher value | none | Require the query parameter to match. See [Query and path parameter matching](#query-and-path-parameter-matching). |
+| `@path.name` | `text` or `~regex` | none | Require the `:name` path parameter or `*name` wildcard to match. At file scope it applies only to sections whose path has that parameter. |
+| `@body` | matcher value | none | Require the whole request body to match. See [Body matching](#body-matching). |
+| `@json.field.path` | matcher value | none | Require a field of a JSON request body to match; `@json.roles.* = admin` matches any array element. See [Body matching](#body-matching). |
+| `@form.name` | matcher value | none | Require a field of a URL-encoded form body to match. See [Body matching](#body-matching). |
+
+The removed `@status` and `@file` names are load errors that point to their
+replacements (`### [204] Name` and `< path`).
 
 Every other variable is only used through `{{name}}` references. `mock` warns
 at load time about variables that nothing references.
@@ -1191,6 +1225,127 @@ mock_pid=$!
 npm test
 kill "$mock_pid"     # SIGTERM
 wait "$mock_pid"   # fails the job if any request went unmatched
+```
+
+## Recipes
+
+These combine features documented above for needs that come up often.
+
+### GraphQL operations
+
+GraphQL clients send every query to one URL, so match on the operation name in
+the JSON body. Routes are tried in order, so a fallback without a matcher goes
+last:
+
+```http
+### Get user
+@json.operationName = GetUser
+POST /graphql
+Content-Type: application/json
+
+{"data": {"user": {"id": "{{$json.variables.id}}", "name": "{{$name}}"}}}
+
+### List orders
+@json.operationName = ListOrders
+POST /graphql
+Content-Type: application/json
+
+{"data": {"orders": []}}
+
+### [400] Unknown operation
+POST /graphql
+Content-Type: application/json
+
+{"errors": [{"message": "unknown operation"}]}
+```
+
+### Content negotiation
+
+Match the `Accept` header with a regex. Regexes are anchored, so wrap the media
+type in `.*`, and start with `(?i)` because clients differ in case:
+
+```http
+### Report as CSV
+@header.Accept = ~(?i).*text/csv.*
+GET /report
+Content-Type: text/csv
+
+id,total
+1,9.99
+
+### Report as JSON
+GET /report
+Content-Type: application/json
+
+[{"id": 1, "total": 9.99}]
+```
+
+### Case-insensitive values
+
+`(?i)` works in every `~regex` matcher, including query parameters and body
+fields. `@query.sort = ~(?i)asc|desc` accepts `sort=ASC` and `sort=desc` but
+not `sort=up`.
+
+### Different responses per test
+
+To give each test its own answer from one mock, have the test send a header
+that names the scenario, and put the default route last:
+
+```http
+### Empty cart
+@header.X-Test = empty-cart
+GET /cart
+Content-Type: application/json
+
+{"items": []}
+
+### [503] Cart service down
+@header.X-Test = cart-down
+GET /cart
+Content-Type: application/json
+
+{"error": "unavailable"}
+
+### Cart
+GET /cart
+Content-Type: application/json
+
+{"items": [{"sku": "A1", "qty": 2}]}
+```
+
+`curl -H 'X-Test: cart-down' localhost:8080/cart` gets the `503`; a request
+without the header gets the full cart. In Go tests, [`mocktest`](#using-mock-in-go-tests)
+starts a fresh server per test instead.
+
+### Waiting until mock is ready
+
+`mock` binds every port and loads every route before it answers on the admin
+port, so a successful `GET /state` means it is ready. In a CI script:
+
+```sh
+mock -i 1s api.http &
+until curl -fs -o /dev/null http://127.0.0.1:8081/state; do sleep 0.2; done
+```
+
+The Docker image is based on Alpine, which has `wget` but not `curl`. In
+Docker Compose:
+
+```yaml
+services:
+  api:
+    image: mock
+    command: ["-b", "0.0.0.0", "-i", "1s", "/mock/api.http"]
+    volumes:
+      - ./mocks:/mock:ro
+    ports: ["8080:8080", "8081:8081"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/state"]
+      interval: 2s
+      retries: 10
+  app:
+    depends_on:
+      api:
+        condition: service_healthy
 ```
 
 ## Using mock in Go tests
