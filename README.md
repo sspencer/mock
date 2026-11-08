@@ -972,6 +972,10 @@ the order they are given. The first route that matches answers. Put specific
 routes before general ones, and finish with a catch-all if unmatched requests
 should get something other than a `404`.
 
+A `HEAD` request tries the `HEAD` routes first. If none matches, it is answered
+by the first matching `GET` route, with that route's status and headers
+(including the `Content-Length` its body would have) and no body.
+
 ```http
 ### [201] Create user
 @json.email = ~[^@\s]+@[^@\s]+
@@ -1164,7 +1168,10 @@ time is measured, so individual network timing phases remain unknown.
 `mock` serves plain HTTP only; put a TLS-terminating proxy in front of it if a
 client needs HTTPS. It is meant to be called by HTTP clients such as curl, test suites, and
 backend services, not by web pages in a browser, so it adds no CORS headers.
-`OPTIONS` requests are matched against routes like any other method. The admin
+`OPTIONS` requests are matched against routes like any other method. `HEAD`
+requests fall back to `GET` routes when no `HEAD` route matches (see
+[Route order](#route-order)), so health and link checkers work without extra
+routes. The admin
 UI rejects cross-origin clear requests.
 
 Binding to all interfaces (`-b 0.0.0.0`) prints a warning: the admin UI is

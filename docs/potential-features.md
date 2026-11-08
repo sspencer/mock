@@ -12,9 +12,7 @@ is described in full under [Ideas](#ideas).
 
 1. ~~**Validate the examples in CI** (S).~~ Done; see
    [Implemented](#implemented-from-the-original-ideas).
-2. **Answer `HEAD` from `GET` routes** (S). A correctness gap: health checkers,
-   link checkers and some HTTP clients send `HEAD`, and today it only matches
-   an explicit `HEAD` route.
+2. ~~**Answer `HEAD` from `GET` routes** (S).~~ Done.
 3. **Variables from the command line and environment** (S). Tokens and hosts
    are the most common things people need to vary without editing files.
 4. **Smarter shadow warnings** (S). The current check misses the most common
@@ -55,11 +53,6 @@ so revisit them once the items above are done.
   `/api/*` with no matchers hiding every later `/api/...` route, and
   `/users/:id` versus `/users/:userId`. Compare patterns segment by segment,
   treating wildcards and parameter names properly.
-- **Answer `HEAD` from `GET` routes** (S): routes match the request method
-  exactly, so `HEAD /users` is a `404` unless a `HEAD` route exists. When no
-  `HEAD` route matches, try the `GET` routes and send their status and headers
-  without the body (the server already drops bodies for `HEAD`). Document it
-  next to the `OPTIONS` note in Clients and safety.
 - **Per-route proxying** (M): `@proxy = https://api.example.com` on a section
   forwards requests that match it to that URL, optionally rewriting the path.
   `--upstream` is all or nothing for unmatched requests; this lets one file
@@ -247,6 +240,10 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Answer `HEAD` from `GET` routes:** a `HEAD` request tries `HEAD` routes
+  first, then the first matching `GET` route, which answers with its status
+  and headers and no body. Unmatched `HEAD` diagnostics no longer blame the
+  method of a `GET` candidate.
 - **Validate the examples in CI:** `go test ./...` validates every
   `examples/**/*.http` file with the `mock validate -strict` checks (only
   `small.http` warns, on purpose) and replays every scenario in

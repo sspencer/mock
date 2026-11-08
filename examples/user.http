@@ -57,6 +57,7 @@ Content-Type: application/json
 
 ### Check that a user exists
 # HEAD routes are declared like any other method; they send headers only.
+# Without one, HEAD is answered by the matching GET route, minus its body.
 # Run: curl --head localhost:8080/users/42
 @path.id = ~[0-9]+
 HEAD /users/:id

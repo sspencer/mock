@@ -120,9 +120,7 @@ func TestMatchingExampleScenarios(t *testing.T) {
 			if response.Code != sc.status {
 				t.Errorf("status = %d, want %d; body %q", response.Code, sc.status, response.Body.String())
 			}
-			server.mu.Lock()
-			event := server.events[len(server.events)-1]
-			server.mu.Unlock()
+			event := lastEvent(t, server)
 			if event.Match.Route == nil {
 				t.Fatalf("request was not matched, want route %q", sc.route)
 			}

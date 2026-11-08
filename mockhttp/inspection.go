@@ -180,7 +180,7 @@ func mismatch(method restclient.Method, facts *requestFacts) RouteMismatch {
 		result.score += 10
 		result.score += abs(len(splitPath(pattern)) - len(splitPath(r.URL.EscapedPath())))
 	}
-	if method.Method != r.Method {
+	if !methodAnswers(method.Method, r.Method) {
 		result.Reasons = append(result.Reasons, fmt.Sprintf("Expected method %s; received %s", method.Method, r.Method))
 		result.score += 4
 	}
