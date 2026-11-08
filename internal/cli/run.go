@@ -36,12 +36,12 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		fmt.Fprintln(stdout, currentVersion())
 		return nil
 	}
-	if len(cfg.Args) == 0 {
+	if len(cfg.Args) == 0 && len(cfg.Dirs) == 0 {
 		if f, ok := stdin.(*os.File); ok && stdinIsTerminal(f) {
-			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-u url] [-s] [-v name=value] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
+			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-u url] [-s] [-v name=value] [-d dir] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
 		}
 	}
-	input, err := loadInput(cfg.Args, stdin, cfg.Vars.options())
+	input, err := loadInput(cfg.Args, cfg.Dirs, stdin, cfg.Vars.options())
 	if err != nil {
 		return runError("%v", err)
 	}
@@ -78,7 +78,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		mockListeners = []net.Listener{ln}
 	} else {
-		if err := validateMethods(input.Methods, cfg.Args); err != nil {
+		if err := validateMethods(input.Methods, input.describe()); err != nil {
 			return runError("%v", err)
 		}
 		staticFS, err = ui.Assets()
@@ -98,17 +98,26 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		mockServer = mockhttp.New(input.Methods, logger)
 		mockServer.SetUpstream(cfg.Upstream)
 		handler = mockServer
-		if files := input.WatchFiles; len(files) > 0 {
+		if input.watched() {
 			var watcher *fileWatcher
 			ready := make(chan struct{})
 			reload := func() {
 				<-ready
-				reloadMockFiles(mockServer, files, cfg.Vars.options(), plan, logger, stdout, stderr)
-				if err := watcher.Reconcile(resolveWatchPaths(files, mockServer.Methods())); err != nil {
+				reloadMockFiles(mockServer, input, cfg.Vars.options(), plan, logger, stdout, stderr)
+				files, err := input.requestFiles()
+				if err != nil {
+					files = input.Files
+				}
+				if err := watcher.Reconcile(resolveWatchPaths(files, mockServer.Methods()), input.Dirs...); err != nil {
 					logger.Error("failed to update dependency watches", "error", err)
 				}
 			}
-			watcher, err = watchFiles(resolveWatchPaths(files, input.Methods), reload, logger)
+			files, err := input.requestFiles()
+			if err != nil {
+				closeAll()
+				return runError("%v", err)
+			}
+			watcher, err = watchFiles(resolveWatchPaths(files, input.Methods), reload, logger, input.Dirs...)
 			close(ready)
 			if watcher != nil {
 				watchCloser = watcher

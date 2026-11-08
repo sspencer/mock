@@ -186,9 +186,10 @@ docker run --rm \
 
 ```text
 mock [flags] <file.http> [file.http...]
+mock [flags] -d <dir> [-d <dir>...] [file.http...]
 mock [flags] <directory>
 cat file.http | mock
-mock validate [-strict] [-json] [-var name=value] <file.http> [file.http...]
+mock validate [-strict] [-json] [-var name=value] <file.http|dir> [file.http|dir...]
 mock -version
 mock -h
 ```
@@ -206,6 +207,7 @@ Flags:
 | `-u`, `--upstream` | (off) | Forward requests no route matches to this `http` or `https` URL and return its response (see [Passing unmatched requests to a real API](#passing-unmatched-requests-to-a-real-api)) |
 | `-s`, `--strict` | (off) | At shutdown, list requests no route matched and routes that never matched, and exit `1` if any request was unmatched (see [Strict mode and route coverage](#strict-mode-and-route-coverage)) |
 | `-v`, `--var` | | `NAME=VALUE`: set the `@NAME` variable in every request file, overriding its definitions. Repeat for more variables (see [Variables from the command line](#variables-from-the-command-line)) |
+| `-d`, `--dir` | | Load every `.http` file under this directory, after any file arguments, and pick up added or removed files on reload. Repeat for more directories (see [A directory of request files](#a-directory-of-request-files)) |
 | `--version` | | Print version and exit |
 | `-h`, `--help` | | Print usage and exit |
 
@@ -244,9 +246,34 @@ SIGINT/SIGTERM shut the server down cleanly and stop the file watcher.
 If you pass a single directory, `mock` serves that directory as a static file
 server from `/` instead of loading mock routes or the request-log UI.
 
+### A directory of request files
+
+`-d fixtures` (`--dir`) loads every `.http` file under `fixtures`, including
+subdirectories, so you can keep one file per resource or team and add files
+without changing the command:
+
+```sh
+mock -d fixtures
+mock -d fixtures -d shared overrides.http
+```
+
+- Files load in lexical path order within each directory (`a.http`,
+  `b.http`, `users/list.http`), after any file arguments, and directories in
+  the order given. Because the first matching route wins, a file argument is
+  a place for routes that must beat everything in the directories.
+- Only files ending in `.http` (any case) are loaded. Hidden files and
+  directories, such as `.git` or an editor's `.swap.http`, are skipped.
+- The whole tree is watched. Adding, changing, removing or renaming a `.http`
+  file, or adding a subdirectory, reloads every file. If the directories end
+  up with no routes, the reload fails and the old routes stay.
+- A positional directory still means a static file server; `-d` is what
+  loads request files. `mock validate` accepts directories and checks every
+  `.http` file under them.
+
 ### Validating request files
 
-`mock validate` loads the files without starting a server and prints every
+`mock validate` loads the files (or every `.http` file under a directory
+argument) without starting a server and prints every
 problem it finds, one per line as `file:line: level: message`. It checks the
 same things `mock` checks at startup: syntax errors, invalid `@delay` or `@port`
 values, a URL port that conflicts with `@port`, invalid placeholder arguments, unresolved placeholders, unused variables,

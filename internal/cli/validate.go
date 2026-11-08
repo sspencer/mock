@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"sort"
 	"strings"
 
@@ -15,7 +16,7 @@ import (
 	"github.com/sspencer/mock/restclient"
 )
 
-const validateUsage = "usage: mock validate [-strict] [-json] [-var name=value] <file.http> [file.http...]"
+const validateUsage = "usage: mock validate [-strict] [-json] [-var name=value] <file.http|dir> [file.http|dir...]"
 
 // diagnostic is one problem found while validating request files.
 type diagnostic struct {
@@ -129,12 +130,29 @@ func runValidate(args []string, stdout io.Writer) error {
 	return nil
 }
 
+// loadValidationMethods loads the request files; a directory argument stands
+// for every .http file under it, as with mock --dir.
 func loadValidationMethods(paths []string, opts restclient.Options) ([]restclient.Method, error) {
-	methods, err := opts.Load(paths)
+	var input inputSource
+	for _, path := range paths {
+		if info, err := os.Stat(path); err != nil || !info.IsDir() {
+			input.Files = append(input.Files, path)
+			continue
+		}
+		found, err := findRequestFiles(path)
+		if err != nil {
+			return nil, err
+		}
+		if len(found) == 0 {
+			return nil, fmt.Errorf("no .http files found under %s", path)
+		}
+		input.Files = append(input.Files, found...)
+	}
+	methods, err := input.load(nil, opts)
 	if err != nil {
 		return nil, err
 	}
-	if err := validateMethods(methods, paths); err != nil {
+	if err := validateMethods(methods, input.describe()); err != nil {
 		return nil, err
 	}
 	return methods, nil

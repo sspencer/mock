@@ -18,8 +18,7 @@ is described in full under [Ideas](#ideas).
 5. ~~**Request journal API** (S–M).~~ Done.
 6. ~~**Go test helper and request assertions** (M).~~ Done.
 7. ~~**Lint rendered JSON bodies** (S).~~ Done.
-8. **Directory of request files** (S–M). Load every `.http` file under a
-   directory and pick up new files on reload.
+8. ~~**Directory of request files** (S–M).~~ Done.
 9. **Reload trigger and polling fallback** (S). File events are unreliable on
    Docker bind mounts and some network filesystems; give users a way to force
    a reload.
@@ -124,10 +123,6 @@ so revisit them once the items above are done.
 
 ### Configuration and inputs
 
-- **Directory of request files** (S–M): today a directory argument serves static
-  files. A mode such as `mock --dir fixtures/` would load every `.http` file
-  under it and pick up new files on reload; the watcher currently knows only
-  the files it started with.
 - **Reload trigger and polling fallback** (S): `POST /reload` on the admin
   port, a `SIGHUP` handler, and a `--poll 1s` option. fsnotify misses changes
   on Docker Desktop bind mounts, some network filesystems and editors that
@@ -209,6 +204,11 @@ Recorded so these are not proposed again without a new reason:
 
 ## Implemented from the original ideas
 
+- **Directory of request files:** `-d` / `--dir` loads every `.http` file
+  under a directory (lexical order, after file arguments, hidden entries
+  skipped) and watches the tree, so new files and subdirectories reload.
+  `mock validate` takes directories too. A positional directory still serves
+  static files, so existing commands keep working.
 - **Lint rendered JSON bodies:** startup and `mock validate` render each JSON
   route's body (inline or a fixed `< file`) with request placeholders set to
   `1` and warn, with the route and body line, when it does not parse. An

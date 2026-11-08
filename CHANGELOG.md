@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add `-d` / `--dir DIR` to load every `.http` file under a directory, after any file arguments and in lexical path order. The directory tree is watched, so added, removed or renamed request files and new subdirectories are picked up on reload. `mock validate` also accepts directories. A positional directory still serves static files.
+
 - Warn at load time, and in `mock validate`, when a route with a JSON `Content-Type` has a body that does not parse once rendered with sample request values, naming the route and the line within the body.
 
 - Add the `mocktest` Go package for running a mock server from `.http` files inside a Go test: `mocktest.Start(t, "api.http")` serves on a random port, and `AssertCalled(t, "POST /users", 1)`, `AssertNotCalled` and `AssertAllMatched` check the requests it received.

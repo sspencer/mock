@@ -10,14 +10,11 @@ import (
 	"github.com/sspencer/mock/restclient"
 )
 
-func reloadMockFiles(mockServer *mockhttp.Server, files []string, opts restclient.Options, plan *portPlan, logger *slog.Logger, out, errOut io.Writer) {
+// reloadMockFiles re-reads the input's request files, rescanning its
+// directories, and swaps in the new routes. On failure the old routes stay.
+func reloadMockFiles(mockServer *mockhttp.Server, input inputSource, opts restclient.Options, plan *portPlan, logger *slog.Logger, out, errOut io.Writer) {
 	mockServer.BeginReload()
-	load := func() ([]restclient.Method, error) {
-		if len(files) == 0 {
-			return nil, nil
-		}
-		return opts.Load(files)
-	}
+	load := func() ([]restclient.Method, error) { return input.load(nil, opts) }
 	methods, err := load()
 	if err != nil {
 		time.Sleep(50 * time.Millisecond)
@@ -28,7 +25,7 @@ func reloadMockFiles(mockServer *mockhttp.Server, files []string, opts restclien
 		mockServer.ReloadFailed(err)
 		return
 	}
-	if err := validateMethods(methods, files); err != nil {
+	if err := validateMethods(methods, input.describe()); err != nil {
 		fmt.Fprintln(errOut, err.Error())
 		mockServer.ReloadFailed(err)
 		return
@@ -39,6 +36,6 @@ func reloadMockFiles(mockServer *mockhttp.Server, files []string, opts restclien
 		return
 	}
 	mockServer.SetMethods(methods)
-	logger.Info("reloaded request files", "files", files, "methods", len(methods))
+	logger.Info("reloaded request files", "input", input.describe(), "methods", len(methods))
 	printMethods(out, methods)
 }

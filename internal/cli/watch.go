@@ -2,9 +2,12 @@ package cli
 
 import (
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,7 +18,9 @@ import (
 const reloadDebounce = 250 * time.Millisecond
 
 // watchFiles serializes debounced callbacks. Close waits for any active reload.
-func watchFiles(paths []string, onChange func(), logger *slog.Logger) (*fileWatcher, error) {
+// Trees are directories watched recursively for .http files appearing,
+// changing or disappearing.
+func watchFiles(paths []string, onChange func(), logger *slog.Logger, trees ...string) (*fileWatcher, error) {
 	if onChange == nil {
 		return nil, fmt.Errorf("onChange callback is required")
 	}
@@ -27,7 +32,7 @@ func watchFiles(paths []string, onChange func(), logger *slog.Logger) (*fileWatc
 		return nil, err
 	}
 	w := &fileWatcher{watcher: watcher, onChange: onChange, logger: logger, stop: make(chan struct{}), done: make(chan struct{}), dirs: make(map[string]struct{})}
-	if err := w.Reconcile(paths); err != nil {
+	if err := w.Reconcile(paths, trees...); err != nil {
 		watcher.Close()
 		return nil, err
 	}
@@ -39,6 +44,7 @@ type fileWatcher struct {
 	watcher    *fsnotify.Watcher
 	watched    map[string]struct{}
 	dirs       map[string]struct{}
+	trees      []string
 	onChange   func()
 	logger     *slog.Logger
 	mu         sync.Mutex
@@ -48,8 +54,33 @@ type fileWatcher struct {
 
 // Reconcile preserves each dependency's source ownership and watches the nearest
 // existing ancestor, allowing missing nested dependency directories to appear.
-func (w *fileWatcher) Reconcile(paths []string) error {
+// Every directory under each tree is watched too, so new subdirectories are
+// picked up on the next Reconcile.
+func (w *fileWatcher) Reconcile(paths []string, trees ...string) error {
 	watched, dirs := make(map[string]struct{}), make(map[string]struct{})
+	var absTrees []string
+	for _, tree := range trees {
+		abs, err := filepath.Abs(tree)
+		if err != nil {
+			return err
+		}
+		absTrees = append(absTrees, abs)
+		err = filepath.WalkDir(abs, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				if path != abs && hiddenName(d.Name()) {
+					return filepath.SkipDir
+				}
+				dirs[path] = struct{}{}
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
 	for _, path := range paths {
 		abs, err := filepath.Abs(path)
 		if err != nil {
@@ -95,7 +126,7 @@ func (w *fileWatcher) Reconcile(paths []string) error {
 			_ = w.watcher.Remove(dir)
 		}
 	}
-	w.watched, w.dirs = watched, dirs
+	w.watched, w.dirs, w.trees = watched, dirs, absTrees
 	return nil
 }
 
@@ -156,6 +187,9 @@ func (w *fileWatcher) loop() {
 					break
 				}
 			}
+			if !relevant {
+				relevant = w.treeEventLocked(abs, event)
+			}
 			w.mu.Unlock()
 			if relevant {
 				timer.Reset(reloadDebounce)
@@ -163,6 +197,31 @@ func (w *fileWatcher) loop() {
 			}
 		}
 	}
+}
+
+// treeEventLocked reports whether an event under a watched tree can change
+// the set of request files: a .http file, or a directory appearing or going.
+func (w *fileWatcher) treeEventLocked(abs string, event fsnotify.Event) bool {
+	for _, tree := range w.trees {
+		rel, err := filepath.Rel(tree, abs)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		if slices.ContainsFunc(strings.Split(rel, string(filepath.Separator)), hiddenName) {
+			return false
+		}
+		if isRequestFile(abs) {
+			return true
+		}
+		if _, watched := w.dirs[abs]; watched {
+			return true
+		}
+		if info, err := os.Stat(abs); err == nil && info.IsDir() {
+			return true
+		}
+		return false
+	}
+	return false
 }
 
 func resolveWatchPaths(httpFiles []string, methods []restclient.Method) []string {

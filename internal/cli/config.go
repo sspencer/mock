@@ -42,6 +42,8 @@ type config struct {
 	Strict bool
 	// Vars override or supply @name variables in every request file (-v).
 	Vars varFlag
+	// Dirs are directories whose .http files are all loaded and watched (-d).
+	Dirs listFlag
 	// Help holds the usage text when -h or --help was requested.
 	Help string
 }
@@ -52,9 +54,10 @@ const defaultBind = "127.0.0.1"
 // flag package accepts either with one or two dashes.
 const usageText = `usage:
   mock [flags] <file.http> [file.http...]
+  mock [flags] -d <dir> [-d <dir>...] [file.http...]
   mock [flags] <directory>
   cat file.http | mock
-  mock validate [-strict] [-json] [-var name=value] <file.http> [file.http...]
+  mock validate [-strict] [-json] [-var name=value] <file.http|dir> [file.http|dir...]
 
 flags:
   -p, --port PORT      default HTTP port, for routes whose request target or
@@ -72,6 +75,9 @@ flags:
                        unmatched
   -v, --var NAME=VALUE set @NAME in every request file, overriding its
                        definitions; repeat for more variables
+  -d, --dir DIR        load every .http file under DIR, after any file
+                       arguments, and pick up added or removed files on
+                       reload; repeat for more directories
       --version        print version and exit
   -h, --help           print this help and exit
 `
@@ -115,6 +121,9 @@ func parseConfig(args []string) (config, error) {
 	}
 	for _, name := range []string{"v", "var"} {
 		flagSet.Var(&cfg.Vars, name, "")
+	}
+	for _, name := range []string{"d", "dir"} {
+		flagSet.Var(&cfg.Dirs, name, "")
 	}
 	flagSet.BoolVar(&cfg.Version, "version", false, "")
 	if err := flagSet.Parse(args); err != nil {
@@ -176,6 +185,19 @@ func (v *varFlag) Set(raw string) error {
 // options returns the parse options that apply the variables.
 func (v varFlag) options() restclient.Options {
 	return restclient.Options{Vars: v}
+}
+
+// listFlag collects a repeated string flag.
+type listFlag []string
+
+func (l *listFlag) String() string { return strings.Join(*l, ",") }
+
+func (l *listFlag) Set(raw string) error {
+	if strings.TrimSpace(raw) == "" {
+		return errors.New("empty value")
+	}
+	*l = append(*l, raw)
+	return nil
 }
 
 // parseUpstream accepts an absolute http or https URL, optionally with a base

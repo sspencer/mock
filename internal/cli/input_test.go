@@ -23,7 +23,7 @@ ok
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	methods, err := loadMethods([]string{path}, strings.NewReader(""), restclient.Options{})
+	methods, err := inputSource{Files: []string{path}}.load(strings.NewReader(""), restclient.Options{})
 	if err != nil {
 		t.Fatalf("loadMethods() error = %v", err)
 	}
@@ -39,7 +39,7 @@ ok
 }
 
 func TestLoadMethodsParsesStdinWhenNoFiles(t *testing.T) {
-	methods, err := loadMethods(nil, strings.NewReader(`### User
+	methods, err := inputSource{}.load(strings.NewReader(`### User
 POST /users
 
 created
@@ -60,7 +60,7 @@ created
 
 func TestLoadInputUsesSingleDirectoryAsStaticRoot(t *testing.T) {
 	dir := t.TempDir()
-	input, err := loadInput([]string{dir}, strings.NewReader(""), restclient.Options{})
+	input, err := loadInput([]string{dir}, nil, strings.NewReader(""), restclient.Options{})
 	if err != nil {
 		t.Fatalf("loadInput() error = %v", err)
 	}
@@ -79,7 +79,7 @@ func TestLoadInputRejectsDirectoryMixedWithRequestFiles(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	_, err := loadInput([]string{dir, path}, strings.NewReader(""), restclient.Options{})
+	_, err := loadInput([]string{dir, path}, nil, strings.NewReader(""), restclient.Options{})
 	if err == nil {
 		t.Fatal("loadInput() error = nil, want error")
 	}
@@ -89,14 +89,14 @@ func TestLoadInputRejectsDirectoryMixedWithRequestFiles(t *testing.T) {
 }
 
 func TestValidateMethodsAllowsParsedRequests(t *testing.T) {
-	err := validateMethods([]restclient.Method{{Name: "User"}}, nil)
+	err := validateMethods([]restclient.Method{{Name: "User"}}, "stdin")
 	if err != nil {
 		t.Fatalf("validateMethods() error = %v", err)
 	}
 }
 
 func TestValidateMethodsExplainsEmptyFileInput(t *testing.T) {
-	err := validateMethods(nil, []string{"empty.http"})
+	err := validateMethods(nil, "empty.http")
 	if err == nil {
 		t.Fatal("validateMethods() error = nil, want error")
 	}
@@ -108,7 +108,7 @@ func TestValidateMethodsExplainsEmptyFileInput(t *testing.T) {
 }
 
 func TestValidateMethodsExplainsEmptyStdinInput(t *testing.T) {
-	err := validateMethods(nil, nil)
+	err := validateMethods(nil, inputSource{}.describe())
 	if err == nil {
 		t.Fatal("validateMethods() error = nil, want error")
 	}

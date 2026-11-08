@@ -36,7 +36,7 @@ func TestReloadErrorsReachDashboardState(t *testing.T) {
 	if err := os.WriteFile(path, []byte("### invalid\nNOT-A-METHOD /x"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	reloadMockFiles(server, []string{path}, restclient.Options{}, nil, slog.Default(), io.Discard, io.Discard)
+	reloadMockFiles(server, inputSource{Files: []string{path}}, restclient.Options{}, nil, slog.Default(), io.Discard, io.Discard)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest("GET", "/state", nil))
 	var state mockhttp.ConfigState
@@ -49,7 +49,7 @@ func TestReloadErrorsReachDashboardState(t *testing.T) {
 	if err := os.WriteFile(path, []byte("### fixed\nGET /x\n\ntwo"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	reloadMockFiles(server, []string{path}, restclient.Options{}, nil, slog.Default(), io.Discard, io.Discard)
+	reloadMockFiles(server, inputSource{Files: []string{path}}, restclient.Options{}, nil, slog.Default(), io.Discard, io.Discard)
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest("GET", "/state", nil))
 	state = mockhttp.ConfigState{}
@@ -76,7 +76,7 @@ ok
 	server := mockhttp.New(nil, logger)
 
 	var output bytes.Buffer
-	reloadMockFiles(server, []string{path}, restclient.Options{}, nil, logger, &output, io.Discard)
+	reloadMockFiles(server, inputSource{Files: []string{path}}, restclient.Options{}, nil, logger, &output, io.Discard)
 
 	response := httptest.NewRecorder()
 	server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/users", nil))
@@ -115,7 +115,7 @@ ok
 
 	var output bytes.Buffer
 	var errOut bytes.Buffer
-	reloadMockFiles(server, []string{path}, restclient.Options{}, nil, logger, &output, &errOut)
+	reloadMockFiles(server, inputSource{Files: []string{path}}, restclient.Options{}, nil, logger, &output, &errOut)
 	if output.Len() != 0 {
 		t.Fatalf("output = %q, want empty on failed reload", output.String())
 	}
