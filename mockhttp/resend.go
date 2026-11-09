@@ -64,7 +64,7 @@ func (s *Server) ServeResend(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid resend request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	replay, state, err := resend.request(r)
+	replay, state, err := resend.request(r, s.servesPort)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -81,8 +81,9 @@ func (s *Server) ServeResend(w http.ResponseWriter, r *http.Request) {
 }
 
 // request builds the replayed request. It carries the admin request's
-// context, so closing the admin connection cancels a route's delay.
-func (resend ResendRequest) request(admin *http.Request) (*http.Request, *resendState, error) {
+// context, so closing the admin connection cancels a route's delay. servesPort
+// reports whether a route listens on a port.
+func (resend ResendRequest) request(admin *http.Request, servesPort func(int) bool) (*http.Request, *resendState, error) {
 	method := strings.ToUpper(strings.TrimSpace(resend.Method))
 	if method == "" || strings.ContainsAny(method, " \t\r\n") {
 		return nil, nil, errors.New("method is required and must be one word")
@@ -116,10 +117,13 @@ func (resend ResendRequest) request(admin *http.Request) (*http.Request, *resend
 	if _, rawPort, err := net.SplitHostPort(host); err == nil {
 		port, _ = strconv.Atoi(rawPort)
 	}
-	if port > 0 {
+	if port > 0 && servesPort(port) {
 		// The port the request is answered on decides which routes match.
 		ctx = context.WithValue(ctx, http.LocalAddrContextKey, &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: port})
 	} else {
+		// A Host with no port, or one no route listens on (the client went
+		// through a proxy, or the port was edited), is answered as if it
+		// arrived on every port, as an unbound in-process request would be.
 		ctx = context.WithValue(ctx, http.LocalAddrContextKey, nil)
 	}
 	replay, err := http.NewRequestWithContext(ctx, method, "http://"+host+parsed.RequestURI(), bytes.NewReader(body))
@@ -143,6 +147,18 @@ func (resend ResendRequest) request(admin *http.Request) (*http.Request, *resend
 		replay.Body = http.NoBody
 	}
 	return replay, state, nil
+}
+
+// servesPort reports whether a current route is served on port.
+func (s *Server) servesPort(port int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.methods {
+		if s.methods[i].Port == port {
+			return true
+		}
+	}
+	return false
 }
 
 // serveReplay answers a replayed request into a discarded response. Faults

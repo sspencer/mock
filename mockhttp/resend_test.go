@@ -87,3 +87,25 @@ func TestServeResendRejectsBadInput(t *testing.T) {
 		t.Error("rejected resends must not be logged")
 	}
 }
+
+func TestServeResendWithAnUnservedHostPortMatchesAnyPort(t *testing.T) {
+	methods := []restclient.Method{
+		{Name: "teams", Method: http.MethodGet, Path: "/teams", Port: 9090, Status: 200, Body: "teams"},
+		{Name: "users", Method: http.MethodGet, Path: "/users", Port: 8080, Status: 200, Body: "users"},
+	}
+	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	// The client reached the mock through a proxy on :443.
+	for target, want := range map[string]string{"/teams": "teams", "/users": "users"} {
+		if response := postResend(t, server, `{"method":"GET","url":"`+target+`","host":"api.example.com:443"}`); response.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d: %s", target, response.Code, response.Body.String())
+		}
+		if event := lastEvent(t, server); event.Match.Route == nil || event.Response.Body.Text != want {
+			t.Errorf("%s answered by %+v %q", target, event.Match.Route, event.Response.Body.Text)
+		}
+	}
+	// A served port still decides: /teams is not served on 8080.
+	postResend(t, server, `{"method":"GET","url":"/teams","host":"localhost:8080"}`)
+	if event := lastEvent(t, server); event.Match.Route != nil {
+		t.Errorf("/teams on 8080 answered by %+v", event.Match.Route)
+	}
+}

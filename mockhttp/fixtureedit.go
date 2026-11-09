@@ -231,8 +231,12 @@ func lineColumn(content []byte, offset int64) (int, int) {
 
 // writeFileAtomic replaces file with content through a temporary file in the
 // same directory, so a response never reads a half-written fixture. It keeps
-// the existing file's permissions.
+// the existing file's permissions. A symlinked fixture has its target
+// replaced, so the link survives.
 func writeFileAtomic(file string, content []byte) error {
+	if target, err := filepath.EvalSymlinks(file); err == nil {
+		file = target
+	}
 	mode := fs.FileMode(0o644)
 	if info, err := os.Stat(file); err == nil {
 		mode = info.Mode().Perm()

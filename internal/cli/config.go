@@ -257,7 +257,10 @@ func parseConfig(args []string) (config, error) {
 	if cfg.NoAdmin && tokenSet {
 		return config{}, usageError("-t (--ui-token) and -x (--no-ui) cannot be used together")
 	}
-	if tokenSet && strings.TrimSpace(cfg.UIToken) == "" {
+	// Surrounding spaces (a trailing newline from a secrets file) are not
+	// part of the token; ui.RequireToken trims the same way.
+	cfg.UIToken = strings.TrimSpace(cfg.UIToken)
+	if tokenSet && cfg.UIToken == "" {
 		return config{}, usageError("-t (--ui-token) must not be empty")
 	}
 	if !adminSet && !envAdminSet && (portSet || envPortSet) {

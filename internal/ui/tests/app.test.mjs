@@ -240,6 +240,10 @@ test('the fixture editor edits a route fixture as a tree or JSON and saves it', 
  click('fixtureTreeTab');
  assert.match(element('fixtureStatus').textContent,/^Invalid JSON at line 1/);
  assert.equal(element('fixtureTreeTab').getAttribute('aria-pressed'),'false');
+ element('fixtureText').value='{"price": 1.0}';element('fixtureText').dispatchEvent(new Event('input'));
+ click('fixtureTreeTab');
+ assert.match(element('fixtureStatus').textContent,/^The number 1\.0 would be saved as 1\. The tree view would rewrite/);
+ assert.equal(element('fixtureTreeTab').getAttribute('aria-pressed'),'false');
  element('fixtureText').value='{"name":"Lin"}';element('fixtureText').dispatchEvent(new Event('input'));
  click('fixtureFormat');
  assert.equal(element('fixtureText').value,'{\n  "name": "Lin"\n}\n');
@@ -262,4 +266,21 @@ test('the fixture editor edits a route fixture as a tree or JSON and saves it', 
  click('editFixtureButton');await tick();
  assert.equal(element('fixtureEditor').hidden,false);
  assert.equal(element('fixtureText').value,'{\n  "name": "Lin"\n}\n');
+});
+test('the fixture editor opens a fixture it cannot round-trip in the JSON view', async () => {
+ const tick=()=>new Promise(resolve=>setImmediate(resolve));
+ const route={id:'6:0',revision:6,name:'Big ids',method:'GET',path:'/ids',port:8080,source:'ids.http',line:1,status:200,fixture:'ids.json',headers:{},matchHeaders:{},variables:{},hits:0};
+ const content='{"id": 12345678901234567890}\n';const puts=[];
+ fixtureFetch=async(url,options)=>{
+  if(options?.method==='PUT'){puts.push(JSON.parse(options.body));return {ok:true,status:200,json:async()=>({version:'v2'})};}
+  return {ok:true,status:200,json:async()=>({file:'/srv/ids.json',fixture:'ids.json',content,version:'v1'})};
+ };
+ routesData=[route];click('refreshRoutesButton');await tick();
+ element('routesList').querySelector('button').dispatchEvent(new Event('click'));
+ click('editFixtureButton');await tick();
+ assert.equal(element('fixtureJsonTab').getAttribute('aria-pressed'),'true');
+ assert.equal(element('fixtureText').value,content);
+ assert.match(element('fixtureStatus').textContent,/12345678901234567890 would be saved as 12345678901234567000/);
+ click('fixtureSave');await tick();
+ assert.equal(puts.at(-1).content,content);
 });

@@ -1983,7 +1983,8 @@ The UI is served at the root of the admin port (`-a`, default `8081`):
 
 The admin UI and API are open to anyone who can reach the admin port.
 `-t TOKEN` (`--ui-token`, or the `MOCK_UI_TOKEN` environment variable)
-requires a token for every admin page and endpoint:
+requires a token for every admin page and endpoint (spaces around it, such
+as a trailing newline read from a file, are ignored):
 
 ```sh
 MOCK_UI_TOKEN=$(openssl rand -hex 16) mock -b 0.0.0.0 api.http
@@ -1991,8 +1992,10 @@ MOCK_UI_TOKEN=$(openssl rand -hex 16) mock -b 0.0.0.0 api.http
 
 - In a browser, open the UI once as `http://HOST:8081/?token=TOKEN`. `mock`
   sets an HTTP-only, same-site cookie and redirects to the plain URL, so the
-  token leaves the address bar.
-- API clients send `Authorization: Bearer TOKEN` (or add `?token=TOKEN`):
+  token leaves the address bar. The cookie holds a SHA-256 digest of the
+  token, not the token itself.
+- API clients send `Authorization: Bearer TOKEN` (the scheme in any case) or
+  add `?token=TOKEN`:
 
   ```sh
   curl -H "Authorization: Bearer $MOCK_UI_TOKEN" http://127.0.0.1:8081/requests
@@ -2008,9 +2011,10 @@ token too.
 The request log keeps what clients sent, including `Authorization` headers,
 cookies and passwords in bodies. `-R` (`--redact`) masks credentials before a
 request is logged, so the admin UI, **Copy cURL**, **Copy as route**, HAR
-exports, `GET /requests`, the event stream, the request log line and `-r`
-recordings never see them. Responses are sent unchanged and matching always
-uses the real request. A value is masked as `[redacted]` when its name looks
+exports, `GET /requests`, the event stream and the request and `@callback`
+log lines never see them. Responses are sent unchanged, and matching and
+[`-r`](#recording-forwarded-requests) recordings always use the real request, so recorded routes
+replay what was sent. A value is masked as `[redacted]` when its name looks
 like a credential: it contains `token`, `secret`, `passw`, `apikey`,
 `authorization`, `credential`, `cookie`, `signature`, `session` or
 `privatekey`, or is `auth`, `key`, `sig`, `pwd`, `jwt`, `otp` or `pin`
@@ -2020,8 +2024,11 @@ like a credential: it contains `token`, `secret`, `passw`, `apikey`,
   the cookie names, and `Set-Cookie` keeps its attributes. Other
   credential-like headers, such as `X-Api-Key`, are masked whole.
 - Query parameters, such as `?access_token=[redacted]`.
-- String members of JSON bodies, such as `"password": "[redacted]"`, at any
-  depth, and fields of URL-encoded forms. Other bodies are logged as sent.
+- Members of JSON bodies, such as `"password": "[redacted]"`, at any depth.
+  The whole value is masked, whether it is a string, a number, `true`, `null`,
+  an object or an array. Fields of URL-encoded forms too. Other bodies are
+  logged as sent.
+- Query parameters in the URL of a `@callback` request and in its error.
 - Values that near-miss explanations quote for those names.
 
 Redaction is a guard against accidental sharing, not a guarantee: a secret in
@@ -2091,7 +2098,7 @@ curl -s -X POST -H 'Content-Type: application/json' http://127.0.0.1:8081/resend
 |-------|---------|
 | `method` | Request method (required) |
 | `url` | Path and query, starting with `/` (required) |
-| `host` | `Host` header; its port picks the mock port. Without a port, routes on every port can match |
+| `host` | `Host` header; its port picks the mock port. Without a port, or with a port no route is served on (a client behind a proxy), routes on every port can match |
 | `headers` | Request headers, `{"Name": ["value"]}`. `Host`, `Content-Length`, `Transfer-Encoding` and `Connection` are ignored |
 | `body` | Request body text, or base64 with `"encoding": "base64"` |
 | `from` | The event `id` this request was copied from |
@@ -2115,13 +2122,16 @@ inspector. The editor has two views:
 - **JSON** is the file as text. **Format** indents it with two spaces.
   Invalid JSON is reported with its line and column, and must be fixed before
   switching back to the tree or saving. Fixtures with more than 2,000 values
-  open in this view only.
+  open in this view only, and so do files the tree would change on save:
+  integers beyond 2^53, numbers spelled differently from how JavaScript
+  writes them (`1.0`, `1e3`), a field name repeated in one object, or a
+  numeric field name (`"10"`) after other fields, which JavaScript would
+  move first. The editor says which.
 
 **Save** writes the file; fixtures are read for every response, so the next
 request uses it. A file saved after a tree edit is written as two-space
 indented JSON; a file saved from the JSON view is written exactly as typed.
-The tree holds numbers as JavaScript numbers, so integers beyond 2^53 lose
-precision there; edit such files in the JSON view. **Reload** discards edits
+**Reload** discards edits
 and reads the file again, and **Close** hides the editor and keeps the draft
 until another fixture is opened. Saving also triggers a hot reload (the
 fixture is watched), and the route stays selected.
@@ -2134,7 +2144,8 @@ returns the new `{"version"}`. A write is refused with `403` unless the file
 is the `@fixture` of a current route, `400` unless the content is one valid
 JSON value, `413` above 4 MiB, and `409` (with the current `version`) when
 the file changed since that version was read. The file is replaced
-atomically and keeps its permissions.
+atomically and keeps its permissions; a symlinked fixture has its target
+replaced and the link kept.
 
 ```sh
 curl -s -X PUT -H 'Content-Type: application/json' http://127.0.0.1:8081/fixture \

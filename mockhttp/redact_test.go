@@ -31,8 +31,12 @@ func TestRedactHelpers(t *testing.T) {
 		{"api key header", redactHeaderValue("X-Api-Key", "k"), "[redacted]"},
 		{"plain header", redactHeaderValue("Accept", "text/html"), "text/html"},
 		{"query", redactURL("/a?token=x&page=2&api_key=y#top"), "/a?token=%5Bredacted%5D&page=2&api_key=%5Bredacted%5D#top"},
+		{"urls in text", redactURLsInText(`Post "http://h/cb?sig=x&a=1": refused`), `Post "http://h/cb?sig=%5Bredacted%5D&a=1": refused`},
 		{"query untouched", redactURL("/a?page=2&q=a%20b"), "/a?page=2&q=a%20b"},
 		{"json", redactBody(`{"user":"a", "password" : "p\"w", "nested":{"refresh_token":"t"},"n":1}`, "application/json"), `{"user":"a", "password" : "[redacted]", "nested":{"refresh_token":"[redacted]"},"n":1}`},
+		{"json non-string", redactBody(`{"pin": 1234, "otp":true, "key" : null, "session": {"id": "x", "n": [1]}, "tokens":["a","b"], "page": 2}`, "application/json"), `{"pin": "[redacted]", "otp":"[redacted]", "key" : "[redacted]", "session": "[redacted]", "tokens":"[redacted]", "page": 2}`},
+		{"json escaped name", redactBody(`[{"pass\u0077ord":"p","note":"\"secret\": x"}]`, "application/json"), `[{"pass\u0077ord":"[redacted]","note":"\"secret\": x"}]`},
+		{"json truncated", redactBody(`{"a":1,"token":"abc`, "application/json"), `{"a":1,"token":"[redacted]"`},
 		{"json sniffed", redactBody(`{"secret":"s"}`, ""), `{"secret":"[redacted]"}`},
 		{"form", redactBody("user=a&password=p", "application/x-www-form-urlencoded; charset=utf-8"), "user=a&password=%5Bredacted%5D"},
 		{"text", redactBody(`password=p`, "text/plain"), `password=p`},
@@ -72,8 +76,8 @@ func TestSetRedactMasksRecordedEvents(t *testing.T) {
 	if len(events) != 2 {
 		t.Fatalf("events = %d, want 2", len(events))
 	}
-	if hooked.Request.URL != events[1].Request.URL {
-		t.Errorf("hook event URL = %q, want the redacted %q", hooked.Request.URL, events[1].Request.URL)
+	if !strings.Contains(hooked.Request.URL, "api_key=wrong") || hooked.ID != events[1].ID {
+		t.Errorf("hook event = %d %q, want the real request %d", hooked.ID, hooked.Request.URL, events[1].ID)
 	}
 	for _, secret := range []string{"hunter2", "abc", "t0k3n", "s3cr3t", "access_token=q", "wrong"} {
 		for _, event := range events {
@@ -105,4 +109,26 @@ func TestSetRedactMasksRecordedEvents(t *testing.T) {
 		t.Fatalf("expected near-miss candidates for the unmatched request")
 	}
 
+}
+
+func TestRedactMasksCallbackURLs(t *testing.T) {
+	s := newTestServer(t, "### Hook\n@callback = POST {{$json.u}}\nPOST /h\n\nok\n")
+	t.Cleanup(s.Close)
+	var logged strings.Builder
+	s.logger = slog.New(slog.NewTextHandler(&logged, nil))
+	s.SetRedact(true)
+	serveBody(t, s, "/h", `{"u":"ftp://example.com/cb?token=s3cr3t"}`)
+	event := waitCallbackEvent(t, s)
+	if event.Callback.Error == "" {
+		t.Fatalf("callback should fail: %+v", event)
+	}
+	for _, text := range []string{event.Callback.Error, event.Request.URL, event.Request.Details, event.Response.Details} {
+		if strings.Contains(text, "s3cr3t") {
+			t.Errorf("event leaks the token: %q", text)
+		}
+	}
+	s.Close()
+	if strings.Contains(logged.String(), "s3cr3t") || !strings.Contains(logged.String(), "callback failed") {
+		t.Errorf("log = %s", logged.String())
+	}
 }

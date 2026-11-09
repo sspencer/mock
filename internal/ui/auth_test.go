@@ -3,6 +3,7 @@ package ui
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -11,7 +12,10 @@ func TestRequireToken(t *testing.T) {
 	if RequireToken(inner, "") == nil {
 		t.Fatal("empty token should return the handler")
 	}
-	h := RequireToken(inner, "s3cret")
+	if RequireToken(inner, "  ") == nil {
+		t.Fatal("a blank token should return the handler")
+	}
+	h := RequireToken(inner, " s3cret\n")
 	do := func(target string, edit func(*http.Request)) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, target, nil)
 		req.Host = "127.0.0.1:8081"
@@ -31,6 +35,14 @@ func TestRequireToken(t *testing.T) {
 	if rec := do("/routes", func(r *http.Request) { r.Header.Set("Authorization", "Bearer s3cret") }); rec.Code != 200 {
 		t.Fatalf("bearer: %d", rec.Code)
 	}
+	for _, header := range []string{"bearer s3cret", " BEARER  s3cret "} {
+		if rec := do("/routes", func(r *http.Request) { r.Header.Set("Authorization", header) }); rec.Code != 200 {
+			t.Errorf("%q: %d", header, rec.Code)
+		}
+	}
+	if rec := do("/routes", func(r *http.Request) { r.Header.Set("Authorization", "Basic s3cret") }); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("basic scheme: %d", rec.Code)
+	}
 	if rec := do("/routes?token=s3cret", nil); rec.Code != 200 {
 		t.Fatalf("query on API: %d", rec.Code)
 	}
@@ -45,10 +57,16 @@ func TestRequireToken(t *testing.T) {
 	if len(cookies) != 1 || cookies[0].Name != "mock_ui_token_8081" || !cookies[0].HttpOnly || cookies[0].SameSite != http.SameSiteStrictMode {
 		t.Fatalf("cookie %+v", cookies)
 	}
+	if strings.Contains(cookies[0].Value, "s3cret") || len(cookies[0].Value) != 64 {
+		t.Errorf("the cookie must hold a digest, not the token: %q", cookies[0].Value)
+	}
 	if rec := do("/events", func(r *http.Request) { r.AddCookie(cookies[0]) }); rec.Code != 200 {
 		t.Fatalf("cookie: %d", rec.Code)
 	}
 	if rec := do("/events", func(r *http.Request) { r.AddCookie(&http.Cookie{Name: "mock_ui_token_8081", Value: "x"}) }); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("bad cookie: %d", rec.Code)
+	}
+	if rec := do("/events", func(r *http.Request) { r.AddCookie(&http.Cookie{Name: "mock_ui_token_8081", Value: "s3cret"}) }); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("raw token cookie: %d", rec.Code)
 	}
 }

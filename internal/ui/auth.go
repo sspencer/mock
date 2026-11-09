@@ -3,6 +3,7 @@ package ui
 import (
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"net"
 	"net/http"
 	"strings"
@@ -22,10 +23,12 @@ func tokenCookie(r *http.Request) string {
 // RequireToken wraps the admin handler so every page and API request must
 // present token: as an "Authorization: Bearer" header, a ?token= query
 // parameter, or the cookie a browser receives after opening the UI with
-// ?token=. An empty token returns h unchanged. Requests without the token
-// get 401. This is access control on plain HTTP: anyone who can read the
+// ?token=. The cookie holds a SHA-256 digest of the token, not the token.
+// Surrounding spaces in token are ignored, and an empty token returns h
+// unchanged. Requests without the token get 401. This is access control on plain HTTP: anyone who can read the
 // traffic can read the token.
 func RequireToken(h http.Handler, token string) http.Handler {
+	token = strings.TrimSpace(token)
 	if token == "" {
 		return h
 	}
@@ -33,6 +36,13 @@ func RequireToken(h http.Handler, token string) http.Handler {
 	matches := func(got string) bool {
 		sum := sha256.Sum256([]byte(got))
 		return got != "" && subtle.ConstantTimeCompare(sum[:], want[:]) == 1
+	}
+	// The cookie carries the digest, so a cookie read from the browser's
+	// storage is not the token itself (it cannot be sent as a Bearer header
+	// or ?token=).
+	cookieValue := hex.EncodeToString(want[:])
+	cookieMatches := func(got string) bool {
+		return subtle.ConstantTimeCompare([]byte(got), []byte(cookieValue)) == 1
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if query := r.URL.Query().Get("token"); query != "" {
@@ -43,7 +53,7 @@ func RequireToken(h http.Handler, token string) http.Handler {
 			// A browser page load trades the query parameter for a cookie and
 			// reloads without it, so the token leaves the address bar.
 			if r.Method == http.MethodGet && (r.URL.Path == "/" || r.URL.Path == "/index.html") {
-				http.SetCookie(w, &http.Cookie{Name: tokenCookie(r), Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
+				http.SetCookie(w, &http.Cookie{Name: tokenCookie(r), Value: cookieValue, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
 				clean := *r.URL
 				q := clean.Query()
 				q.Del("token")
@@ -55,11 +65,11 @@ func RequireToken(h http.Handler, token string) http.Handler {
 			h.ServeHTTP(w, r)
 			return
 		}
-		if bearer, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok && matches(strings.TrimSpace(bearer)) {
+		if scheme, credentials, ok := strings.Cut(strings.TrimSpace(r.Header.Get("Authorization")), " "); ok && strings.EqualFold(scheme, "Bearer") && matches(strings.TrimSpace(credentials)) {
 			h.ServeHTTP(w, r)
 			return
 		}
-		if cookie, err := r.Cookie(tokenCookie(r)); err == nil && matches(cookie.Value) {
+		if cookie, err := r.Cookie(tokenCookie(r)); err == nil && cookieMatches(cookie.Value) {
 			h.ServeHTTP(w, r)
 			return
 		}

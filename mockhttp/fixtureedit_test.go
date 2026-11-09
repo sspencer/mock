@@ -131,3 +131,33 @@ func TestServeFixtureRefusesCrossSiteWrites(t *testing.T) {
 		t.Errorf("DELETE = %d %q", response.Code, response.Header().Get("Allow"))
 	}
 }
+
+func TestServeFixtureWritesThroughASymlink(t *testing.T) {
+	server, dir := fixtureServer(t)
+	data := filepath.Join(dir, "data")
+	if err := os.Mkdir(data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(data, "users.json")
+	link := filepath.Join(dir, "users.json")
+	if err := os.Rename(link, target); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("data", "users.json"), link); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	_, file := getFixture(t, server, fmt.Sprintf("%d:1", server.config.Revision))
+	file.Content = `{"users":[{"name":"Grace"}]}`
+	if response := putFixture(t, server, file); response.Code != http.StatusOK {
+		t.Fatalf("PUT = %d %s", response.Code, response.Body)
+	}
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the symlink was replaced: %v %v", info, err)
+	}
+	if got, _ := os.ReadFile(target); string(got) != file.Content {
+		t.Errorf("target = %q", got)
+	}
+	if info, _ := os.Stat(target); info.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %v, want the target's 0600", info.Mode().Perm())
+	}
+}
