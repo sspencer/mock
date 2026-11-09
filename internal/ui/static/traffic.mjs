@@ -41,6 +41,10 @@ export function eventBadge(event) {
         const outcome = event.callback.error ? ` · failed: ${event.callback.error}` : '';
         return { text: 'callback', title: `Sent by ${route} after request #${event.callback.trigger}${outcome}` };
     }
+    if (event?.resendOf != null) {
+        const proxied = event.match?.upstream ? ` and forwarded to ${event.match.upstream}` : '';
+        return { text: 'resent', title: `${event.resendOf ? `Resent from request #${event.resendOf}` : 'Resent'} from the admin UI${proxied}` };
+    }
     if (event?.match?.upstream) return { text: 'proxied', title: `Forwarded to ${event.match.upstream}` };
     return null;
 }

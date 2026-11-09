@@ -19,6 +19,8 @@ type Config struct {
 	Version   string `json:"version"`
 	MockPort  int    `json:"mockPort"`
 	MultiPort bool   `json:"multiPort,omitempty"`
+	// Redact is set when -R masks credentials in the request log.
+	Redact bool `json:"redact,omitempty"`
 }
 
 // NewHandler serves the request console and its API at the root of the
@@ -29,6 +31,8 @@ func NewHandler(mockServer *mockhttp.Server, assets fs.FS, cfg Config) http.Hand
 	mux.HandleFunc("/clear", mockServer.ServeClear)
 	mux.HandleFunc("/reload", mockServer.ServeReload)
 	mux.HandleFunc("/requests", mockServer.ServeRequests)
+	mux.HandleFunc("/resend", mockServer.ServeResend)
+	mux.HandleFunc("/fixture", mockServer.ServeFixture)
 	mux.HandleFunc("/routes", mockServer.ServeRoutes)
 	mux.HandleFunc("/state", mockServer.ServeState)
 	mux.Handle("/", fileServer(assets, cfg))

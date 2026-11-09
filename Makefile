@@ -11,7 +11,7 @@ GOBIN := $(shell $(GO) env GOPATH)/bin
 endif
 BINARY := $(GOBIN)/$(APP_NAME)
 
-.PHONY: all build fmt fmt-check vet update clean mod test test-ui bench verify vulncheck docker run lint dockerize
+.PHONY: all build fmt fmt-check vet update clean mod test test-ui test-browser bench verify vulncheck docker run lint dockerize
 
 all: verify build
 
@@ -22,6 +22,12 @@ fmt-check:
 
 test-ui:
 	node --test internal/ui/tests/*.test.mjs
+
+# Admin UI layout, theming and input in headless Chrome against a built mock.
+# Not part of verify: it needs Chrome or Chromium (skipped when none is found;
+# set CHROME_BIN to choose one).
+test-browser:
+	node --test internal/ui/browser/*.test.mjs
 
 # Pin the scanner independently of runtime dependencies.
 vulncheck:

@@ -181,6 +181,25 @@ func TestRunWarnsWhenBoundToAllInterfaces(t *testing.T) {
 	}
 }
 
+func TestRunTokenSilencesAllInterfacesWarning(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "api.http")
+	if err := os.WriteFile(path, []byte("### User\nGET /users\n\nok\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, errOut bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if err := Run(cancelledContext(), []string{"-p", "0", "-a", "0", "-b", "0.0.0.0", "-t", "s3cret", path}, strings.NewReader(""), &out, &errOut, logger); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if strings.Contains(errOut.String(), "unauthenticated") {
+		t.Fatalf("stderr = %q, want no warning with a token", errOut.String())
+	}
+	if !strings.Contains(out.String(), "(token required: open /?token=TOKEN)") || strings.Contains(out.String(), "s3cret") {
+		t.Fatalf("stdout = %q", out.String())
+	}
+}
+
 func TestRunUpstreamPrintsForwardingBanner(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "api.http")

@@ -112,3 +112,15 @@ test('buildRouteDrafts drafts one section per unmatched method and path', () => 
 test('buildRouteDrafts returns nothing without unmatched requests', () => {
     assert.deepEqual(buildRouteDrafts([]), { text: '', count: 0 });
 });
+
+test('a matched request drafts a variant with the route response', () => {
+    const event = unmatched({ url: '/users/7?expand=1' }, {
+        response: { status: 201, headers: { 'Content-Type': ['application/json'] }, body: body('{"id":7}') },
+        match: { revision: 2, route: { name: 'User', source: 'api.http', line: 12 } },
+    });
+    assert.equal(buildRouteDraft(event),
+        '### [201] GET /users/7\n# Variant of "User" (api.http:12): place it above that route so it matches first.\n@query.expand = *\nGET /users/7\nContent-Type: application/json\n\n{"id":7}\n');
+    const faulted = { ...event, response: { ...event.response, fault: 'truncate' } };
+    assert.match(buildRouteDraft(faulted), /^### \[200\] GET \/users\/7\n# Variant/);
+    assert.equal(buildRouteDrafts([event]).count, 0, 'matched requests are not unmatched drafts');
+});

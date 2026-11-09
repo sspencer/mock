@@ -73,4 +73,6 @@ test('callback rows always show their host and get a badge', () => {
     assert.equal(eventBadge(failed).title, 'Sent by Pay after request #7 · failed: timed out after 10s');
     assert.deepEqual(eventBadge({ match: { upstream: 'http://api' } }), { text: 'proxied', title: 'Forwarded to http://api' });
     assert.equal(eventBadge({ match: {} }), null);
+    assert.deepEqual(eventBadge({ resendOf: 4, match: {} }), { text: 'resent', title: 'Resent from request #4 from the admin UI' });
+    assert.equal(eventBadge({ resendOf: 0, match: { upstream: 'http://api' } }).title, 'Resent from the admin UI and forwarded to http://api');
 });

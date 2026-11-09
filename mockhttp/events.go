@@ -26,6 +26,9 @@ type RequestEvent struct {
 	// Callback is set on an outbound @callback request; Match.Route is the
 	// route that sent it.
 	Callback *CallbackInfo `json:"callback,omitempty"`
+	// ResendOf is set on a request replayed through POST /resend: the ID of
+	// the event it was copied from, or 0 when it was not copied from one.
+	ResendOf *uint64 `json:"resendOf,omitempty"`
 }
 
 type EventRequest struct {

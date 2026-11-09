@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { noSelection, selectRequest, selectRoute, selectedRequestId, selectedRoute, afterEventsChanged, afterRoutesLoaded } from '../static/selection.mjs';
+import { noSelection, selectRequest, selectRoute, selectCompare, selectedRequestId, selectedRoute, afterEventsChanged, afterRoutesLoaded } from '../static/selection.mjs';
 
 test('a selection is exactly one kind', () => {
  assert.equal(selectedRequestId(selectRequest(3)),3);assert.equal(selectedRoute(selectRequest(3)),null);
@@ -23,4 +23,17 @@ test('a route follows reloads by id and goes stale when its id disappears', () =
  assert.equal(afterRoutesLoaded(stale,[]),stale);
  assert.equal(afterRoutesLoaded(stale,[{id:'1:0'}]).stale,false);
  const request=selectRequest(1);assert.equal(afterRoutesLoaded(request,[]),request);
+});
+test('a followed route stays selected when a reload changes its id', () => {
+ const route={id:'1:2',name:'Users',source:'api.http',line:9};
+ const follow={source:'api.http',line:9,name:'Users'};
+ const next=afterRoutesLoaded(selectRoute(route),[{id:'2:0',name:'Other',source:'api.http',line:3},{id:'2:1',name:'Users',source:'api.http',line:9}],follow);
+ assert.equal(next.route.id,'2:1');assert.equal(next.stale,false);
+ assert.equal(afterRoutesLoaded(selectRoute(route),[{id:'2:1',name:'Renamed',source:'api.http',line:9}],follow).stale,true);
+});
+test('a comparison lasts while both events exist, even when filtered out', () => {
+ const compare=selectCompare(1,2);
+ assert.equal(selectedRequestId(compare),null);
+ assert.equal(afterEventsChanged(compare,()=>false,()=>true),compare);
+ assert.equal(afterEventsChanged(compare,()=>true,id=>id===1),noSelection);
 });

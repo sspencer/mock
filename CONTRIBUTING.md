@@ -16,6 +16,12 @@ make all
 without changing source files or installing anything. `make all` also installs
 `mock` into `GOBIN` (or `GOPATH/bin`). Use `make fmt` to format explicitly.
 `make test` runs Go tests; `make test-ui` runs dashboard behavior and HAR tests.
+`make test-browser` builds `mock` and checks the admin UI in headless Chrome or
+Chromium: layout at desktop and phone widths, dark mode contrast, dragging and
+keyboard-resizing dividers, keyboard navigation, the help dialog, and resend and
+compare against the running server. It needs no npm packages; the tests are
+skipped when no browser is found (set `CHROME_BIN` to choose one), and a
+failing test saves a screenshot to `$BROWSER_ARTIFACTS` or the temp directory.
 `make vulncheck` downloads the pinned Go vulnerability scanner and checks dependencies.
 
 ```sh

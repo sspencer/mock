@@ -1,9 +1,14 @@
 import { formatMessage, bodyNotice, buildCurl, buildRouteCurl, formatRoute, hitsLabel } from './inspector.mjs';
 import { buildRouteDraft, buildRouteDrafts } from './draft.mjs';
+import { resendDraft, buildResend } from './resend.mjs';
 import { attachSplitter, alignedTrafficHeight } from './layout.mjs';
 import { buildHAR } from './har.mjs';
+import { filterTerms, matchesFilter, routeFilter } from './filter.mjs';
 import { TrafficStream, requestHost, eventBadge } from './traffic.mjs';
-import { noSelection, selectRequest, selectRoute, selectedRequestId, selectedRoute, afterEventsChanged, afterRoutesLoaded } from './selection.mjs';
+import { noSelection, selectRequest, selectRoute, selectCompare, selectedRequestId, selectedRoute, afterEventsChanged, afterRoutesLoaded } from './selection.mjs';
+import { compareEvents, differenceCount } from './compare.mjs';
+import { countNodes, formatFixture, maxTreeNodes, parseFixture } from './fixture.mjs';
+import { renderFixtureTree } from './fixturetree.mjs';
 
 const MAX_EVENTS = 1000;
 const MOCK_CONFIG = JSON.parse(document.getElementById("mock-config").textContent);
@@ -46,10 +51,40 @@ const copyRouteCurlButton = document.getElementById('copyRouteCurlButton');
 const matchSummary = document.getElementById('matchSummary');
 const exchangeView = document.getElementById('exchangeView');
 const routeView = document.getElementById('routeView');
+const compareView = document.getElementById('compareView');
+const compareTitle = document.getElementById('compareTitle');
+const compareSummary = document.getElementById('compareSummary');
+const compareDetails = document.getElementById('compareDetails');
+const compareButton = document.getElementById('compareButton');
+const compareOnlyDiffs = document.getElementById('compareOnlyDiffs');
 const routeDetails = document.getElementById('routeDetails');
+const editFixtureButton = document.getElementById('editFixtureButton');
+const fixtureEditor = document.getElementById('fixtureEditor');
+const fixtureFile = document.getElementById('fixtureFile');
+const fixtureTreeTab = document.getElementById('fixtureTreeTab');
+const fixtureJsonTab = document.getElementById('fixtureJsonTab');
+const fixtureFormat = document.getElementById('fixtureFormat');
+const fixtureRevert = document.getElementById('fixtureRevert');
+const fixtureSave = document.getElementById('fixtureSave');
+const fixtureClose = document.getElementById('fixtureClose');
+const fixtureStatus = document.getElementById('fixtureStatus');
+const fixtureTree = document.getElementById('fixtureTree');
+const fixtureText = document.getElementById('fixtureText');
 const copyNotice = document.getElementById('copyNotice');
 const copyCurlButton = document.getElementById('copyCurlButton');
+if (MOCK_CONFIG.redact) {
+    // -R masked credentials before they reached the log, so copies and exports carry no secrets.
+    for (const button of [exportButton, copyCurlButton]) button.title = 'Credentials are redacted (-R)';
+}
 const copyRouteDraftButton = document.getElementById('copyRouteDraftButton');
+const resendButton = document.getElementById('resendButton');
+const resendForm = document.getElementById('resendForm');
+const resendMethod = document.getElementById('resendMethod');
+const resendUrl = document.getElementById('resendUrl');
+const resendHeaders = document.getElementById('resendHeaders');
+const resendBody = document.getElementById('resendBody');
+const resendStatus = document.getElementById('resendStatus');
+const resendSend = document.getElementById('resendSend');
 const copyUnmatchedButton = document.getElementById('copyUnmatchedButton');
 const mismatchPanel = document.getElementById('mismatchPanel');
 const mismatchDetails = document.getElementById('mismatchDetails');
@@ -61,12 +96,24 @@ const pretty = { request: true, response: true };
 let selection = noSelection;
 let returnFocus = null;
 let copyGeneration = 0;
+// resending is the open resend editor: { id, draft } for the event it edits.
+let resending = null;
+// pendingSelectId is a resent request to select once its event is shown.
+let pendingSelectId = null;
+// compareBase is the request picked as side A of a comparison.
+let compareBase = null;
+let compareDifferencesOnly = true;
+// fixtureEdit is the fixture being edited (see openFixture). It outlives the
+// editor being closed or another route being selected, so a draft is kept
+// until another fixture is opened.
+let fixtureEdit = null;
 
 /** @type {Map<number, any>} */
 const eventsById = new Map();
 /** @type {number[]} newest-first ids */
 let eventOrder = [];
 let filterText = '';
+let filterParsed = [];
 const stream = new TrafficStream(MAX_EVENTS);
 let renderPending = false;
 const preferences = {
@@ -172,9 +219,12 @@ source.onmessage = function (event) {
 
 // dropMissingSelection deselects a request that is no longer displayed.
 function dropMissingSelection(isDisplayed = (id) => eventsById.has(id)) {
-    const next = afterEventsChanged(selection, isDisplayed);
+    if (compareBase != null && !eventsById.has(compareBase)) compareBase = null;
+    const previous = selection;
+    const next = afterEventsChanged(selection, isDisplayed, (id) => eventsById.has(id));
     if (next === selection) return;
     selection = next;
+    if (previous.kind === 'compare') { renderInspector(); return; }
     updateDetail(requestDetails, '');
     updateDetail(responseDetails, '');
 }
@@ -211,7 +261,7 @@ function selectRow(row, http) {
         r.setAttribute('aria-selected', isSelected ? 'true' : 'false');
         r.tabIndex = isSelected ? 0 : -1;
     }
-    for (const button of routesList.querySelectorAll('button')) button.setAttribute('aria-pressed', 'false');
+    for (const button of routesList.querySelectorAll('.route-button')) button.setAttribute('aria-pressed', 'false');
     returnFocus = row;
     showInspector();
     renderInspector();
@@ -362,10 +412,12 @@ helpDialog.addEventListener('click', (event) => {
     }
 });
 
-filterInput.addEventListener('input', () => {
-    filterText = filterInput.value.trim().toLowerCase();
+function setFilter(text) {
+    filterText = text.trim().toLowerCase();
+    filterParsed = filterTerms(filterText);
     renderTable();
-});
+}
+filterInput.addEventListener('input', () => setFilter(filterInput.value));
 
 document.addEventListener('keydown', (event) => {
     const typing = event.target.matches('input, textarea, [contenteditable="true"]');
@@ -425,7 +477,7 @@ function eventMatchesFilter(http) {
         eventBadge(http)?.text || '',
         http.response.fault ? `fault ${http.response.fault}` : '',
     ].join(' ').toLowerCase();
-    return hay.includes(filterText);
+    return matchesFilter(filterParsed, http, hay);
 }
 
 function renderTable() {
@@ -516,6 +568,18 @@ function renderTable() {
     if (focusWasInTable && focusTarget) {
         focusTarget.focus({ preventScroll: true });
     }
+    selectPendingResend(visibleIDs);
+}
+
+// selectPendingResend selects a resent request once its row exists. A
+// request the filter hides is not waited for.
+function selectPendingResend(visibleIDs) {
+    if (pendingSelectId == null || !eventsById.has(pendingSelectId)) return;
+    const id = pendingSelectId;
+    pendingSelectId = null;
+    if (!visibleIDs.has(id)) return;
+    const row = getDataRows().find(r => Number(r.dataset.id) === id);
+    if (row) selectRow(row, eventsById.get(id));
 }
 
 function updateDetail(element, newContent) {
@@ -531,7 +595,7 @@ function showInspector() {
 
 // On narrow screens the inspector replaces the list, so move focus to its heading.
 function focusInspectorOnMobile() {
-    if (window.matchMedia('(max-width: 900px)').matches) (selection.kind === 'route' ? routeTitle : requestTitle).focus();
+    if (window.matchMedia('(max-width: 900px)').matches) ({ route: routeTitle, compare: compareTitle }[selection.kind] || requestTitle).focus();
 }
 
 backToList.addEventListener('click', () => {
@@ -545,6 +609,9 @@ function resetInspector() {
     matchSummary.textContent = '';
     copyCurlButton.disabled = true;
     copyRouteDraftButton.hidden = true;
+    resendButton.hidden = true;
+    compareButton.hidden = true;
+    closeResend();
     mismatchPanel.hidden = true;
     copyNotice.textContent = '';
     for (const kind of ['request', 'response']) {
@@ -559,8 +626,13 @@ function routeCurl(route) {
 }
 
 function renderInspector() {
-    exchangeView.hidden = selection.kind === 'route';
+    exchangeView.hidden = selection.kind === 'route' || selection.kind === 'compare';
     routeView.hidden = selection.kind !== 'route';
+    compareView.hidden = selection.kind !== 'compare';
+    if (selection.kind === 'compare') {
+        renderComparison();
+        return;
+    }
     if (selection.kind === 'route') {
         const { route, stale } = selection;
         routeTitle.textContent = route.name || 'Route';
@@ -569,6 +641,12 @@ function renderInspector() {
             : `Configured route · revision ${route.revision} · ${route.source}:${route.line}`;
         routeDetails.textContent = formatRoute(route, routeCurl(route));
         copyRouteCurlButton.disabled = !routePort(route);
+        const editing = isEditingFixture(route);
+        editFixtureButton.hidden = !route.fixture;
+        editFixtureButton.disabled = stale && !editing;
+        editFixtureButton.setAttribute('aria-pressed', String(editing));
+        fixtureEditor.hidden = !editing;
+        routeDetails.hidden = editing;
         return;
     }
     const event = eventsById.get(selectedRequestId(selection));
@@ -581,7 +659,13 @@ function renderInspector() {
         ? `${route.name} · ${route.source}:${route.line} · revision ${match.revision} · ${event.response.time}`
         : `${match?.upstream ? `Proxied to ${match.upstream} · no` : 'No'} matching route · revision ${match?.revision ?? '?'} · ${event.response.time}`;
     mismatchPanel.hidden = !!route;
-    copyRouteDraftButton.hidden = !!route;
+    copyRouteDraftButton.hidden = !!event.callback;
+    resendButton.hidden = !!event.callback;
+    updateCompareButton(event);
+    if (resending && resending.id !== event.id) closeResend();
+    copyRouteDraftButton.title = route
+        ? `Copy a draft .http section for a more specific variant of ${route.name}`
+        : 'Copy a draft .http section that would answer this request';
     mismatchDetails.replaceChildren();
     if (!route) {
         const candidates = match?.candidates || [];
@@ -639,6 +723,213 @@ copyRouteDraftButton.addEventListener('click', () => {
     try { copyText(buildRouteDraft(eventsById.get(selectedRequestId(selection)), { mockPort: MOCK_CONFIG.mockPort })); }
     catch (error) { copyNotice.textContent = error.message; }
 });
+// The Compare button picks side A, then compares A with the request shown.
+function updateCompareButton(event) {
+    compareButton.hidden = false;
+    if (compareBase == null) {
+        compareButton.textContent = 'Compare…';
+        compareButton.title = 'Pick this request as the first side of a comparison, then select another request';
+    } else if (compareBase === event.id) {
+        compareButton.textContent = 'Cancel compare';
+        compareButton.title = 'This request is picked for comparison; select another request to compare with it';
+    } else {
+        compareButton.textContent = `Compare with #${compareBase}`;
+        compareButton.title = `Show request #${compareBase} and this request side by side`;
+    }
+}
+
+compareButton.addEventListener('click', () => {
+    const id = selectedRequestId(selection);
+    if (id == null) return;
+    if (compareBase == null) {
+        compareBase = id;
+        copyNotice.textContent = `Request #${id} is picked. Select another request and choose Compare with #${id}.`;
+    } else if (compareBase === id) {
+        compareBase = null;
+        copyNotice.textContent = '';
+    } else {
+        selection = selectCompare(compareBase, id);
+        compareBase = null;
+        copyNotice.textContent = '';
+        renderInspector();
+        focusInspectorOnMobile();
+        return;
+    }
+    updateCompareButton(eventsById.get(id));
+});
+
+compareOnlyDiffs.addEventListener('click', () => {
+    compareDifferencesOnly = !compareDifferencesOnly;
+    renderComparison();
+});
+
+document.getElementById('compareSwap').addEventListener('click', () => {
+    if (selection.kind !== 'compare') return;
+    selection = selectCompare(selection.b, selection.a);
+    renderComparison();
+});
+
+document.getElementById('compareClose').addEventListener('click', () => {
+    if (selection.kind !== 'compare') return;
+    const id = selection.b;
+    const row = getDataRows().find(r => Number(r.dataset.id) === id);
+    if (row) { selectRow(row, eventsById.get(id)); return; }
+    selection = selectRequest(id);
+    renderInspector();
+});
+
+const valueText = (values) => values == null ? '—' : values.join('\n');
+
+// compareTable renders field rows as a three-column table. Unchanged rows
+// are left out when only differences are shown.
+function compareTable(title, rows, labelA, labelB) {
+    const shown = compareDifferencesOnly ? rows.filter(row => !row.same) : rows;
+    const section = document.createElement('section');
+    section.className = 'compare-section';
+    const heading = document.createElement('h3');
+    heading.textContent = title;
+    section.append(heading);
+    if (!shown.length) {
+        const empty = document.createElement('p');
+        empty.className = 'compare-empty';
+        empty.textContent = rows.length ? 'No differences.' : 'None.';
+        section.append(empty);
+        return section;
+    }
+    const table = document.createElement('table');
+    table.className = 'compare-table';
+    const head = table.insertRow();
+    for (const text of ['', labelA, labelB]) {
+        const th = document.createElement('th');
+        th.scope = 'col';
+        th.textContent = text;
+        head.appendChild(th);
+    }
+    for (const row of shown) {
+        const tr = table.insertRow();
+        tr.className = row.same ? 'same' : row.a == null ? 'added' : row.b == null ? 'removed' : 'changed';
+        const name = document.createElement('th');
+        name.scope = 'row';
+        name.textContent = row.name;
+        tr.appendChild(name);
+        tr.insertCell().textContent = valueText(row.a);
+        tr.insertCell().textContent = valueText(row.b);
+    }
+    section.append(table);
+    return section;
+}
+
+// compareBody renders a body comparison as a unified line diff.
+function compareBody(title, body) {
+    const section = document.createElement('section');
+    section.className = 'compare-section';
+    const heading = document.createElement('h3');
+    heading.textContent = title;
+    section.append(heading);
+    if (body.note) {
+        const note = document.createElement('p');
+        note.className = 'compare-empty';
+        note.textContent = body.note;
+        section.append(note);
+    }
+    if (!body.lines?.length || (body.same && compareDifferencesOnly)) {
+        if (!body.note) {
+            const same = document.createElement('p');
+            same.className = 'compare-empty';
+            same.textContent = 'No differences.';
+            section.append(same);
+        }
+        return section;
+    }
+    const pre = document.createElement('pre');
+    pre.className = 'detail-content compare-diff';
+    for (const line of body.lines) {
+        const span = document.createElement('span');
+        span.className = line.op === '-' ? 'diff-removed' : line.op === '+' ? 'diff-added' : 'diff-same';
+        span.textContent = `${line.op} ${line.text}\n`;
+        pre.appendChild(span);
+    }
+    section.append(pre);
+    return section;
+}
+
+function renderComparison() {
+    if (selection.kind !== 'compare') return;
+    const a = eventsById.get(selection.a), b = eventsById.get(selection.b);
+    if (!a || !b) return;
+    const labelA = `A · #${a.id}`, labelB = `B · #${b.id}`;
+    const comparison = compareEvents(a, b);
+    const count = differenceCount(comparison);
+    compareTitle.textContent = `Compare #${a.id} and #${b.id}`;
+    compareSummary.textContent = `A: ${a.request.method} ${a.request.url} · B: ${b.request.method} ${b.request.url} · ${count ? `${count} difference${count === 1 ? '' : 's'}` : 'no differences besides timing'}`;
+    compareOnlyDiffs.setAttribute('aria-pressed', String(compareDifferencesOnly));
+    compareDetails.replaceChildren(
+        compareTable('Overview', comparison.overview, labelA, labelB),
+        compareTable('Query parameters', comparison.query, labelA, labelB),
+        compareTable('Request headers', comparison.requestHeaders, labelA, labelB),
+        compareBody('Request body', comparison.requestBody),
+        compareTable('Response headers', comparison.responseHeaders, labelA, labelB),
+        compareBody('Response body', comparison.responseBody),
+    );
+}
+
+function closeResend() {
+    resending = null;
+    resendForm.hidden = true;
+    resendButton.setAttribute('aria-expanded', 'false');
+    resendStatus.textContent = '';
+}
+
+resendButton.addEventListener('click', () => {
+    if (resending) { closeResend(); return; }
+    const event = eventsById.get(selectedRequestId(selection));
+    const draft = resendDraft(event);
+    if (draft.error) { copyNotice.textContent = draft.error; return; }
+    resending = { id: event.id, draft };
+    resendMethod.value = draft.method;
+    resendUrl.value = draft.url;
+    resendHeaders.value = draft.headers;
+    resendBody.value = draft.bodyEditable ? draft.body : '';
+    resendBody.disabled = !draft.bodyEditable;
+    resendBody.placeholder = draft.bodyEditable ? 'No body' : 'The binary body is resent unchanged.';
+    resendStatus.textContent = draft.host ? `Sent to ${draft.host} through the admin server.` : '';
+    resendForm.hidden = false;
+    resendButton.setAttribute('aria-expanded', 'true');
+    resendMethod.focus();
+});
+
+document.getElementById('resendCancel').addEventListener('click', closeResend);
+
+resendForm.addEventListener('submit', async (submit) => {
+    submit.preventDefault();
+    if (!resending) return;
+    let payload;
+    try {
+        payload = buildResend(resending.draft, { method: resendMethod.value, url: resendUrl.value, headers: resendHeaders.value, body: resendBody.value }, resending.id);
+    } catch (error) {
+        resendStatus.textContent = error.message;
+        return;
+    }
+    resendSend.disabled = true;
+    resendStatus.textContent = 'Sending…';
+    try {
+        const res = await fetch('resend', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error((await res.text()).trim() || `Resend failed with HTTP ${res.status}.`);
+        const { id } = await res.json();
+        closeResend();
+        pendingSelectId = id;
+        scheduleRender();
+    } catch (error) {
+        resendStatus.textContent = error.message || 'Resend failed.';
+    } finally {
+        resendSend.disabled = false;
+    }
+});
+
 copyUnmatchedButton.addEventListener('click', async () => {
     const events = [...eventOrder].reverse().map(id => eventsById.get(id)).filter(Boolean);
     const { text, count } = buildRouteDrafts(events, { mockPort: MOCK_CONFIG.mockPort });
@@ -664,6 +955,200 @@ copyRouteCurlButton.addEventListener('click', () => {
     if (command) copyText(command);
 });
 
+// ---------- Fixture editor ----------
+//
+// fixtureEdit is { key, file, fixture, version, mode: 'tree' | 'json', value,
+// text, textStale, dirty, open, saving, tooLarge, toggled }. In tree mode the
+// value is the source of truth; in JSON mode the text is. textStale marks
+// text that no longer reflects value (a tree edit was made), so the original
+// formatting is kept until the tree changes something.
+
+const fixtureKey = (route) => `${route.source}\n${route.fixture}`;
+const isEditingFixture = (route) => !!(route.fixture && fixtureEdit?.open && fixtureEdit.key === fixtureKey(route));
+
+function setFixtureStatus(message, kind = '') {
+    fixtureStatus.textContent = message;
+    fixtureStatus.classList.toggle('error', kind === 'error');
+    fixtureStatus.classList.toggle('ok', kind === 'ok');
+}
+
+async function openFixture(route) {
+    if (fixtureEdit?.key === fixtureKey(route)) {
+        fixtureEdit.open = true;
+        renderInspector();
+        renderFixtureEditor();
+        return;
+    }
+    await loadFixture(route);
+}
+
+async function loadFixture(route) {
+    const key = fixtureKey(route);
+    try {
+        const res = await fetch(`fixture?route=${encodeURIComponent(route.id)}`, { signal: AbortSignal.timeout(5000) });
+        if (!res.ok) throw new Error((await res.text()).trim() || `status ${res.status}`);
+        const file = await res.json();
+        const edit = { key, file: file.file, fixture: file.fixture, version: file.version, mode: 'tree', value: null, text: file.content, textStale: false, dirty: false, open: true, saving: false, tooLarge: false, toggled: new Set() };
+        let status = ['', ''];
+        if (!file.version) {
+            edit.value = {};
+            edit.text = formatFixture({});
+            status = ['The file does not exist yet; Save creates it.', ''];
+        } else {
+            const parsed = parseFixture(file.content);
+            if (parsed.error) {
+                edit.mode = 'json';
+                status = [`${parsed.error}. Fix it in the JSON view.`, 'error'];
+            } else if (countNodes(parsed.value) > maxTreeNodes) {
+                edit.mode = 'json';
+                edit.tooLarge = true;
+                status = [`This fixture has more than ${maxTreeNodes} values; edit it as JSON.`, ''];
+            } else {
+                edit.value = parsed.value;
+            }
+        }
+        fixtureEdit = edit;
+        if (!isEditingFixture(selectedRoute(selection) || {})) return;
+        renderInspector();
+        setFixtureStatus(...status);
+        renderFixtureEditor();
+    } catch (error) {
+        copyNotice.textContent = `Could not open the fixture: ${error.message}`;
+    }
+}
+
+function renderFixtureEditor() {
+    const edit = fixtureEdit;
+    if (!edit) return;
+    const tree = edit.mode === 'tree';
+    fixtureFile.textContent = edit.fixture;
+    fixtureFile.title = edit.file;
+    fixtureTreeTab.setAttribute('aria-pressed', String(tree));
+    fixtureJsonTab.setAttribute('aria-pressed', String(!tree));
+    fixtureTreeTab.disabled = edit.tooLarge;
+    fixtureTree.hidden = !tree;
+    fixtureText.hidden = tree;
+    fixtureFormat.disabled = tree;
+    fixtureSave.disabled = edit.saving;
+    if (tree) {
+        renderFixtureTree(fixtureTree, edit.value, {
+            toggled: edit.toggled,
+            onChange: changeFixtureValue,
+            onError: (message) => setFixtureStatus(message, 'error'),
+        });
+    } else if (fixtureText.value !== edit.text) {
+        fixtureText.value = edit.text;
+    }
+}
+
+function markFixtureDirty() {
+    fixtureEdit.dirty = true;
+    setFixtureStatus('Unsaved changes.');
+}
+
+function changeFixtureValue(value) {
+    if (value !== fixtureEdit.value) {
+        fixtureEdit.value = value;
+        fixtureEdit.textStale = true;
+        markFixtureDirty();
+    }
+    renderFixtureEditor();
+}
+
+function setFixtureMode(mode) {
+    const edit = fixtureEdit;
+    if (!edit || edit.mode === mode) return;
+    if (mode === 'json') {
+        if (edit.textStale) edit.text = formatFixture(edit.value);
+        edit.textStale = false;
+    } else {
+        const parsed = parseFixture(edit.text);
+        if (parsed.error) { setFixtureStatus(parsed.error, 'error'); return; }
+        if (countNodes(parsed.value) > maxTreeNodes) {
+            setFixtureStatus(`This fixture has more than ${maxTreeNodes} values; edit it as JSON.`);
+            return;
+        }
+        edit.value = parsed.value;
+        if (fixtureStatus.classList.contains('error')) setFixtureStatus(edit.dirty ? 'Unsaved changes.' : '');
+    }
+    edit.mode = mode;
+    renderFixtureEditor();
+}
+
+async function saveFixture() {
+    const edit = fixtureEdit;
+    if (!edit || edit.saving) return;
+    let content = edit.text;
+    if (edit.mode === 'tree') {
+        if (edit.textStale) content = formatFixture(edit.value);
+    } else {
+        const parsed = parseFixture(content);
+        if (parsed.error) { setFixtureStatus(parsed.error, 'error'); return; }
+    }
+    edit.saving = true;
+    setFixtureStatus('Saving…');
+    renderFixtureEditor();
+    try {
+        const res = await fetch('fixture', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body: JSON.stringify({ file: edit.file, content, version: edit.version }),
+            signal: AbortSignal.timeout(10000),
+        });
+        if (res.status === 409) {
+            const reply = await res.json();
+            if (fixtureEdit === edit) setFixtureStatus(`Not saved: ${reply.error}. Your edits are kept; Reload discards them.`, 'error');
+            return;
+        }
+        if (!res.ok) throw new Error((await res.text()).trim() || `status ${res.status}`);
+        const reply = await res.json();
+        edit.version = reply.version;
+        edit.text = content;
+        edit.textStale = false;
+        edit.dirty = false;
+        if (fixtureEdit === edit) setFixtureStatus('Saved. The next response uses it.', 'ok');
+    } catch (error) {
+        if (fixtureEdit === edit) setFixtureStatus(`Not saved: ${error.message}`, 'error');
+    } finally {
+        edit.saving = false;
+        if (fixtureEdit === edit) renderFixtureEditor();
+    }
+}
+
+editFixtureButton.addEventListener('click', () => {
+    const route = selectedRoute(selection);
+    if (!route?.fixture) return;
+    if (isEditingFixture(route)) { fixtureEdit.open = false; renderInspector(); return; }
+    openFixture(route);
+});
+fixtureTreeTab.addEventListener('click', () => setFixtureMode('tree'));
+fixtureJsonTab.addEventListener('click', () => setFixtureMode('json'));
+fixtureText.addEventListener('input', () => {
+    if (!fixtureEdit) return;
+    fixtureEdit.text = fixtureText.value;
+    markFixtureDirty();
+});
+fixtureFormat.addEventListener('click', () => {
+    if (!fixtureEdit) return;
+    const parsed = parseFixture(fixtureEdit.text);
+    if (parsed.error) { setFixtureStatus(parsed.error, 'error'); return; }
+    const text = formatFixture(parsed.value);
+    if (text !== fixtureEdit.text) { fixtureEdit.text = text; markFixtureDirty(); }
+    renderFixtureEditor();
+});
+fixtureRevert.addEventListener('click', () => {
+    const route = selectedRoute(selection);
+    if (!route || !fixtureEdit) return;
+    loadFixture(route);
+});
+fixtureSave.addEventListener('click', saveFixture);
+fixtureClose.addEventListener('click', () => {
+    if (!fixtureEdit) return;
+    fixtureEdit.open = false;
+    renderInspector();
+    editFixtureButton.focus();
+});
+
 function renderEmptyState(message) {
     requestTableBody.replaceChildren();
     const row = requestTableBody.insertRow();
@@ -686,7 +1171,9 @@ async function loadRoutes() {
         if (routesJSON === lastRoutesJSON) return;
         lastRoutesJSON = routesJSON;
         if (selection.kind === 'route') {
-            selection = afterRoutesLoaded(selection, routes);
+            // Saving a fixture reloads the routes; keep the edited route selected.
+            const route = selection.route;
+            selection = afterRoutesLoaded(selection, routes, fixtureEdit?.key === fixtureKey(route) ? route : null);
             renderInspector();
         }
         routeCount.textContent = String(routes.length).padStart(2, '0');
@@ -716,28 +1203,37 @@ async function loadRoutes() {
             if (route.name) {
                 name.title = route.name;
             }
-            const hits = document.createElement('span');
+            // The hit count is its own button: it filters the traffic to the
+            // requests this route answered (again to clear the filter).
+            const hits = document.createElement('button');
+            hits.type = 'button';
             hits.className = 'route-hits';
             hits.classList.toggle('unused', !route.hits);
             hits.textContent = String(route.hits || 0);
-            hits.title = `Matched ${hitsLabel(route.hits)}`;
+            hits.title = `Matched ${hitsLabel(route.hits)}. Show only these requests`;
+            hits.setAttribute('aria-label', `Show the requests ${route.name} answered (${hitsLabel(route.hits)})`);
+            hits.addEventListener('click', () => {
+                const text = routeFilter(route.name);
+                filterInput.value = filterInput.value.trim() === text ? '' : text;
+                setFilter(filterInput.value);
+            });
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'route-button';
             button.setAttribute('aria-label', `${route.method} ${routePath}: ${route.name}, matched ${hitsLabel(route.hits)}`);
             button.setAttribute('aria-pressed', String(selectedRoute(selection)?.id === route.id));
-            button.append(method, path, name, hits);
+            button.append(method, path, name);
             button.addEventListener('click', () => {
                 selection = selectRoute(route);
                 returnFocus = button;
-                for (const item of routesList.querySelectorAll('button')) item.setAttribute('aria-pressed', String(item === button));
+                for (const item of routesList.querySelectorAll('.route-button')) item.setAttribute('aria-pressed', String(item === button));
                 for (const row of getDataRows()) row.classList.remove('selected');
                 syncRowTabindex();
                 showInspector();
                 renderInspector();
                 focusInspectorOnMobile();
             });
-            li.append(button);
+            li.append(button, hits);
             routesList.appendChild(li);
         }
     } catch (e) {

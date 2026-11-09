@@ -187,7 +187,7 @@ func (s *Server) sendCallback(p pendingCallback) {
 	if s.callbackCtx.Err() != nil {
 		return // Shutting down: the request was cancelled, not failed.
 	}
-	s.publishRequest(event)
+	s.publishRequest(s.redactEvent(event))
 
 	logger := s.logger
 	if logger == nil {

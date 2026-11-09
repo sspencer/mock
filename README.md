@@ -247,6 +247,8 @@ Flags:
 | `-p`, `--port` | `8080`, or `MOCK_PORT` | Default HTTP port, for routes that do not declare a port (see [Multiple ports](#multiple-ports)) |
 | `-a`, `--ui-port` | `MOCK_UI_PORT`, else `8081`, or random if `-p` / `MOCK_PORT` is set | Admin UI port. `0` picks a random free port |
 | `-x`, `--no-ui` | (off) | Do not start the admin UI. Cannot be combined with `-a` |
+| `-t`, `--ui-token` | `MOCK_UI_TOKEN` | Require this token for the admin UI and API (see [Admin access token](#admin-access-token)). Cannot be combined with `-x` |
+| `-R`, `--redact` | | Mask credentials in the request log, the admin UI, copies and exports (see [Credential redaction](#credential-redaction)) |
 | `-b`, `--bind` | `127.0.0.1`, or `MOCK_BIND` | Bind address. Use `0.0.0.0` to listen on all interfaces |
 | `-u`, `--upstream` | (off) | Forward requests no route matches to this `http` or `https` URL and return its response (see [Passing unmatched requests to a real API](#passing-unmatched-requests-to-a-real-api)) |
 | `-r`, `--record` | (off) | With `-u`, append a draft `.http` section to this file for each method and path the upstream answered (see [Recording forwarded requests](#recording-forwarded-requests)) |
@@ -915,7 +917,8 @@ Content-Type: application/json
   (`{{$fixture["site.name"]}}`). A string is inserted as its text, and other
   values as compact JSON, so `{{$fixture.featured.tags}}` copies an array.
 - The file is read for each response that uses it, so edits apply to the next
-  request. `mock` also watches it and reports problems on reload.
+  request. `mock` also watches it and reports problems on reload. The admin UI
+  can [edit it](#editing-fixtures).
 - A missing file, invalid JSON or a path with no value warns at load time and
   leaves the placeholder literal unless it has a `| default`.
 - Path segments are literal, so a fixture can't be indexed by a request value
@@ -1973,6 +1976,56 @@ The UI is served at the root of the admin port (`-a`, default `8081`):
 | `/state` | `GET` active revision, route count, last successful reload, and reload error |
 | `/routes` | `GET` route configuration, including source location, port, matchers, status, delay, body preview, and `hits` (requests answered) |
 | `/requests` | `GET` the request log as JSON, optionally filtered (see below) |
+| `/resend` | `POST` answers a request as if a client sent it to the mock port (see [Resending a request](#resending-a-request)) |
+| `/fixture` | `GET ?route=ID` reads a route's `@fixture` file; `PUT` writes it (see [Editing fixtures](#editing-fixtures)) |
+
+### Admin access token
+
+The admin UI and API are open to anyone who can reach the admin port.
+`-t TOKEN` (`--ui-token`, or the `MOCK_UI_TOKEN` environment variable)
+requires a token for every admin page and endpoint:
+
+```sh
+MOCK_UI_TOKEN=$(openssl rand -hex 16) mock -b 0.0.0.0 api.http
+```
+
+- In a browser, open the UI once as `http://HOST:8081/?token=TOKEN`. `mock`
+  sets an HTTP-only, same-site cookie and redirects to the plain URL, so the
+  token leaves the address bar.
+- API clients send `Authorization: Bearer TOKEN` (or add `?token=TOKEN`):
+
+  ```sh
+  curl -H "Authorization: Bearer $MOCK_UI_TOKEN" http://127.0.0.1:8081/requests
+  ```
+
+Other requests get `401`. The banner says a token is required but does not
+print it. The mock ports are not affected. This is access control on plain
+HTTP: anyone who can read the traffic between you and `mock` can read the
+token too.
+
+### Credential redaction
+
+The request log keeps what clients sent, including `Authorization` headers,
+cookies and passwords in bodies. `-R` (`--redact`) masks credentials before a
+request is logged, so the admin UI, **Copy cURL**, **Copy as route**, HAR
+exports, `GET /requests`, the event stream, the request log line and `-r`
+recordings never see them. Responses are sent unchanged and matching always
+uses the real request. A value is masked as `[redacted]` when its name looks
+like a credential: it contains `token`, `secret`, `passw`, `apikey`,
+`authorization`, `credential`, `cookie`, `signature`, `session` or
+`privatekey`, or is `auth`, `key`, `sig`, `pwd`, `jwt`, `otp` or `pin`
+(ignoring case, `-` and `_`).
+
+- Headers: `Authorization: Bearer [redacted]` keeps the scheme, `Cookie` keeps
+  the cookie names, and `Set-Cookie` keeps its attributes. Other
+  credential-like headers, such as `X-Api-Key`, are masked whole.
+- Query parameters, such as `?access_token=[redacted]`.
+- String members of JSON bodies, such as `"password": "[redacted]"`, at any
+  depth, and fields of URL-encoded forms. Other bodies are logged as sent.
+- Values that near-miss explanations quote for those names.
+
+Redaction is a guard against accidental sharing, not a guarantee: a secret in
+a header, field or body with an ordinary name is still logged.
 
 Selecting a route shows a sample `curl` command for that route's port (the
 default mock port when the route declares none), ready to paste
@@ -1989,7 +2042,7 @@ UI features: theme toggle, filter, pause stream, clear log,
 HAR export, a Help dialog, and a routes panel that refreshes after hot-reload.
 When `mock` listens on more than one port, the request table shows each
 request's host and port, and routes are labeled with their port.
-The `/clear` and `/reload` POST endpoints require an `X-Requested-With` header
+The `/clear`, `/reload` and `/resend` POST endpoints and `PUT /fixture` require an `X-Requested-With` header
 or a JSON `Content-Type`, and reject cross-origin and cross-site requests.
 
 ### Reading the request log
@@ -2018,6 +2071,93 @@ A test can assert what its code under test sent: `POST /clear` (with
 `X-Requested-With`) before the test, then read `/requests` after it. An
 invalid `matched`, `callbacks` or `since` value returns `400`.
 
+### Resending a request
+
+The admin UI runs on its own port and `mock` sends no CORS headers, so the
+browser cannot call the mock port itself. `POST /resend` answers a request
+in-process instead, exactly as if a client had sent it to the mock port:
+routes match (on the port in `host`), delays, faults, rate limits,
+`--upstream`, callbacks and `--strict` counts apply, and the request is logged
+with `resendOf` set to `from` (or `0`). The response is `{"id": N}`, the new
+event's `id`; read the response from the request log.
+
+```sh
+curl -s -X POST -H 'Content-Type: application/json' http://127.0.0.1:8081/resend \
+  -d '{"method":"POST","url":"/users?notify=1","host":"localhost:8080",
+       "headers":{"Content-Type":["application/json"]},"body":"{\"name\":\"Ada\"}"}'
+```
+
+| Field | Meaning |
+|-------|---------|
+| `method` | Request method (required) |
+| `url` | Path and query, starting with `/` (required) |
+| `host` | `Host` header; its port picks the mock port. Without a port, routes on every port can match |
+| `headers` | Request headers, `{"Name": ["value"]}`. `Host`, `Content-Length`, `Transfer-Encoding` and `Connection` are ignored |
+| `body` | Request body text, or base64 with `"encoding": "base64"` |
+| `from` | The event `id` this request was copied from |
+
+Invalid input returns `400`. With [`-R`](#credential-redaction), logged
+credentials are `[redacted]`, so a resent copy carries that text unless you
+edit it.
+
+### Editing fixtures
+
+A route with [`@fixture`](#fixture-data) shows **Edit fixture** in the route
+inspector. The editor has two views:
+
+- **Tree** shows the JSON as rows you can expand and collapse. Each value has
+  a type (string, number, boolean, null, object or array) and an editor for
+  it; changing the type converts the value where it can (`42` becomes `"42"`).
+  Field names can be renamed in place, **+** adds a field to an object (or a
+  copy of the last item to an array), **⧉** duplicates an array item and
+  **×** removes a value. Edits apply when a field loses focus or Enter is
+  pressed.
+- **JSON** is the file as text. **Format** indents it with two spaces.
+  Invalid JSON is reported with its line and column, and must be fixed before
+  switching back to the tree or saving. Fixtures with more than 2,000 values
+  open in this view only.
+
+**Save** writes the file; fixtures are read for every response, so the next
+request uses it. A file saved after a tree edit is written as two-space
+indented JSON; a file saved from the JSON view is written exactly as typed.
+The tree holds numbers as JavaScript numbers, so integers beyond 2^53 lose
+precision there; edit such files in the JSON view. **Reload** discards edits
+and reads the file again, and **Close** hides the editor and keeps the draft
+until another fixture is opened. Saving also triggers a hot reload (the
+fixture is watched), and the route stays selected.
+
+`GET /fixture?route=ID` takes a route `id` from `/routes` and returns
+`{"file", "fixture", "content", "version"}`: the absolute path, the path as
+the route wrote it, the file's text, and a version (`""` when the file does
+not exist yet). `PUT /fixture` takes `{"file", "content", "version"}` and
+returns the new `{"version"}`. A write is refused with `403` unless the file
+is the `@fixture` of a current route, `400` unless the content is one valid
+JSON value, `413` above 4 MiB, and `409` (with the current `version`) when
+the file changed since that version was read. The file is replaced
+atomically and keeps its permissions.
+
+```sh
+curl -s -X PUT -H 'Content-Type: application/json' http://127.0.0.1:8081/fixture \
+  -d '{"file":"/srv/api/data/catalog.json","content":"{\"featured\":{}}\n","version":"<version from GET>"}'
+```
+
+### Filtering traffic
+
+The filter above the traffic list keeps requests that match every term,
+separated by spaces (case does not matter):
+
+| Term | Keeps requests |
+|------|----------------|
+| `2xx`, `3xx`, `4xx`, `5xx` | with a status in that class |
+| `matched` / `unmatched` | a route answered, or none did (callbacks are neither) |
+| `get`, `POST`, ... | with this method |
+| `route:Users`, `route:"User detail"` | answered by the route with this name (quote names with spaces) |
+| anything else | whose method, URL, status, status text, label (`proxied`, `callback`) or fault contains it |
+
+A `-` in front excludes instead: `post -2xx` shows failed POSTs. Clicking a
+route's hit count in the routes list sets the filter to `route:"Name"`, and
+clicking it again clears the filter. Press `/` to focus the filter.
+
 ### Resizing and mobile navigation
 
 Drag the vertical divider to enlarge the traffic list or inspector. Horizontal
@@ -2034,7 +2174,8 @@ On narrow screens, selecting traffic or a route opens the inspector; use
 - **Copy body** copies original captured text; binary captures offer **Copy base64**.
 - **Copy cURL** produces a shell-quoted command including captured headers and
   complete text bodies. Incomplete or binary request bodies show an explanation
-  instead of producing a misleading replay command. Copied credentials are included.
+  instead of producing a misleading replay command. Copied credentials are
+  included unless `mock` runs with [`-R`](#credential-redaction).
 - Matched requests show the fixture name, source file/line, configuration revision,
   and elapsed time. Unmatched requests show up to five
   nearby routes with method, path, query, header, and body mismatch explanations.
@@ -2042,8 +2183,8 @@ On narrow screens, selecting traffic or a route opens the inspector; use
   **proxied** in the table (the filter matches `proxied`), and the inspector
   names the URL they were sent to. [Webhook callbacks](#webhook-callbacks) are
   marked **callback**, with the route and request that sent them.
-- **Copy as route** appears on unmatched requests and copies a draft `.http`
-  section to paste into a request file. The draft has the request's method and
+- **Copy as route** copies a draft `.http` section to paste into a request
+  file. It appears on every request except callbacks. The draft has the request's method and
   path, and requires the fields the request had without fixing their values:
   `@query.name = *` for each query parameter, `@header.Authorization = *` when
   the request sent one, and `@json.key = *` (or `@form.name = *`) for each
@@ -2054,6 +2195,29 @@ On narrow screens, selecting traffic or a route opens the inspector; use
   proxied with `--upstream`, whose real status, `Content-Type` and body are
   used when the body can be pasted inline (with `@template = off` if it
   contains `{{`).
+- On a request a route answered, **Copy as route** starts a more specific
+  variant of that route: the draft reuses the response the route sent (as for
+  a proxied request) and begins with a `# Variant of "Name" (file:line)`
+  comment. Place it above that route, since the first matching route wins,
+  and tighten its matchers, such as `@query.page = 2` instead of `*`.
+- **Resend** opens an editor with the request's method, path and query,
+  headers and body; **Send** replays it (see
+  [Resending a request](#resending-a-request)) and selects the new request,
+  marked **resent**. It appears on every request except callbacks and requests
+  whose body was not captured completely. Binary bodies are resent unchanged.
+- **Compare…** picks the shown request as side A; select another request and
+  choose **Compare with #N** to see both side by side. The comparison lists
+  the method, host, path, status, route and revision, then query parameters,
+  request headers and response headers as tables, and the request and
+  response bodies as a line diff (`-` only in A, `+` only in B). JSON bodies
+  are compared with sorted keys, so key order and formatting don't count as
+  differences; binary bodies are only reported as identical or not. The
+  summary counts differences, ignoring timing and the `Date` header.
+  **Only differences** hides unchanged rows, **Swap** exchanges the sides, and
+  **Close** returns to request B. A comparison stays open while the filter
+  hides either request, until one leaves the log.
+- **Edit fixture**, on a route with `@fixture`, edits its JSON file as a tree
+  or as text and saves it (see [Editing fixtures](#editing-fixtures)).
 - **Copy unmatched as routes**, above the traffic list, copies one draft
   section per distinct method and path among every unmatched request in the
   log, oldest first, so a session of traffic becomes a starting request file.
@@ -2097,8 +2261,11 @@ requests fall back to `GET` routes when no `HEAD` route matches (see
 routes. The admin
 UI rejects cross-origin clear requests.
 
-Binding to all interfaces (`-b 0.0.0.0`) prints a warning: the admin UI is
-unauthenticated and request logs may include `Authorization` headers and bodies.
+Binding to all interfaces (`-b 0.0.0.0`) without `-t` prints a warning: the
+admin UI is unauthenticated and request logs may include `Authorization`
+headers and bodies. Set an [admin access token](#admin-access-token) to
+require a token for the UI and API, and [`-R`](#credential-redaction) to keep
+credentials out of the log.
 
 Normal HTTP writes have a 30-second budget beginning after any configured
 response delay. SSE writes have a renewable 10-second deadline and idle streams

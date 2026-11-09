@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **Edit fixture** in the admin UI's route inspector edits a route's `@fixture` JSON file as a tree (typed values; rename, add, duplicate and remove fields) or as text, and saves it through the new `GET`/`PUT /fixture` admin endpoint. Writes are limited to current routes' fixture files, must be valid JSON, are atomic, and are refused with `409` if the file changed since it was read. The next response uses the saved file.
+
+- The admin UI's primary buttons (**Send**, **Save**) now show their accent background instead of the plain button gradient.
+
+- Add browser-level admin UI tests (`make test-browser`, run in CI): headless Chrome, driven over the DevTools Protocol with no npm dependencies, checks layout at desktop and phone widths, dark mode, divider dragging, keyboard navigation and resend/compare against a running `mock`.
+
+- **Compare…** in the admin UI inspector shows two logged requests side by side: overview, query parameters and headers as tables, and the request and response bodies as a line diff (JSON compared with sorted keys), with a difference count and an **Only differences** toggle.
+
+- **Resend** in the admin UI inspector replays a logged request, optionally edited (method, path, headers, body), through the new `POST /resend` admin endpoint, which answers it in-process as if a client had sent it to the mock port. The new request is selected and marked **resent** (`resendOf` in the event).
+
+- Add `-R` (`--redact`) to mask credentials in the request log: credential-like headers (keeping the `Authorization` scheme and cookie names), query parameters, JSON string members and form fields become `[redacted]` in the admin UI, copies, HAR exports, `GET /requests`, the event stream, the request log line and `-r` recordings. Library users call `Server.SetRedact`.
+
+- Add `-t` (`--ui-token`, or `MOCK_UI_TOKEN`) to require a token for the admin UI and API: browsers open `/?token=TOKEN` once and get a same-site cookie; API clients send `Authorization: Bearer TOKEN`. Binding to all interfaces with a token no longer warns. Library users can wrap a handler with `ui.RequireToken`.
+
+- The admin UI's traffic filter understands `2xx`..`5xx`, `matched`, `unmatched`, method names and `route:Name`, combines terms, and excludes with `-term`. Clicking a route's hit count filters the traffic to the requests it answered.
+
+- **Copy as route** in the admin UI now also works on requests a route answered: the draft reuses that route's response and starts with a comment naming the route, as a starting point for a more specific variant.
+
 - Add `-e` (`--env`) to use a REST Client environment: variables come from `http-client.env.json` (with `http-client.private.env.json` overriding it) or `.vscode/settings.json` `rest-client.environmentVariables`, with `$shared` values and `{{$shared name}}` references. `-E` (`--env-file`) names another file. `mock validate` and `mock check` take `-env` and `-env-file`. Environment values fill in variables no `@name` defines.
 
 - Load more REST Client files: the name after `###` is optional (unnamed sections are named after `# @name` or their request line), a request may come before the first `###`, `//` lines are comments, an `HTTP/1.1` version on the request line is ignored, and a bare target is a `GET`. Request variables such as `{{login.response.body.$.token}}` and request settings such as `# @no-redirect` now get load warnings.

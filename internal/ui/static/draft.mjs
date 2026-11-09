@@ -1,5 +1,6 @@
-// Drafts a .http section from a captured request that no route matched, so an
-// unmatched request can be pasted into a request file as a starting point.
+// Drafts a .http section from a captured request, so a request can be pasted
+// into a request file as a starting point: a new route for a request no route
+// matched, or a more specific variant of the route that answered it.
 
 // The names @query.*, @form.* and @header.* accept (the .http variable name rule).
 const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
@@ -63,9 +64,12 @@ function inlineSafe(text) {
 // buildRouteDraft returns a .http section for a request event's request and
 // response. Matchers only require what the request had (fields present, not
 // their values), so the draft also answers similar requests. A response that
-// came from --upstream is used as the draft's response; otherwise it is a
-// placeholder 200 JSON body. mockPort is the default port; when it differs from
+// came from --upstream, or from the route that matched, is used as the draft's
+// response; otherwise it is a placeholder 200 JSON body. A matched request's
+// draft starts with a comment naming that route, since the draft only wins if
+// it is placed above it. mockPort is the default port; when it differs from
 // the port the request arrived on, the draft sets @port.
+// internal/cli/draft.go ports this for unmatched requests; keep them in step.
 export function buildRouteDraft(event, { mockPort = 0 } = {}) {
     const request = event?.request;
     if (!request?.method) throw new Error('This request has no captured method.');
@@ -74,9 +78,11 @@ export function buildRouteDraft(event, { mockPort = 0 } = {}) {
 
     const response = event.response || {};
     const upstreamBody = bodyText(response.body);
-    const useUpstream = usableUpstream(event);
+    const useUpstream = usableResponse(event);
     const status = useUpstream ? response.status : 200;
     lines.push(`### [${status}] ${request.method} ${routePath(path)}`);
+    const route = event.match?.route;
+    if (route) lines.push(`# Variant of "${route.name}" (${route.source}:${route.line}): place it above that route so it matches first.`);
 
     const port = requestPort(request.host);
     if (port && mockPort && port !== mockPort) lines.push(`@port = ${port}`);
@@ -88,7 +94,7 @@ export function buildRouteDraft(event, { mockPort = 0 } = {}) {
         const matchers = contentType.includes('x-www-form-urlencoded') ? formMatchers(requestBody) : jsonMatchers(requestBody);
         lines.push(...matchers);
     }
-    // Upstream bodies are served as captured, not as templates.
+    // Captured bodies are served as captured, not as templates.
     if (useUpstream && upstreamBody.includes('{{')) lines.push('@template = off');
     lines.push(`${request.method} ${routePath(path)}`);
 
@@ -105,8 +111,17 @@ export function buildRouteDraft(event, { mockPort = 0 } = {}) {
 // usableUpstream reports whether an event's response came from --upstream and
 // can be pasted as a draft's response.
 function usableUpstream(event) {
+    return Boolean(event.match?.upstream) && usableCapture(event);
+}
+
+// usableResponse also accepts the response of the route that matched.
+function usableResponse(event) {
+    return Boolean(event.match?.upstream || event.match?.route) && usableCapture(event);
+}
+
+function usableCapture(event) {
     const response = event.response || {};
-    return Boolean(event.match?.upstream) && response.status > 0 && !response.fault &&
+    return response.status > 0 && !response.fault &&
         !response.body?.encoding && !response.body?.truncated && inlineSafe(bodyText(response.body));
 }
 

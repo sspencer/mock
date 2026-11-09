@@ -55,28 +55,7 @@ and with the items above done they are the next thing to revisit.
 
 ### Admin UI
 
-- **Credential redaction:** optional redaction for diagnostic history, copied
-  requests, and exports. Current captures and Copy cURL include credentials.
-- **Browser-level UI tests:** the admin UI's logic is unit tested in Node
-  (`internal/ui/tests/`), but layout, theming and real browser interaction
-  (splitters, keyboard navigation, mobile views) have never been checked in a
-  real browser. Headless browser tests or screenshot checks would cover that.
-- **Filter traffic by route and status** (S): clicking a route's hit count
-  shows only the requests it answered, and the filter understands `4xx`,
-  `5xx`, `unmatched` and method names. Today the filter is plain text search.
-- **Resend a request** (S–M): replay a captured request from the inspector,
-  optionally edited. The UI is on the admin port and `mock` sends no CORS
-  headers, so the browser cannot call the mock port directly; the resend has
-  to go through an admin endpoint that issues the request server-side.
-- **Copy as route for matched requests** (S): start a new route from a request
-  an existing route answered, for example to add a more specific variant.
-- **Compare two requests** (S–M): a side-by-side diff of headers and bodies for
-  two selected requests, for "why did this one match and that one not".
-- **Admin access token** (S): `--ui-token` (or `MOCK_UI_TOKEN`) required by the
-  admin UI and API. Binding to `0.0.0.0` currently only prints a warning,
-  although captured requests can contain credentials. This is access control
-  on plain HTTP, not a step back toward TLS.
-- **Graphical fixture editing:** lower priority.
+(All Admin UI ideas are implemented; see below.)
 
 ### Tooling, distribution and docs
 
@@ -111,6 +90,27 @@ Recorded so these are not proposed again without a new reason:
   Client-style tool.
 
 ## Implemented from the original ideas
+
+- **Fixture editing:** **Edit fixture** in the route inspector edits a route's `@fixture` JSON as a tree or as text and saves it through `GET`/`PUT /fixture` (current routes' fixture files only, valid JSON, atomic, `409` on a concurrent change).
+
+- **Browser-level UI tests:** `make test-browser` (and CI) drives headless Chrome over the DevTools Protocol (`internal/ui/browser/cdp.mjs`, no npm dependencies) against a built `mock`: desktop and phone layouts, dark mode contrast, divider drag/keyboard/persistence, keyboard navigation, the help dialog, and resend/compare end to end.
+
+- **Compare two requests:** **Compare…** in the inspector picks request A, then **Compare with #N** shows A and B side by side: overview, query and header tables, and line diffs of the bodies (JSON with sorted keys), with a difference count that ignores timing (`compare.mjs`).
+
+- **Resend a request:** the inspector's **Resend** opens an editor (method, path, headers, body) and replays the request through `POST /resend`, which answers it in-process as if a client had sent it to the mock port; the new event is selected and marked **resent**.
+
+- **Credential redaction:** `-R` (`--redact`) masks credential-like headers, query parameters, JSON string members and form fields as `[redacted]` before a request is logged, so the admin UI, copies, HAR exports, `/requests`, the event stream and `-r` recordings never see them.
+
+- **Admin access token:** `-t`/`--ui-token` (or `MOCK_UI_TOKEN`) requires a
+  token for the admin UI and API (`ui.RequireToken`): a Bearer header, or a
+  cookie set by opening `/?token=`.
+
+- **Filter traffic by route and status:** the traffic filter takes status
+  classes, `matched`/`unmatched`, methods, `route:Name` and `-term`
+  (`filter.mjs`); a route's hit count filters to its requests.
+
+- **Copy as route for matched requests:** the draft reuses the matched
+  route's response and names the route it should go above.
 
 - **REST Client environments:** `-e NAME` reads `http-client.env.json` (and
   its private override) or VS Code `rest-client.environmentVariables`,
