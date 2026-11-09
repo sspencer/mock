@@ -68,8 +68,6 @@ and with the items above done they are the next thing to revisit.
   optionally edited. The UI is on the admin port and `mock` sends no CORS
   headers, so the browser cannot call the mock port directly; the resend has
   to go through an admin endpoint that issues the request server-side.
-- **Copy as route for matched requests** (S): start a new route from a request
-  an existing route answered, for example to add a more specific variant.
 - **Compare two requests** (S–M): a side-by-side diff of headers and bodies for
   two selected requests, for "why did this one match and that one not".
 - **Admin access token** (S): `--ui-token` (or `MOCK_UI_TOKEN`) required by the
@@ -111,6 +109,9 @@ Recorded so these are not proposed again without a new reason:
   Client-style tool.
 
 ## Implemented from the original ideas
+
+- **Copy as route for matched requests:** the draft reuses the matched
+  route's response and names the route it should go above.
 
 - **REST Client environments:** `-e NAME` reads `http-client.env.json` (and
   its private override) or VS Code `rest-client.environmentVariables`,

@@ -581,7 +581,10 @@ function renderInspector() {
         ? `${route.name} · ${route.source}:${route.line} · revision ${match.revision} · ${event.response.time}`
         : `${match?.upstream ? `Proxied to ${match.upstream} · no` : 'No'} matching route · revision ${match?.revision ?? '?'} · ${event.response.time}`;
     mismatchPanel.hidden = !!route;
-    copyRouteDraftButton.hidden = !!route;
+    copyRouteDraftButton.hidden = !!event.callback;
+    copyRouteDraftButton.title = route
+        ? `Copy a draft .http section for a more specific variant of ${route.name}`
+        : 'Copy a draft .http section that would answer this request';
     mismatchDetails.replaceChildren();
     if (!route) {
         const candidates = match?.candidates || [];

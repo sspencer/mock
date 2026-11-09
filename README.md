@@ -2042,8 +2042,8 @@ On narrow screens, selecting traffic or a route opens the inspector; use
   **proxied** in the table (the filter matches `proxied`), and the inspector
   names the URL they were sent to. [Webhook callbacks](#webhook-callbacks) are
   marked **callback**, with the route and request that sent them.
-- **Copy as route** appears on unmatched requests and copies a draft `.http`
-  section to paste into a request file. The draft has the request's method and
+- **Copy as route** copies a draft `.http` section to paste into a request
+  file. It appears on every request except callbacks. The draft has the request's method and
   path, and requires the fields the request had without fixing their values:
   `@query.name = *` for each query parameter, `@header.Authorization = *` when
   the request sent one, and `@json.key = *` (or `@form.name = *`) for each
@@ -2054,6 +2054,11 @@ On narrow screens, selecting traffic or a route opens the inspector; use
   proxied with `--upstream`, whose real status, `Content-Type` and body are
   used when the body can be pasted inline (with `@template = off` if it
   contains `{{`).
+- On a request a route answered, **Copy as route** starts a more specific
+  variant of that route: the draft reuses the response the route sent (as for
+  a proxied request) and begins with a `# Variant of "Name" (file:line)`
+  comment. Place it above that route, since the first matching route wins,
+  and tighten its matchers, such as `@query.page = 2` instead of `*`.
 - **Copy unmatched as routes**, above the traffic list, copies one draft
   section per distinct method and path among every unmatched request in the
   log, oldest first, so a session of traffic becomes a starting request file.

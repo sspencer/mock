@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Copy as route** in the admin UI now also works on requests a route answered: the draft reuses that route's response and starts with a comment naming the route, as a starting point for a more specific variant.
+
 - Add `-e` (`--env`) to use a REST Client environment: variables come from `http-client.env.json` (with `http-client.private.env.json` overriding it) or `.vscode/settings.json` `rest-client.environmentVariables`, with `$shared` values and `{{$shared name}}` references. `-E` (`--env-file`) names another file. `mock validate` and `mock check` take `-env` and `-env-file`. Environment values fill in variables no `@name` defines.
 
 - Load more REST Client files: the name after `###` is optional (unnamed sections are named after `# @name` or their request line), a request may come before the first `###`, `//` lines are comments, an `HTTP/1.1` version on the request line is ignored, and a bare target is a `GET`. Request variables such as `{{login.response.body.$.token}}` and request settings such as `# @no-redirect` now get load warnings.

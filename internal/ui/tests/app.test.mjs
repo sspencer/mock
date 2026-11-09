@@ -80,7 +80,8 @@ test('inspector toggles Pretty/Raw, shows match metadata, and copies original bo
  const row=element('requestTableBody').children[0];
  const key=new Event('keydown');Object.defineProperty(key,'target',{value:row});Object.defineProperty(key,'key',{value:'Enter'});element('requestTableBody').dispatchEvent(key);
  assert.match(element('matchSummary').textContent,/users.http:12 · revision 2/);
- assert.equal(element('copyRouteDraftButton').hidden,true);
+ assert.equal(element('copyRouteDraftButton').hidden,false);
+ assert.match(element('copyRouteDraftButton').title,/variant of User detail/);
  assert.ok(element('requestDetails').textContent.includes('\n  "name": "Alex"'));
  click('requestRaw');assert.ok(element('requestDetails').textContent.endsWith('{"name":"Alex"}'));
  let copied='';Object.defineProperty(globalThis,'navigator',{configurable:true,value:{clipboard:{writeText:async text=>{copied=text;}}}});
