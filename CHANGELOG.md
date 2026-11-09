@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Compare…** in the admin UI inspector shows two logged requests side by side: overview, query parameters and headers as tables, and the request and response bodies as a line diff (JSON compared with sorted keys), with a difference count and an **Only differences** toggle.
+
 - **Resend** in the admin UI inspector replays a logged request, optionally edited (method, path, headers, body), through the new `POST /resend` admin endpoint, which answers it in-process as if a client had sent it to the mock port. The new request is selected and marked **resent** (`resendOf` in the event).
 
 - Add `-R` (`--redact`) to mask credentials in the request log: credential-like headers (keeping the `Authorization` scheme and cookie names), query parameters, JSON string members and form fields become `[redacted]` in the admin UI, copies, HAR exports, `GET /requests`, the event stream, the request log line and `-r` recordings. Library users call `Server.SetRedact`.

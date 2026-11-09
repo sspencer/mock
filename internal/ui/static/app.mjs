@@ -5,7 +5,8 @@ import { attachSplitter, alignedTrafficHeight } from './layout.mjs';
 import { buildHAR } from './har.mjs';
 import { filterTerms, matchesFilter, routeFilter } from './filter.mjs';
 import { TrafficStream, requestHost, eventBadge } from './traffic.mjs';
-import { noSelection, selectRequest, selectRoute, selectedRequestId, selectedRoute, afterEventsChanged, afterRoutesLoaded } from './selection.mjs';
+import { noSelection, selectRequest, selectRoute, selectCompare, selectedRequestId, selectedRoute, afterEventsChanged, afterRoutesLoaded } from './selection.mjs';
+import { compareEvents, differenceCount } from './compare.mjs';
 
 const MAX_EVENTS = 1000;
 const MOCK_CONFIG = JSON.parse(document.getElementById("mock-config").textContent);
@@ -48,6 +49,12 @@ const copyRouteCurlButton = document.getElementById('copyRouteCurlButton');
 const matchSummary = document.getElementById('matchSummary');
 const exchangeView = document.getElementById('exchangeView');
 const routeView = document.getElementById('routeView');
+const compareView = document.getElementById('compareView');
+const compareTitle = document.getElementById('compareTitle');
+const compareSummary = document.getElementById('compareSummary');
+const compareDetails = document.getElementById('compareDetails');
+const compareButton = document.getElementById('compareButton');
+const compareOnlyDiffs = document.getElementById('compareOnlyDiffs');
 const routeDetails = document.getElementById('routeDetails');
 const copyNotice = document.getElementById('copyNotice');
 const copyCurlButton = document.getElementById('copyCurlButton');
@@ -79,6 +86,9 @@ let copyGeneration = 0;
 let resending = null;
 // pendingSelectId is a resent request to select once its event is shown.
 let pendingSelectId = null;
+// compareBase is the request picked as side A of a comparison.
+let compareBase = null;
+let compareDifferencesOnly = true;
 
 /** @type {Map<number, any>} */
 const eventsById = new Map();
@@ -191,9 +201,12 @@ source.onmessage = function (event) {
 
 // dropMissingSelection deselects a request that is no longer displayed.
 function dropMissingSelection(isDisplayed = (id) => eventsById.has(id)) {
-    const next = afterEventsChanged(selection, isDisplayed);
+    if (compareBase != null && !eventsById.has(compareBase)) compareBase = null;
+    const previous = selection;
+    const next = afterEventsChanged(selection, isDisplayed, (id) => eventsById.has(id));
     if (next === selection) return;
     selection = next;
+    if (previous.kind === 'compare') { renderInspector(); return; }
     updateDetail(requestDetails, '');
     updateDetail(responseDetails, '');
 }
@@ -564,7 +577,7 @@ function showInspector() {
 
 // On narrow screens the inspector replaces the list, so move focus to its heading.
 function focusInspectorOnMobile() {
-    if (window.matchMedia('(max-width: 900px)').matches) (selection.kind === 'route' ? routeTitle : requestTitle).focus();
+    if (window.matchMedia('(max-width: 900px)').matches) ({ route: routeTitle, compare: compareTitle }[selection.kind] || requestTitle).focus();
 }
 
 backToList.addEventListener('click', () => {
@@ -579,6 +592,7 @@ function resetInspector() {
     copyCurlButton.disabled = true;
     copyRouteDraftButton.hidden = true;
     resendButton.hidden = true;
+    compareButton.hidden = true;
     closeResend();
     mismatchPanel.hidden = true;
     copyNotice.textContent = '';
@@ -594,8 +608,13 @@ function routeCurl(route) {
 }
 
 function renderInspector() {
-    exchangeView.hidden = selection.kind === 'route';
+    exchangeView.hidden = selection.kind === 'route' || selection.kind === 'compare';
     routeView.hidden = selection.kind !== 'route';
+    compareView.hidden = selection.kind !== 'compare';
+    if (selection.kind === 'compare') {
+        renderComparison();
+        return;
+    }
     if (selection.kind === 'route') {
         const { route, stale } = selection;
         routeTitle.textContent = route.name || 'Route';
@@ -618,6 +637,7 @@ function renderInspector() {
     mismatchPanel.hidden = !!route;
     copyRouteDraftButton.hidden = !!event.callback;
     resendButton.hidden = !!event.callback;
+    updateCompareButton(event);
     if (resending && resending.id !== event.id) closeResend();
     copyRouteDraftButton.title = route
         ? `Copy a draft .http section for a more specific variant of ${route.name}`
@@ -679,6 +699,156 @@ copyRouteDraftButton.addEventListener('click', () => {
     try { copyText(buildRouteDraft(eventsById.get(selectedRequestId(selection)), { mockPort: MOCK_CONFIG.mockPort })); }
     catch (error) { copyNotice.textContent = error.message; }
 });
+// The Compare button picks side A, then compares A with the request shown.
+function updateCompareButton(event) {
+    compareButton.hidden = false;
+    if (compareBase == null) {
+        compareButton.textContent = 'Compare…';
+        compareButton.title = 'Pick this request as the first side of a comparison, then select another request';
+    } else if (compareBase === event.id) {
+        compareButton.textContent = 'Cancel compare';
+        compareButton.title = 'This request is picked for comparison; select another request to compare with it';
+    } else {
+        compareButton.textContent = `Compare with #${compareBase}`;
+        compareButton.title = `Show request #${compareBase} and this request side by side`;
+    }
+}
+
+compareButton.addEventListener('click', () => {
+    const id = selectedRequestId(selection);
+    if (id == null) return;
+    if (compareBase == null) {
+        compareBase = id;
+        copyNotice.textContent = `Request #${id} is picked. Select another request and choose Compare with #${id}.`;
+    } else if (compareBase === id) {
+        compareBase = null;
+        copyNotice.textContent = '';
+    } else {
+        selection = selectCompare(compareBase, id);
+        compareBase = null;
+        copyNotice.textContent = '';
+        renderInspector();
+        focusInspectorOnMobile();
+        return;
+    }
+    updateCompareButton(eventsById.get(id));
+});
+
+compareOnlyDiffs.addEventListener('click', () => {
+    compareDifferencesOnly = !compareDifferencesOnly;
+    renderComparison();
+});
+
+document.getElementById('compareSwap').addEventListener('click', () => {
+    if (selection.kind !== 'compare') return;
+    selection = selectCompare(selection.b, selection.a);
+    renderComparison();
+});
+
+document.getElementById('compareClose').addEventListener('click', () => {
+    if (selection.kind !== 'compare') return;
+    const id = selection.b;
+    const row = getDataRows().find(r => Number(r.dataset.id) === id);
+    if (row) { selectRow(row, eventsById.get(id)); return; }
+    selection = selectRequest(id);
+    renderInspector();
+});
+
+const valueText = (values) => values == null ? '—' : values.join('\n');
+
+// compareTable renders field rows as a three-column table. Unchanged rows
+// are left out when only differences are shown.
+function compareTable(title, rows, labelA, labelB) {
+    const shown = compareDifferencesOnly ? rows.filter(row => !row.same) : rows;
+    const section = document.createElement('section');
+    section.className = 'compare-section';
+    const heading = document.createElement('h3');
+    heading.textContent = title;
+    section.append(heading);
+    if (!shown.length) {
+        const empty = document.createElement('p');
+        empty.className = 'compare-empty';
+        empty.textContent = rows.length ? 'No differences.' : 'None.';
+        section.append(empty);
+        return section;
+    }
+    const table = document.createElement('table');
+    table.className = 'compare-table';
+    const head = table.insertRow();
+    for (const text of ['', labelA, labelB]) {
+        const th = document.createElement('th');
+        th.scope = 'col';
+        th.textContent = text;
+        head.appendChild(th);
+    }
+    for (const row of shown) {
+        const tr = table.insertRow();
+        tr.className = row.same ? 'same' : row.a == null ? 'added' : row.b == null ? 'removed' : 'changed';
+        const name = document.createElement('th');
+        name.scope = 'row';
+        name.textContent = row.name;
+        tr.appendChild(name);
+        tr.insertCell().textContent = valueText(row.a);
+        tr.insertCell().textContent = valueText(row.b);
+    }
+    section.append(table);
+    return section;
+}
+
+// compareBody renders a body comparison as a unified line diff.
+function compareBody(title, body) {
+    const section = document.createElement('section');
+    section.className = 'compare-section';
+    const heading = document.createElement('h3');
+    heading.textContent = title;
+    section.append(heading);
+    if (body.note) {
+        const note = document.createElement('p');
+        note.className = 'compare-empty';
+        note.textContent = body.note;
+        section.append(note);
+    }
+    if (!body.lines?.length || (body.same && compareDifferencesOnly)) {
+        if (!body.note) {
+            const same = document.createElement('p');
+            same.className = 'compare-empty';
+            same.textContent = 'No differences.';
+            section.append(same);
+        }
+        return section;
+    }
+    const pre = document.createElement('pre');
+    pre.className = 'detail-content compare-diff';
+    for (const line of body.lines) {
+        const span = document.createElement('span');
+        span.className = line.op === '-' ? 'diff-removed' : line.op === '+' ? 'diff-added' : 'diff-same';
+        span.textContent = `${line.op} ${line.text}\n`;
+        pre.appendChild(span);
+    }
+    section.append(pre);
+    return section;
+}
+
+function renderComparison() {
+    if (selection.kind !== 'compare') return;
+    const a = eventsById.get(selection.a), b = eventsById.get(selection.b);
+    if (!a || !b) return;
+    const labelA = `A · #${a.id}`, labelB = `B · #${b.id}`;
+    const comparison = compareEvents(a, b);
+    const count = differenceCount(comparison);
+    compareTitle.textContent = `Compare #${a.id} and #${b.id}`;
+    compareSummary.textContent = `A: ${a.request.method} ${a.request.url} · B: ${b.request.method} ${b.request.url} · ${count ? `${count} difference${count === 1 ? '' : 's'}` : 'no differences besides timing'}`;
+    compareOnlyDiffs.setAttribute('aria-pressed', String(compareDifferencesOnly));
+    compareDetails.replaceChildren(
+        compareTable('Overview', comparison.overview, labelA, labelB),
+        compareTable('Query parameters', comparison.query, labelA, labelB),
+        compareTable('Request headers', comparison.requestHeaders, labelA, labelB),
+        compareBody('Request body', comparison.requestBody),
+        compareTable('Response headers', comparison.responseHeaders, labelA, labelB),
+        compareBody('Response body', comparison.responseBody),
+    );
+}
+
 function closeResend() {
     resending = null;
     resendForm.hidden = true;

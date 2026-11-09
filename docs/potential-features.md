@@ -59,8 +59,6 @@ and with the items above done they are the next thing to revisit.
   (`internal/ui/tests/`), but layout, theming and real browser interaction
   (splitters, keyboard navigation, mobile views) have never been checked in a
   real browser. Headless browser tests or screenshot checks would cover that.
-- **Compare two requests** (S–M): a side-by-side diff of headers and bodies for
-  two selected requests, for "why did this one match and that one not".
 - **Graphical fixture editing:** lower priority.
 
 ### Tooling, distribution and docs
@@ -96,6 +94,8 @@ Recorded so these are not proposed again without a new reason:
   Client-style tool.
 
 ## Implemented from the original ideas
+
+- **Compare two requests:** **Compare…** in the inspector picks request A, then **Compare with #N** shows A and B side by side: overview, query and header tables, and line diffs of the bodies (JSON with sorted keys), with a difference count that ignores timing (`compare.mjs`).
 
 - **Resend a request:** the inspector's **Resend** opens an editor (method, path, headers, body) and replays the request through `POST /resend`, which answers it in-process as if a client had sent it to the mock port; the new event is selected and marked **resent**.
 

@@ -2162,6 +2162,17 @@ On narrow screens, selecting traffic or a route opens the inspector; use
   [Resending a request](#resending-a-request)) and selects the new request,
   marked **resent**. It appears on every request except callbacks and requests
   whose body was not captured completely. Binary bodies are resent unchanged.
+- **Compare…** picks the shown request as side A; select another request and
+  choose **Compare with #N** to see both side by side. The comparison lists
+  the method, host, path, status, route and revision, then query parameters,
+  request headers and response headers as tables, and the request and
+  response bodies as a line diff (`-` only in A, `+` only in B). JSON bodies
+  are compared with sorted keys, so key order and formatting don't count as
+  differences; binary bodies are only reported as identical or not. The
+  summary counts differences, ignoring timing and the `Date` header.
+  **Only differences** hides unchanged rows, **Swap** exchanges the sides, and
+  **Close** returns to request B. A comparison stays open while the filter
+  hides either request, until one leaves the log.
 - **Copy unmatched as routes**, above the traffic list, copies one draft
   section per distinct method and path among every unmatched request in the
   log, oldest first, so a session of traffic becomes a starting request file.

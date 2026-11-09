@@ -181,3 +181,25 @@ test('resend edits a request, posts it to the admin server and selects the new e
  assert.equal(element('resendForm').hidden,false);
  click('resendCancel');assert.equal(element('resendForm').hidden,true);
 });
+
+test('compare picks one request, compares it with another, swaps and closes', () => {
+ control('reset',0,'compare');
+ const a={...event(1,'compare'),request:{...event(1,'compare').request,url:'/users?page=1',headers:{Accept:['*/*']}}};
+ const b={...event(2,'compare'),request:{...event(2,'compare').request,url:'/users?page=2',headers:{Accept:['*/*']}},response:{...event(2,'compare').response,status:404,statusText:'Not Found'}};
+ source.onmessage({data:JSON.stringify(a)});source.onmessage({data:JSON.stringify(b)});flush();
+ element('filterInput').value='';element('filterInput').dispatchEvent(new Event('input'));flush();
+ const choose=id=>{const row=element('requestTableBody').children.find(r=>r.dataset.id===String(id));const key=new Event('keydown');Object.defineProperty(key,'target',{value:row});Object.defineProperty(key,'key',{value:'Enter'});element('requestTableBody').dispatchEvent(key);};
+ choose(1);
+ assert.equal(element('compareButton').hidden,false);assert.equal(element('compareButton').textContent,'Compare…');
+ click('compareButton');assert.equal(element('compareButton').textContent,'Cancel compare');
+ choose(2);assert.equal(element('compareButton').textContent,'Compare with #1');
+ click('compareButton');
+ assert.equal(element('compareView').hidden,false);assert.equal(element('exchangeView').hidden,true);
+ assert.equal(element('compareTitle').textContent,'Compare #1 and #2');
+ assert.match(element('compareSummary').textContent,/2 differences/);
+ click('compareSwap');assert.equal(element('compareTitle').textContent,'Compare #2 and #1');
+ click('compareOnlyDiffs');assert.equal(element('compareOnlyDiffs').getAttribute('aria-pressed'),'false');
+ click('compareClose');
+ assert.equal(element('compareView').hidden,true);assert.equal(element('exchangeView').hidden,false);
+ assert.equal(element('requestDetails').textContent.includes('request 1'),true);
+});

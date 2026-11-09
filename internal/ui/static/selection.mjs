@@ -4,19 +4,24 @@
 //   { kind: 'request', id }             a request-log event
 //   { kind: 'route', route, stale }     a configured route; stale once a reload
 //                                       drops its id (route ids include the revision)
+//   { kind: 'compare', a, b }           two request-log events side by side
 //
 // Transitions are pure so they can be unit tested without the page.
 export const noSelection = Object.freeze({ kind: 'none' });
 export const selectRequest = (id) => ({ kind: 'request', id });
 export const selectRoute = (route) => ({ kind: 'route', route, stale: false });
+export const selectCompare = (a, b) => ({ kind: 'compare', a, b });
 
 export const selectedRequestId = (selection) => selection.kind === 'request' ? selection.id : null;
 export const selectedRoute = (selection) => selection.kind === 'route' ? selection.route : null;
 
 // A selected request that is no longer displayed (evicted, cleared, filtered
-// out) deselects. Other selections are unaffected.
-export function afterEventsChanged(selection, isDisplayed) {
-    return selection.kind === 'request' && !isDisplayed(selection.id) ? noSelection : selection;
+// out) deselects. A comparison lasts while both events are still in the log
+// (exists), even if the filter hides them. Routes are unaffected.
+export function afterEventsChanged(selection, isDisplayed, exists = isDisplayed) {
+    if (selection.kind === 'request' && !isDisplayed(selection.id)) return noSelection;
+    if (selection.kind === 'compare' && !(exists(selection.a) && exists(selection.b))) return noSelection;
+    return selection;
 }
 
 // A selected route follows the freshly loaded list: it is replaced by the
