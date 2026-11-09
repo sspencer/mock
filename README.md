@@ -2119,13 +2119,16 @@ inspector. The editor has two views:
 - **JSON** is the file as text. **Format** indents it with two spaces.
   Invalid JSON is reported with its line and column, and must be fixed before
   switching back to the tree or saving. Fixtures with more than 2,000 values
-  open in this view only.
+  open in this view only, and so do files the tree would change on save:
+  integers beyond 2^53, numbers spelled differently from how JavaScript
+  writes them (`1.0`, `1e3`), a field name repeated in one object, or a
+  numeric field name (`"10"`) after other fields, which JavaScript would
+  move first. The editor says which.
 
 **Save** writes the file; fixtures are read for every response, so the next
 request uses it. A file saved after a tree edit is written as two-space
 indented JSON; a file saved from the JSON view is written exactly as typed.
-The tree holds numbers as JavaScript numbers, so integers beyond 2^53 lose
-precision there; edit such files in the JSON view. **Reload** discards edits
+**Reload** discards edits
 and reads the file again, and **Close** hides the editor and keeps the draft
 until another fixture is opened. Saving also triggers a hot reload (the
 fixture is watched), and the route stays selected.
@@ -2138,7 +2141,8 @@ returns the new `{"version"}`. A write is refused with `403` unless the file
 is the `@fixture` of a current route, `400` unless the content is one valid
 JSON value, `413` above 4 MiB, and `409` (with the current `version`) when
 the file changed since that version was read. The file is replaced
-atomically and keeps its permissions.
+atomically and keeps its permissions; a symlinked fixture has its target
+replaced and the link kept.
 
 ```sh
 curl -s -X PUT -H 'Content-Type: application/json' http://127.0.0.1:8081/fixture \

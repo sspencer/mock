@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    addChild, convertValue, countNodes, duplicateAt, formatFixture, getAt,
+    addChild, convertValue, countNodes, duplicateAt, formatFixture, getAt, losslessIssue,
     parseFixture, pathLabel, removeAt, renameAt, retype, setAt, valueType,
 } from '../static/fixture.mjs';
 
@@ -88,4 +88,15 @@ test('pathLabel names a path', () => {
     assert.equal(pathLabel([]), 'top level');
     assert.equal(pathLabel(['users', 0, 'name']), 'users[0].name');
     assert.equal(pathLabel([2, 'first name']), '[2]["first name"]');
+});
+
+test('losslessIssue flags data the tree view would rewrite', () => {
+    assert.equal(losslessIssue('{"a": [1, -2.5, 3e-7, "1.0", {"b": null}], "c": "x\\"y"}'), '');
+    assert.equal(losslessIssue('{"id": 12345678901234567890}'), 'The number 12345678901234567890 would be saved as 12345678901234567000.');
+    assert.match(losslessIssue('[1.0]'), /1\.0 would be saved as 1\b/);
+    assert.match(losslessIssue('[1e3]'), /1e3 would be saved as 1000/);
+    assert.match(losslessIssue('{"a": 1, "b": {"a": 2, "a": 3}}'), /"a" appears more than once/);
+    assert.match(losslessIssue('{"name": "x", "10": 1}'), /"10" would move to the front/);
+    assert.equal(losslessIssue('{"1": 1, "2": 2, "name": "x"}'), '');
+    assert.equal(losslessIssue('{"a": {"x": 1}, "b": {"x": 2}}'), '');
 });

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Edit fixture** in the admin UI's route inspector edits a route's `@fixture` JSON file as a tree (typed values; rename, add, duplicate and remove fields) or as text, and saves it through the new `GET`/`PUT /fixture` admin endpoint. Writes are limited to current routes' fixture files, must be valid JSON, are atomic, and are refused with `409` if the file changed since it was read. The next response uses the saved file.
+- **Edit fixture** in the admin UI's route inspector edits a route's `@fixture` JSON file as a tree (typed values; rename, add, duplicate and remove fields) or as text, and saves it through the new `GET`/`PUT /fixture` admin endpoint. Writes are limited to current routes' fixture files, must be valid JSON, are atomic (through a symlink, the target is replaced), and are refused with `409` if the file changed since it was read. Files the tree view would rewrite (integers beyond 2^53, numbers such as `1.0`, repeated or reordered field names) open in the JSON view and are saved as written. The next response uses the saved file.
 
 - The admin UI's primary buttons (**Send**, **Save**) now show their accent background instead of the plain button gradient.
 

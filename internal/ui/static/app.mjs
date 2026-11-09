@@ -7,7 +7,7 @@ import { filterTerms, matchesFilter, routeFilter } from './filter.mjs';
 import { TrafficStream, requestHost, eventBadge } from './traffic.mjs';
 import { noSelection, selectRequest, selectRoute, selectCompare, selectedRequestId, selectedRoute, afterEventsChanged, afterRoutesLoaded } from './selection.mjs';
 import { compareEvents, differenceCount } from './compare.mjs';
-import { countNodes, formatFixture, maxTreeNodes, parseFixture } from './fixture.mjs';
+import { countNodes, formatFixture, losslessIssue, maxTreeNodes, parseFixture } from './fixture.mjs';
 import { renderFixtureTree } from './fixturetree.mjs';
 
 const MAX_EVENTS = 1000;
@@ -966,6 +966,9 @@ copyRouteCurlButton.addEventListener('click', () => {
 const fixtureKey = (route) => `${route.source}\n${route.fixture}`;
 const isEditingFixture = (route) => !!(route.fixture && fixtureEdit?.open && fixtureEdit.key === fixtureKey(route));
 
+// treeRefusal explains why a fixture stays in the JSON view.
+const treeRefusal = (issue) => `${issue} The tree view would rewrite that, so edit this file as JSON; it is saved as written.`;
+
 function setFixtureStatus(message, kind = '') {
     fixtureStatus.textContent = message;
     fixtureStatus.classList.toggle('error', kind === 'error');
@@ -1003,15 +1006,20 @@ async function loadFixture(route) {
                 edit.mode = 'json';
                 edit.tooLarge = true;
                 status = [`This fixture has more than ${maxTreeNodes} values; edit it as JSON.`, ''];
+            } else if (losslessIssue(file.content)) {
+                edit.mode = 'json';
+                status = [treeRefusal(losslessIssue(file.content)), ''];
             } else {
                 edit.value = parsed.value;
             }
         }
+        // The editor and status always follow the newest load, even when
+        // another route was selected meanwhile, so going back to this route
+        // never shows a previous fixture's status.
         fixtureEdit = edit;
-        if (!isEditingFixture(selectedRoute(selection) || {})) return;
-        renderInspector();
         setFixtureStatus(...status);
         renderFixtureEditor();
+        if (isEditingFixture(selectedRoute(selection) || {})) renderInspector();
     } catch (error) {
         copyNotice.textContent = `Could not open the fixture: ${error.message}`;
     }
@@ -1068,6 +1076,8 @@ function setFixtureMode(mode) {
             setFixtureStatus(`This fixture has more than ${maxTreeNodes} values; edit it as JSON.`);
             return;
         }
+        const issue = losslessIssue(edit.text);
+        if (issue) { setFixtureStatus(treeRefusal(issue), 'error'); return; }
         edit.value = parsed.value;
         if (fixtureStatus.classList.contains('error')) setFixtureStatus(edit.dirty ? 'Unsaved changes.' : '');
     }

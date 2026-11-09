@@ -30,6 +30,62 @@ export function parseFixture(text) {
     }
 }
 
+// losslessIssue returns why parsing text and saving it with formatFixture
+// would change its data, or '' when it would not. JavaScript numbers lose
+// integers beyond 2^53 and the spelling of numbers such as 1.0 or 1e3,
+// objects put integer-like keys ("1", "20") first, and a repeated key keeps
+// only its last value. text must be valid JSON. The tree view refuses such
+// files so a save cannot silently rewrite them; the JSON view saves the text
+// as written.
+export function losslessIssue(text) {
+    const stack = [];
+    for (let i = 0; i < text.length;) {
+        const c = text[i];
+        if (c === '"') {
+            let j = i + 1;
+            while (j < text.length && text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
+            const top = stack[stack.length - 1];
+            if (top?.keys && top.expectKey) {
+                top.keys.push(JSON.parse(text.slice(i, j + 1)));
+                top.expectKey = false;
+            }
+            i = j + 1;
+            continue;
+        }
+        if (c === '-' || (c >= '0' && c <= '9')) {
+            let j = i;
+            while (j < text.length && /[-+.eE0-9]/.test(text[j])) j++;
+            const number = text.slice(i, j);
+            const saved = String(Number(number));
+            if (saved !== number) return `The number ${number} would be saved as ${saved}.`;
+            i = j;
+            continue;
+        }
+        if (c === '{') stack.push({ keys: [], expectKey: true });
+        else if (c === '[') stack.push({});
+        else if (c === ',' && stack[stack.length - 1]?.keys) stack[stack.length - 1].expectKey = true;
+        else if (c === '}' || c === ']') {
+            const issue = keyIssue(stack.pop().keys);
+            if (issue) return issue;
+        }
+        i++;
+    }
+    return '';
+}
+
+function keyIssue(keys) {
+    if (!keys) return '';
+    const seen = new Set();
+    for (const key of keys) {
+        if (seen.has(key)) return `The field "${key}" appears more than once; only its last value would be kept.`;
+        seen.add(key);
+    }
+    const order = Object.keys(Object.fromEntries(keys.map(key => [key, true])));
+    const moved = order.findIndex((key, index) => key !== keys[index]);
+    if (moved >= 0) return `The field "${order[moved]}" would move to the front of its object.`;
+    return '';
+}
+
 // formatFixture returns the text a fixture is saved as.
 export const formatFixture = (value) => JSON.stringify(value, null, 2) + '\n';
 
