@@ -2098,7 +2098,7 @@ curl -s -X POST -H 'Content-Type: application/json' http://127.0.0.1:8081/resend
 |-------|---------|
 | `method` | Request method (required) |
 | `url` | Path and query, starting with `/` (required) |
-| `host` | `Host` header; its port picks the mock port. Without a port, routes on every port can match |
+| `host` | `Host` header; its port picks the mock port. Without a port, or with a port no route is served on (a client behind a proxy), routes on every port can match |
 | `headers` | Request headers, `{"Name": ["value"]}`. `Host`, `Content-Length`, `Transfer-Encoding` and `Connection` are ignored |
 | `body` | Request body text, or base64 with `"encoding": "base64"` |
 | `from` | The event `id` this request was copied from |
