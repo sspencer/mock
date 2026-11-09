@@ -36,7 +36,10 @@ type config struct {
 	Bind             string
 	Port, AdminPort  int
 	Version, NoAdmin bool
-	Args             []string
+	// UIToken, when set, is required by the admin UI and API (-t, or
+	// MOCK_UI_TOKEN).
+	UIToken string
+	Args    []string
 	// Upstream receives requests no route matches (-u); nil answers 404.
 	Upstream *url.URL
 	// Record is the file that requests --upstream answered are appended to
@@ -89,6 +92,9 @@ flags:
                        MOCK_UI_PORT, else 8081, or random if -p or MOCK_PORT
                        is set)
   -x, --no-ui          do not start the admin UI
+  -t, --ui-token TOKEN require TOKEN for the admin UI and API: open the UI
+                       as /?token=TOKEN or send "Authorization: Bearer TOKEN"
+                       (default MOCK_UI_TOKEN)
   -b, --bind ADDR      bind address; use 0.0.0.0 for all interfaces
                        (default 127.0.0.1, or MOCK_BIND)
   -u, --upstream URL   forward requests no route matches to this http or
@@ -148,6 +154,9 @@ func parseConfig(args []string) (config, error) {
 	}
 	for _, name := range []string{"x", "no-ui"} {
 		flagSet.BoolVar(&cfg.NoAdmin, name, false, "")
+	}
+	for _, name := range []string{"t", "ui-token"} {
+		flagSet.StringVar(&cfg.UIToken, name, os.Getenv("MOCK_UI_TOKEN"), "")
 	}
 	for _, name := range []string{"b", "bind"} {
 		flagSet.StringVar(&cfg.Bind, name, bindDefault, "")
@@ -228,13 +237,20 @@ func parseConfig(args []string) (config, error) {
 	if cfg.AdminPort < 0 || cfg.AdminPort > 65535 {
 		return config{}, usageError("admin port must be between 0 and 65535")
 	}
-	var adminSet, portSet bool
+	var adminSet, portSet, tokenSet bool
 	flagSet.Visit(func(f *flag.Flag) {
 		adminSet = adminSet || f.Name == "a" || f.Name == "ui-port"
 		portSet = portSet || f.Name == "p" || f.Name == "port"
+		tokenSet = tokenSet || f.Name == "t" || f.Name == "ui-token"
 	})
 	if cfg.NoAdmin && adminSet {
 		return config{}, usageError("-a (--ui-port) and -x (--no-ui) cannot be used together")
+	}
+	if cfg.NoAdmin && tokenSet {
+		return config{}, usageError("-t (--ui-token) and -x (--no-ui) cannot be used together")
+	}
+	if tokenSet && strings.TrimSpace(cfg.UIToken) == "" {
+		return config{}, usageError("-t (--ui-token) must not be empty")
 	}
 	if !adminSet && !envAdminSet && (portSet || envPortSet) {
 		cfg.AdminPort = 0

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add `-t` (`--ui-token`, or `MOCK_UI_TOKEN`) to require a token for the admin UI and API: browsers open `/?token=TOKEN` once and get a same-site cookie; API clients send `Authorization: Bearer TOKEN`. Binding to all interfaces with a token no longer warns. Library users can wrap a handler with `ui.RequireToken`.
+
 - The admin UI's traffic filter understands `2xx`..`5xx`, `matched`, `unmatched`, method names and `route:Name`, combines terms, and excludes with `-term`. Clicking a route's hit count filters the traffic to the requests it answered.
 
 - **Copy as route** in the admin UI now also works on requests a route answered: the draft reuses that route's response and starts with a comment naming the route, as a starting point for a more specific variant.

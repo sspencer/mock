@@ -175,6 +175,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			closeAll()
 			return runError("admin server failed: %v", err)
 		}
+		adminHandler = ui.RequireToken(adminHandler, cfg.UIToken)
 		servers = append(servers, newHTTPServer(adminHandler))
 		listeners = append(listeners, adminListener)
 	}
@@ -182,8 +183,8 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if mockServer == nil {
 		logger.Info("starting static HTTP server", "addr", boundAddress(cfg.Bind, mockListeners[0]), "dir", input.StaticDir)
 	} else {
-		if adminHandler != nil && bindsAllInterfaces(cfg.Bind) {
-			fmt.Fprintln(stderr, "warning: bound to all interfaces; admin UI is unauthenticated and request logs may include Authorization headers and bodies")
+		if adminHandler != nil && bindsAllInterfaces(cfg.Bind) && cfg.UIToken == "" {
+			fmt.Fprintln(stderr, "warning: bound to all interfaces; admin UI is unauthenticated and request logs may include Authorization headers and bodies; set -t (--ui-token) to require a token")
 		}
 		if jsonLogs {
 			announceJSON(logger, cfg, mockListeners, adminListener, watchCloser != nil, input.Methods)
@@ -192,7 +193,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 				fmt.Fprintf(stdout, "starting mock HTTP server on %s\n", boundAddress(cfg.Bind, ln))
 			}
 			if adminHandler != nil {
-				fmt.Fprintf(stdout, "admin UI at http://%s/\n", boundAddress(cfg.Bind, adminListener))
+				fmt.Fprintf(stdout, "admin UI at http://%s/%s\n", boundAddress(cfg.Bind, adminListener), tokenNote(cfg.UIToken))
 			}
 			if cfg.Upstream != nil {
 				fmt.Fprintf(stdout, "forwarding unmatched requests to %s\n", cfg.Upstream)
@@ -266,13 +267,22 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 }
 
+// tokenNote marks the admin URL in the banner when it needs a token. The
+// token itself is not printed, so it stays out of logs.
+func tokenNote(token string) string {
+	if token == "" {
+		return ""
+	}
+	return " (token required: open /?token=TOKEN)"
+}
+
 // announceJSON writes the startup banner as log records for -l json.
 func announceJSON(logger *slog.Logger, cfg config, mockListeners []net.Listener, adminListener net.Listener, watching bool, methods []restclient.Method) {
 	for _, ln := range mockListeners {
 		logger.Info("starting mock HTTP server", "addr", boundAddress(cfg.Bind, ln))
 	}
 	if adminListener != nil {
-		logger.Info("admin UI", "url", "http://"+boundAddress(cfg.Bind, adminListener)+"/")
+		logger.Info("admin UI", "url", "http://"+boundAddress(cfg.Bind, adminListener)+"/", "token", cfg.UIToken != "")
 	}
 	if cfg.Upstream != nil {
 		logger.Info("forwarding unmatched requests", "upstream", cfg.Upstream.String())

@@ -67,10 +67,6 @@ and with the items above done they are the next thing to revisit.
   to go through an admin endpoint that issues the request server-side.
 - **Compare two requests** (S–M): a side-by-side diff of headers and bodies for
   two selected requests, for "why did this one match and that one not".
-- **Admin access token** (S): `--ui-token` (or `MOCK_UI_TOKEN`) required by the
-  admin UI and API. Binding to `0.0.0.0` currently only prints a warning,
-  although captured requests can contain credentials. This is access control
-  on plain HTTP, not a step back toward TLS.
 - **Graphical fixture editing:** lower priority.
 
 ### Tooling, distribution and docs
@@ -106,6 +102,10 @@ Recorded so these are not proposed again without a new reason:
   Client-style tool.
 
 ## Implemented from the original ideas
+
+- **Admin access token:** `-t`/`--ui-token` (or `MOCK_UI_TOKEN`) requires a
+  token for the admin UI and API (`ui.RequireToken`): a Bearer header, or a
+  cookie set by opening `/?token=`.
 
 - **Filter traffic by route and status:** the traffic filter takes status
   classes, `matched`/`unmatched`, methods, `route:Name` and `-term`

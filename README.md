@@ -247,6 +247,7 @@ Flags:
 | `-p`, `--port` | `8080`, or `MOCK_PORT` | Default HTTP port, for routes that do not declare a port (see [Multiple ports](#multiple-ports)) |
 | `-a`, `--ui-port` | `MOCK_UI_PORT`, else `8081`, or random if `-p` / `MOCK_PORT` is set | Admin UI port. `0` picks a random free port |
 | `-x`, `--no-ui` | (off) | Do not start the admin UI. Cannot be combined with `-a` |
+| `-t`, `--ui-token` | `MOCK_UI_TOKEN` | Require this token for the admin UI and API (see [Admin access token](#admin-access-token)). Cannot be combined with `-x` |
 | `-b`, `--bind` | `127.0.0.1`, or `MOCK_BIND` | Bind address. Use `0.0.0.0` to listen on all interfaces |
 | `-u`, `--upstream` | (off) | Forward requests no route matches to this `http` or `https` URL and return its response (see [Passing unmatched requests to a real API](#passing-unmatched-requests-to-a-real-api)) |
 | `-r`, `--record` | (off) | With `-u`, append a draft `.http` section to this file for each method and path the upstream answered (see [Recording forwarded requests](#recording-forwarded-requests)) |
@@ -1974,6 +1975,30 @@ The UI is served at the root of the admin port (`-a`, default `8081`):
 | `/routes` | `GET` route configuration, including source location, port, matchers, status, delay, body preview, and `hits` (requests answered) |
 | `/requests` | `GET` the request log as JSON, optionally filtered (see below) |
 
+### Admin access token
+
+The admin UI and API are open to anyone who can reach the admin port.
+`-t TOKEN` (`--ui-token`, or the `MOCK_UI_TOKEN` environment variable)
+requires a token for every admin page and endpoint:
+
+```sh
+MOCK_UI_TOKEN=$(openssl rand -hex 16) mock -b 0.0.0.0 api.http
+```
+
+- In a browser, open the UI once as `http://HOST:8081/?token=TOKEN`. `mock`
+  sets an HTTP-only, same-site cookie and redirects to the plain URL, so the
+  token leaves the address bar.
+- API clients send `Authorization: Bearer TOKEN` (or add `?token=TOKEN`):
+
+  ```sh
+  curl -H "Authorization: Bearer $MOCK_UI_TOKEN" http://127.0.0.1:8081/requests
+  ```
+
+Other requests get `401`. The banner says a token is required but does not
+print it. The mock ports are not affected. This is access control on plain
+HTTP: anyone who can read the traffic between you and `mock` can read the
+token too.
+
 Selecting a route shows a sample `curl` command for that route's port (the
 default mock port when the route declares none), ready to paste
 into a shell (**Copy cURL** copies it). The host is the one you used to open the
@@ -2119,8 +2144,10 @@ requests fall back to `GET` routes when no `HEAD` route matches (see
 routes. The admin
 UI rejects cross-origin clear requests.
 
-Binding to all interfaces (`-b 0.0.0.0`) prints a warning: the admin UI is
-unauthenticated and request logs may include `Authorization` headers and bodies.
+Binding to all interfaces (`-b 0.0.0.0`) without `-t` prints a warning: the
+admin UI is unauthenticated and request logs may include `Authorization`
+headers and bodies. Set an [admin access token](#admin-access-token) to
+require a token for the UI and API.
 
 Normal HTTP writes have a 30-second budget beginning after any configured
 response delay. SSE writes have a renewable 10-second deadline and idle streams
