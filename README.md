@@ -2018,6 +2018,23 @@ A test can assert what its code under test sent: `POST /clear` (with
 `X-Requested-With`) before the test, then read `/requests` after it. An
 invalid `matched`, `callbacks` or `since` value returns `400`.
 
+### Filtering traffic
+
+The filter above the traffic list keeps requests that match every term,
+separated by spaces (case does not matter):
+
+| Term | Keeps requests |
+|------|----------------|
+| `2xx`, `3xx`, `4xx`, `5xx` | with a status in that class |
+| `matched` / `unmatched` | a route answered, or none did (callbacks are neither) |
+| `get`, `POST`, ... | with this method |
+| `route:Users`, `route:"User detail"` | answered by the route with this name (quote names with spaces) |
+| anything else | whose method, URL, status, status text, label (`proxied`, `callback`) or fault contains it |
+
+A `-` in front excludes instead: `post -2xx` shows failed POSTs. Clicking a
+route's hit count in the routes list sets the filter to `route:"Name"`, and
+clicking it again clears the filter. Press `/` to focus the filter.
+
 ### Resizing and mobile navigation
 
 Drag the vertical divider to enlarge the traffic list or inspector. Horizontal

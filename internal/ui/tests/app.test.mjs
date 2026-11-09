@@ -111,7 +111,7 @@ test('routes open their configuration and copy a sample request', async () => {
  assert.equal(element('routeView').hidden,false);
  assert.match(element('routeDetails').textContent,/POST \/users/);
  assert.equal(element('routeTitle').textContent,'Create user');
- assert.equal(button.children.at(-1).textContent,'3');
+ assert.equal(button.parent.children.at(-1).textContent,'3');
  assert.match(element('routeDetails').textContent,/Matched: 3 requests/);
  assert.match(element('routeSummary').textContent,/users.http:1/);
  let copied='';Object.defineProperty(globalThis,'navigator',{configurable:true,value:{clipboard:{writeText:async text=>{copied=text;}}}});
@@ -130,4 +130,22 @@ test('request column hides the host on a single-port server',()=>{
  const spans=row.children[2].children;
  assert.equal(spans.length,2);assert.equal(spans[1].textContent,' /token');
  assert.equal(row.title,'GET /token · 1ms');
+});
+
+test('the filter understands status classes and route hit counts filter traffic',()=>{
+ control('reset',0,'filters');
+ const make=(id,status,routeName,method='GET')=>({...event(id,'filters'),request:{...event(id,'filters').request,method},response:{...event(id,'filters').response,status},match:routeName?{revision:1,route:{name:routeName}}:{revision:1}});
+ for(const e of [make(1,200,'Create user','POST'),make(2,404),make(3,500,'Boom'),make(4,201,'Create user','POST')])source.onmessage({data:JSON.stringify(e)});
+ flush();
+ const ids=()=>element('requestTableBody').children.map(r=>r.dataset.id).filter(Boolean);
+ const filter=text=>{element('filterInput').value=text;element('filterInput').dispatchEvent(new Event('input'));};
+ filter('4xx');assert.deepEqual(ids(),['2']);
+ filter('unmatched');assert.deepEqual(ids(),['2']);
+ filter('post -201');assert.deepEqual(ids(),['1']);
+ filter('');
+ const hits=element('routesList').children[0].children.at(-1);
+ hits.dispatchEvent(new Event('click'));
+ assert.equal(element('filterInput').value,'route:"Create user"');assert.deepEqual(ids(),['4','1']);
+ hits.dispatchEvent(new Event('click'));
+ assert.equal(element('filterInput').value,'');assert.equal(ids().length,4);
 });

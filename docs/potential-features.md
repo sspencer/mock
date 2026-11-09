@@ -61,9 +61,6 @@ and with the items above done they are the next thing to revisit.
   (`internal/ui/tests/`), but layout, theming and real browser interaction
   (splitters, keyboard navigation, mobile views) have never been checked in a
   real browser. Headless browser tests or screenshot checks would cover that.
-- **Filter traffic by route and status** (S): clicking a route's hit count
-  shows only the requests it answered, and the filter understands `4xx`,
-  `5xx`, `unmatched` and method names. Today the filter is plain text search.
 - **Resend a request** (S–M): replay a captured request from the inspector,
   optionally edited. The UI is on the admin port and `mock` sends no CORS
   headers, so the browser cannot call the mock port directly; the resend has
@@ -109,6 +106,10 @@ Recorded so these are not proposed again without a new reason:
   Client-style tool.
 
 ## Implemented from the original ideas
+
+- **Filter traffic by route and status:** the traffic filter takes status
+  classes, `matched`/`unmatched`, methods, `route:Name` and `-term`
+  (`filter.mjs`); a route's hit count filters to its requests.
 
 - **Copy as route for matched requests:** the draft reuses the matched
   route's response and names the route it should go above.

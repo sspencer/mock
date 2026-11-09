@@ -732,6 +732,12 @@ tbody tr[data-id]:focus-visible {
 .routes-list .route-hits {
     flex: 0 0 auto;
     min-width: 2ch;
+    margin-right: 8px;
+    padding: 2px 6px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
     color: var(--muted);
     font-family: var(--mono);
     font-size: 0.72rem;
@@ -739,6 +745,8 @@ tbody tr[data-id]:focus-visible {
     text-align: right;
 }
 .routes-list .route-hits.unused { opacity: 0.55; }
+.routes-list .route-hits:hover { background: var(--accent-softer); color: var(--accent); }
+.routes-list .route-hits:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 .routes-list .empty-state {
     justify-content: center;

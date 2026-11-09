@@ -2,6 +2,7 @@ import { formatMessage, bodyNotice, buildCurl, buildRouteCurl, formatRoute, hits
 import { buildRouteDraft, buildRouteDrafts } from './draft.mjs';
 import { attachSplitter, alignedTrafficHeight } from './layout.mjs';
 import { buildHAR } from './har.mjs';
+import { filterTerms, matchesFilter, routeFilter } from './filter.mjs';
 import { TrafficStream, requestHost, eventBadge } from './traffic.mjs';
 import { noSelection, selectRequest, selectRoute, selectedRequestId, selectedRoute, afterEventsChanged, afterRoutesLoaded } from './selection.mjs';
 
@@ -67,6 +68,7 @@ const eventsById = new Map();
 /** @type {number[]} newest-first ids */
 let eventOrder = [];
 let filterText = '';
+let filterParsed = [];
 const stream = new TrafficStream(MAX_EVENTS);
 let renderPending = false;
 const preferences = {
@@ -211,7 +213,7 @@ function selectRow(row, http) {
         r.setAttribute('aria-selected', isSelected ? 'true' : 'false');
         r.tabIndex = isSelected ? 0 : -1;
     }
-    for (const button of routesList.querySelectorAll('button')) button.setAttribute('aria-pressed', 'false');
+    for (const button of routesList.querySelectorAll('.route-button')) button.setAttribute('aria-pressed', 'false');
     returnFocus = row;
     showInspector();
     renderInspector();
@@ -362,10 +364,12 @@ helpDialog.addEventListener('click', (event) => {
     }
 });
 
-filterInput.addEventListener('input', () => {
-    filterText = filterInput.value.trim().toLowerCase();
+function setFilter(text) {
+    filterText = text.trim().toLowerCase();
+    filterParsed = filterTerms(filterText);
     renderTable();
-});
+}
+filterInput.addEventListener('input', () => setFilter(filterInput.value));
 
 document.addEventListener('keydown', (event) => {
     const typing = event.target.matches('input, textarea, [contenteditable="true"]');
@@ -425,7 +429,7 @@ function eventMatchesFilter(http) {
         eventBadge(http)?.text || '',
         http.response.fault ? `fault ${http.response.fault}` : '',
     ].join(' ').toLowerCase();
-    return hay.includes(filterText);
+    return matchesFilter(filterParsed, http, hay);
 }
 
 function renderTable() {
@@ -719,28 +723,37 @@ async function loadRoutes() {
             if (route.name) {
                 name.title = route.name;
             }
-            const hits = document.createElement('span');
+            // The hit count is its own button: it filters the traffic to the
+            // requests this route answered (again to clear the filter).
+            const hits = document.createElement('button');
+            hits.type = 'button';
             hits.className = 'route-hits';
             hits.classList.toggle('unused', !route.hits);
             hits.textContent = String(route.hits || 0);
-            hits.title = `Matched ${hitsLabel(route.hits)}`;
+            hits.title = `Matched ${hitsLabel(route.hits)}. Show only these requests`;
+            hits.setAttribute('aria-label', `Show the requests ${route.name} answered (${hitsLabel(route.hits)})`);
+            hits.addEventListener('click', () => {
+                const text = routeFilter(route.name);
+                filterInput.value = filterInput.value.trim() === text ? '' : text;
+                setFilter(filterInput.value);
+            });
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'route-button';
             button.setAttribute('aria-label', `${route.method} ${routePath}: ${route.name}, matched ${hitsLabel(route.hits)}`);
             button.setAttribute('aria-pressed', String(selectedRoute(selection)?.id === route.id));
-            button.append(method, path, name, hits);
+            button.append(method, path, name);
             button.addEventListener('click', () => {
                 selection = selectRoute(route);
                 returnFocus = button;
-                for (const item of routesList.querySelectorAll('button')) item.setAttribute('aria-pressed', String(item === button));
+                for (const item of routesList.querySelectorAll('.route-button')) item.setAttribute('aria-pressed', String(item === button));
                 for (const row of getDataRows()) row.classList.remove('selected');
                 syncRowTabindex();
                 showInspector();
                 renderInspector();
                 focusInspectorOnMobile();
             });
-            li.append(button);
+            li.append(button, hits);
             routesList.appendChild(li);
         }
     } catch (e) {
