@@ -917,7 +917,8 @@ Content-Type: application/json
   (`{{$fixture["site.name"]}}`). A string is inserted as its text, and other
   values as compact JSON, so `{{$fixture.featured.tags}}` copies an array.
 - The file is read for each response that uses it, so edits apply to the next
-  request. `mock` also watches it and reports problems on reload.
+  request. `mock` also watches it and reports problems on reload. The admin UI
+  can [edit it](#editing-fixtures).
 - A missing file, invalid JSON or a path with no value warns at load time and
   leaves the placeholder literal unless it has a `| default`.
 - Path segments are literal, so a fixture can't be indexed by a request value
@@ -1976,6 +1977,7 @@ The UI is served at the root of the admin port (`-a`, default `8081`):
 | `/routes` | `GET` route configuration, including source location, port, matchers, status, delay, body preview, and `hits` (requests answered) |
 | `/requests` | `GET` the request log as JSON, optionally filtered (see below) |
 | `/resend` | `POST` answers a request as if a client sent it to the mock port (see [Resending a request](#resending-a-request)) |
+| `/fixture` | `GET ?route=ID` reads a route's `@fixture` file; `PUT` writes it (see [Editing fixtures](#editing-fixtures)) |
 
 ### Admin access token
 
@@ -2040,7 +2042,7 @@ UI features: theme toggle, filter, pause stream, clear log,
 HAR export, a Help dialog, and a routes panel that refreshes after hot-reload.
 When `mock` listens on more than one port, the request table shows each
 request's host and port, and routes are labeled with their port.
-The `/clear`, `/reload` and `/resend` POST endpoints require an `X-Requested-With` header
+The `/clear`, `/reload` and `/resend` POST endpoints and `PUT /fixture` require an `X-Requested-With` header
 or a JSON `Content-Type`, and reject cross-origin and cross-site requests.
 
 ### Reading the request log
@@ -2097,6 +2099,47 @@ curl -s -X POST -H 'Content-Type: application/json' http://127.0.0.1:8081/resend
 Invalid input returns `400`. With [`-R`](#credential-redaction), logged
 credentials are `[redacted]`, so a resent copy carries that text unless you
 edit it.
+
+### Editing fixtures
+
+A route with [`@fixture`](#fixture-data) shows **Edit fixture** in the route
+inspector. The editor has two views:
+
+- **Tree** shows the JSON as rows you can expand and collapse. Each value has
+  a type (string, number, boolean, null, object or array) and an editor for
+  it; changing the type converts the value where it can (`42` becomes `"42"`).
+  Field names can be renamed in place, **+** adds a field to an object (or a
+  copy of the last item to an array), **⧉** duplicates an array item and
+  **×** removes a value. Edits apply when a field loses focus or Enter is
+  pressed.
+- **JSON** is the file as text. **Format** indents it with two spaces.
+  Invalid JSON is reported with its line and column, and must be fixed before
+  switching back to the tree or saving. Fixtures with more than 2,000 values
+  open in this view only.
+
+**Save** writes the file; fixtures are read for every response, so the next
+request uses it. A file saved after a tree edit is written as two-space
+indented JSON; a file saved from the JSON view is written exactly as typed.
+The tree holds numbers as JavaScript numbers, so integers beyond 2^53 lose
+precision there; edit such files in the JSON view. **Reload** discards edits
+and reads the file again, and **Close** hides the editor and keeps the draft
+until another fixture is opened. Saving also triggers a hot reload (the
+fixture is watched), and the route stays selected.
+
+`GET /fixture?route=ID` takes a route `id` from `/routes` and returns
+`{"file", "fixture", "content", "version"}`: the absolute path, the path as
+the route wrote it, the file's text, and a version (`""` when the file does
+not exist yet). `PUT /fixture` takes `{"file", "content", "version"}` and
+returns the new `{"version"}`. A write is refused with `403` unless the file
+is the `@fixture` of a current route, `400` unless the content is one valid
+JSON value, `413` above 4 MiB, and `409` (with the current `version`) when
+the file changed since that version was read. The file is replaced
+atomically and keeps its permissions.
+
+```sh
+curl -s -X PUT -H 'Content-Type: application/json' http://127.0.0.1:8081/fixture \
+  -d '{"file":"/srv/api/data/catalog.json","content":"{\"featured\":{}}\n","version":"<version from GET>"}'
+```
 
 ### Filtering traffic
 
@@ -2173,6 +2216,8 @@ On narrow screens, selecting traffic or a route opens the inspector; use
   **Only differences** hides unchanged rows, **Swap** exchanges the sides, and
   **Close** returns to request B. A comparison stays open while the filter
   hides either request, until one leaves the log.
+- **Edit fixture**, on a route with `@fixture`, edits its JSON file as a tree
+  or as text and saves it (see [Editing fixtures](#editing-fixtures)).
 - **Copy unmatched as routes**, above the traffic list, copies one draft
   section per distinct method and path among every unmatched request in the
   log, oldest first, so a session of traffic becomes a starting request file.

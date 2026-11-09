@@ -41,7 +41,8 @@ let source;globalThis.EventSource=class extends EventTarget{constructor(){super(
 const frames=[];globalThis.requestAnimationFrame=fn=>frames.push(fn);
 const realInterval=globalThis.setInterval;globalThis.setInterval=()=>0;
 let posted=[]; let postedBodies=[]; let resendReply={ok:true,id:0}; let routesData=[]; let stateData={revision:1,routeCount:0,lastSuccess:'2026-09-06T00:00:00Z'};
-globalThis.fetch=async(url,options)=>{if(options?.method==='POST'){posted.push(url);postedBodies.push(options.body);}if(url==='resend')return {ok:resendReply.ok,status:resendReply.ok?200:400,text:async()=>'bad request',json:async()=>({id:resendReply.id})};return {ok:true,headers:{get:name=>name==='X-Mock-Session'?'two':'500'},json:async()=>url==='state'?stateData:routesData};};
+let fixtureFetch=null;
+globalThis.fetch=async(url,options)=>{if(String(url).startsWith('fixture'))return fixtureFetch(url,options);if(options?.method==='POST'){posted.push(url);postedBodies.push(options.body);}if(url==='resend')return {ok:resendReply.ok,status:resendReply.ok?200:400,text:async()=>'bad request',json:async()=>({id:resendReply.id})};return {ok:true,headers:{get:name=>name==='X-Mock-Session'?'two':'500'},json:async()=>url==='state'?stateData:routesData};};
 await import('../static/app.mjs');
 globalThis.setInterval=realInterval;
 const flush=()=>{while(frames.length)frames.shift()();};
@@ -202,4 +203,63 @@ test('compare picks one request, compares it with another, swaps and closes', ()
  click('compareClose');
  assert.equal(element('compareView').hidden,true);assert.equal(element('exchangeView').hidden,false);
  assert.equal(element('requestDetails').textContent.includes('request 1'),true);
+});
+test('the fixture editor edits a route fixture as a tree or JSON and saves it', async () => {
+ const tick=()=>new Promise(resolve=>setImmediate(resolve));
+ const route={id:'4:0',revision:4,name:'List users',method:'GET',path:'/users',port:8080,source:'users.http',line:7,status:200,fixture:'users.json',headers:{},matchHeaders:{},variables:{},hits:0};
+ const puts=[];let putReply={status:200,body:{version:'v2'}};
+ fixtureFetch=async(url,options)=>{
+  if(options?.method==='PUT'){puts.push(JSON.parse(options.body));return {ok:putReply.status===200,status:putReply.status,json:async()=>putReply.body,text:async()=>putReply.body.error};}
+  assert.equal(url,'fixture?route=4%3A0');
+  return {ok:true,status:200,json:async()=>({file:'/srv/users.json',fixture:'users.json',content:'{"name":"Ada","count":1,"tags":["a"]}',version:'v1'})};
+ };
+ routesData=[route];click('refreshRoutesButton');await tick();
+ element('routesList').querySelector('button').dispatchEvent(new Event('click'));
+ assert.equal(element('editFixtureButton').hidden,false);
+ assert.equal(element('fixtureEditor').hidden,true);
+ click('editFixtureButton');await tick();
+ assert.equal(element('fixtureEditor').hidden,false);
+ assert.equal(element('routeDetails').hidden,true);
+ assert.equal(element('fixtureFile').textContent,'users.json');
+ const inputs=()=>element('fixtureTree').querySelectorAll('input');
+ assert.deepEqual(inputs().map(input=>input.value),['name','Ada','count','1','tags','a']);
+ const change=(input,value)=>{input.value=value;input.dispatchEvent(new Event('change'));};
+ change(inputs()[1],'Grace');
+ assert.equal(element('fixtureStatus').textContent,'Unsaved changes.');
+ change(inputs()[3],'abc');
+ assert.match(element('fixtureStatus').textContent,/count: Enter a number/);
+ assert.equal(element('fixtureStatus').classes.has('error'),true);
+ change(inputs()[2],'name');
+ assert.match(element('fixtureStatus').textContent,/already a field named "name"/);
+ element('fixtureTree').querySelectorAll('button').find(button=>button.title==='Duplicate tags[0]').dispatchEvent(new Event('click'));
+ assert.deepEqual(inputs().map(input=>input.value),['name','Grace','count','1','tags','a','a']);
+ click('fixtureJsonTab');
+ assert.equal(element('fixtureText').hidden,false);
+ assert.equal(element('fixtureText').value,'{\n  "name": "Grace",\n  "count": 1,\n  "tags": [\n    "a",\n    "a"\n  ]\n}\n');
+ element('fixtureText').value='{"name": ';element('fixtureText').dispatchEvent(new Event('input'));
+ click('fixtureTreeTab');
+ assert.match(element('fixtureStatus').textContent,/^Invalid JSON at line 1/);
+ assert.equal(element('fixtureTreeTab').getAttribute('aria-pressed'),'false');
+ element('fixtureText').value='{"name":"Lin"}';element('fixtureText').dispatchEvent(new Event('input'));
+ click('fixtureFormat');
+ assert.equal(element('fixtureText').value,'{\n  "name": "Lin"\n}\n');
+ click('fixtureSave');await tick();
+ assert.deepEqual(puts.at(-1),{file:'/srv/users.json',content:'{\n  "name": "Lin"\n}\n',version:'v1'});
+ assert.match(element('fixtureStatus').textContent,/^Saved/);
+ putReply={status:409,body:{error:'the file changed on disk since it was opened; reload it to see the changes',version:'v9'}};
+ click('fixtureSave');await tick();
+ assert.equal(puts.at(-1).version,'v2');
+ assert.match(element('fixtureStatus').textContent,/^Not saved: the file changed on disk.*edits are kept/);
+ // The save reloads the routes; the edited route stays selected and open.
+ routesData=[{...route,id:'5:0',revision:5}];click('refreshRoutesButton');await tick();
+ assert.doesNotMatch(element('routeSummary').textContent,/previous revision/);
+ assert.equal(element('fixtureEditor').hidden,false);
+ click('fixtureClose');
+ assert.equal(element('fixtureEditor').hidden,true);
+ assert.equal(element('routeDetails').hidden,false);
+ // Reopening resumes the draft instead of reading the file again.
+ fixtureFetch=async()=>{throw new Error('unexpected read');};
+ click('editFixtureButton');await tick();
+ assert.equal(element('fixtureEditor').hidden,false);
+ assert.equal(element('fixtureText').value,'{\n  "name": "Lin"\n}\n');
 });

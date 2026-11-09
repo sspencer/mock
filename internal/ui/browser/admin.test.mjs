@@ -39,6 +39,13 @@ POST /users
 Content-Type: application/json
 
 {"created": "{{$json.name}}"}
+
+### Team
+@fixture = team.json
+GET /team
+Content-Type: application/json
+
+{"lead": "{{$fixture.lead}}", "size": {{$fixture.size}}}
 `;
 
 let workdir, mock, browser, mockURL, adminURL, mockLog = '';
@@ -71,6 +78,7 @@ before(async () => {
         if (built.status !== 0) throw new Error(`go build failed:\n${built.stderr}`);
     }
     writeFileSync(join(workdir, 'api.http'), routes);
+    writeFileSync(join(workdir, 'team.json'), '{"lead": "Ada", "size": 3}\n');
     const [port, adminPort] = [await freePort(), await freePort()];
     mockURL = `http://127.0.0.1:${port}`;
     adminURL = `http://127.0.0.1:${adminPort}/`;
@@ -131,7 +139,7 @@ const visible = (selector) => {
 uiTest('desktop layout shows traffic, routes and inspector side by side', { width: 1280, height: 800 }, async (page) => {
     await traffic(['GET', '/users'], ['POST', '/users', { name: 'Ada' }], ['GET', '/nope']);
     await page.waitFor(() => document.querySelectorAll('#requestTableBody tr[data-id]').length === 3, { message: 'three rows' });
-    await page.waitFor(() => document.querySelectorAll('#routesList li').length === 3, { message: 'three routes' });
+    await page.waitFor(() => document.querySelectorAll('#routesList li').length === 4, { message: 'four routes' });
     const layout = await page.evaluate((boxSource) => {
         const box = eval(boxSource);
         return { traffic: box('#requestPanel'), routes: box('#routesPanel'), inspector: box('#inspectorPanel'), scroll: document.documentElement.scrollWidth, width: innerWidth };
@@ -295,4 +303,46 @@ uiTest('resend and compare round-trip through the running server', { width: 1280
     assert.equal(comparison.fills, true, 'the comparison fills the inspector');
     await page.click('#compareClose');
     assert.equal(await page.evaluate(() => document.getElementById('compareView').hidden), true);
+});
+
+uiTest('the fixture editor saves a route fixture that the next response uses', { width: 1280, height: 900 }, async (page) => {
+    await page.waitFor(() => [...document.querySelectorAll('#routesList button')].some(button => /\/team/.test(button.textContent)), { message: 'the Team route is listed' });
+    await page.evaluate(() => [...document.querySelectorAll('#routesList button')].find(button => /\/team/.test(button.textContent)).id ||= 'teamRoute');
+    await page.click('#teamRoute');
+    await page.click('#editFixtureButton');
+    await page.waitFor(() => document.querySelector('#fixtureTree input[aria-label="Value of lead"]'), { message: 'the tree shows the fixture' });
+    const layout = await page.evaluate(() => ({
+        details: document.getElementById('routeDetails').hidden,
+        fills: document.getElementById('fixtureEditor').getBoundingClientRect().height > 400,
+        overflow: document.getElementById('fixtureTree').scrollWidth > document.getElementById('fixtureTree').clientWidth,
+    }));
+    assert.deepEqual(layout, { details: true, fills: true, overflow: false });
+
+    await page.click('#fixtureTree input[aria-label="Value of lead"]');
+    await page.evaluate(() => document.activeElement.select());
+    await page.type('Linus');
+    await page.press('Tab');
+    await page.waitFor(() => document.getElementById('fixtureStatus').textContent === 'Unsaved changes.', { message: 'the edit is pending' });
+    await page.evaluate(() => {
+        const size = document.querySelector('#fixtureTree select[aria-label="Type of size"]');
+        size.value = 'string';
+        size.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.click('#fixtureSave');
+    await page.waitFor(() => /^Saved/.test(document.getElementById('fixtureStatus').textContent), { message: 'the fixture saves' });
+
+    const response = await (await fetch(mockURL + '/team')).text();
+    assert.match(response, /"lead": "Linus"/);
+    assert.match(response, /"size": 3\b/, 'size renders unquoted from the template; the fixture now holds "3"');
+
+    // The save reloads the routes; the route stays selected with the editor open.
+    await page.waitFor(async () => {
+        const state = await (await fetch('state')).json();
+        return state.revision > 1;
+    }, { message: 'the routes reload' });
+    await page.waitFor(() => !/previous revision/.test(document.getElementById('routeSummary').textContent) && !document.getElementById('fixtureEditor').hidden, { message: 'the edited route stays selected', timeout: 8000 });
+
+    await page.click('#fixtureJsonTab');
+    const text = await page.evaluate(() => document.getElementById('fixtureText').value);
+    assert.equal(text, '{\n  "lead": "Linus",\n  "size": "3"\n}\n');
 });

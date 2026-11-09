@@ -7,6 +7,8 @@ import { filterTerms, matchesFilter, routeFilter } from './filter.mjs';
 import { TrafficStream, requestHost, eventBadge } from './traffic.mjs';
 import { noSelection, selectRequest, selectRoute, selectCompare, selectedRequestId, selectedRoute, afterEventsChanged, afterRoutesLoaded } from './selection.mjs';
 import { compareEvents, differenceCount } from './compare.mjs';
+import { countNodes, formatFixture, maxTreeNodes, parseFixture } from './fixture.mjs';
+import { renderFixtureTree } from './fixturetree.mjs';
 
 const MAX_EVENTS = 1000;
 const MOCK_CONFIG = JSON.parse(document.getElementById("mock-config").textContent);
@@ -56,6 +58,18 @@ const compareDetails = document.getElementById('compareDetails');
 const compareButton = document.getElementById('compareButton');
 const compareOnlyDiffs = document.getElementById('compareOnlyDiffs');
 const routeDetails = document.getElementById('routeDetails');
+const editFixtureButton = document.getElementById('editFixtureButton');
+const fixtureEditor = document.getElementById('fixtureEditor');
+const fixtureFile = document.getElementById('fixtureFile');
+const fixtureTreeTab = document.getElementById('fixtureTreeTab');
+const fixtureJsonTab = document.getElementById('fixtureJsonTab');
+const fixtureFormat = document.getElementById('fixtureFormat');
+const fixtureRevert = document.getElementById('fixtureRevert');
+const fixtureSave = document.getElementById('fixtureSave');
+const fixtureClose = document.getElementById('fixtureClose');
+const fixtureStatus = document.getElementById('fixtureStatus');
+const fixtureTree = document.getElementById('fixtureTree');
+const fixtureText = document.getElementById('fixtureText');
 const copyNotice = document.getElementById('copyNotice');
 const copyCurlButton = document.getElementById('copyCurlButton');
 if (MOCK_CONFIG.redact) {
@@ -89,6 +103,10 @@ let pendingSelectId = null;
 // compareBase is the request picked as side A of a comparison.
 let compareBase = null;
 let compareDifferencesOnly = true;
+// fixtureEdit is the fixture being edited (see openFixture). It outlives the
+// editor being closed or another route being selected, so a draft is kept
+// until another fixture is opened.
+let fixtureEdit = null;
 
 /** @type {Map<number, any>} */
 const eventsById = new Map();
@@ -623,6 +641,12 @@ function renderInspector() {
             : `Configured route · revision ${route.revision} · ${route.source}:${route.line}`;
         routeDetails.textContent = formatRoute(route, routeCurl(route));
         copyRouteCurlButton.disabled = !routePort(route);
+        const editing = isEditingFixture(route);
+        editFixtureButton.hidden = !route.fixture;
+        editFixtureButton.disabled = stale && !editing;
+        editFixtureButton.setAttribute('aria-pressed', String(editing));
+        fixtureEditor.hidden = !editing;
+        routeDetails.hidden = editing;
         return;
     }
     const event = eventsById.get(selectedRequestId(selection));
@@ -931,6 +955,200 @@ copyRouteCurlButton.addEventListener('click', () => {
     if (command) copyText(command);
 });
 
+// ---------- Fixture editor ----------
+//
+// fixtureEdit is { key, file, fixture, version, mode: 'tree' | 'json', value,
+// text, textStale, dirty, open, saving, tooLarge, toggled }. In tree mode the
+// value is the source of truth; in JSON mode the text is. textStale marks
+// text that no longer reflects value (a tree edit was made), so the original
+// formatting is kept until the tree changes something.
+
+const fixtureKey = (route) => `${route.source}\n${route.fixture}`;
+const isEditingFixture = (route) => !!(route.fixture && fixtureEdit?.open && fixtureEdit.key === fixtureKey(route));
+
+function setFixtureStatus(message, kind = '') {
+    fixtureStatus.textContent = message;
+    fixtureStatus.classList.toggle('error', kind === 'error');
+    fixtureStatus.classList.toggle('ok', kind === 'ok');
+}
+
+async function openFixture(route) {
+    if (fixtureEdit?.key === fixtureKey(route)) {
+        fixtureEdit.open = true;
+        renderInspector();
+        renderFixtureEditor();
+        return;
+    }
+    await loadFixture(route);
+}
+
+async function loadFixture(route) {
+    const key = fixtureKey(route);
+    try {
+        const res = await fetch(`fixture?route=${encodeURIComponent(route.id)}`, { signal: AbortSignal.timeout(5000) });
+        if (!res.ok) throw new Error((await res.text()).trim() || `status ${res.status}`);
+        const file = await res.json();
+        const edit = { key, file: file.file, fixture: file.fixture, version: file.version, mode: 'tree', value: null, text: file.content, textStale: false, dirty: false, open: true, saving: false, tooLarge: false, toggled: new Set() };
+        let status = ['', ''];
+        if (!file.version) {
+            edit.value = {};
+            edit.text = formatFixture({});
+            status = ['The file does not exist yet; Save creates it.', ''];
+        } else {
+            const parsed = parseFixture(file.content);
+            if (parsed.error) {
+                edit.mode = 'json';
+                status = [`${parsed.error}. Fix it in the JSON view.`, 'error'];
+            } else if (countNodes(parsed.value) > maxTreeNodes) {
+                edit.mode = 'json';
+                edit.tooLarge = true;
+                status = [`This fixture has more than ${maxTreeNodes} values; edit it as JSON.`, ''];
+            } else {
+                edit.value = parsed.value;
+            }
+        }
+        fixtureEdit = edit;
+        if (!isEditingFixture(selectedRoute(selection) || {})) return;
+        renderInspector();
+        setFixtureStatus(...status);
+        renderFixtureEditor();
+    } catch (error) {
+        copyNotice.textContent = `Could not open the fixture: ${error.message}`;
+    }
+}
+
+function renderFixtureEditor() {
+    const edit = fixtureEdit;
+    if (!edit) return;
+    const tree = edit.mode === 'tree';
+    fixtureFile.textContent = edit.fixture;
+    fixtureFile.title = edit.file;
+    fixtureTreeTab.setAttribute('aria-pressed', String(tree));
+    fixtureJsonTab.setAttribute('aria-pressed', String(!tree));
+    fixtureTreeTab.disabled = edit.tooLarge;
+    fixtureTree.hidden = !tree;
+    fixtureText.hidden = tree;
+    fixtureFormat.disabled = tree;
+    fixtureSave.disabled = edit.saving;
+    if (tree) {
+        renderFixtureTree(fixtureTree, edit.value, {
+            toggled: edit.toggled,
+            onChange: changeFixtureValue,
+            onError: (message) => setFixtureStatus(message, 'error'),
+        });
+    } else if (fixtureText.value !== edit.text) {
+        fixtureText.value = edit.text;
+    }
+}
+
+function markFixtureDirty() {
+    fixtureEdit.dirty = true;
+    setFixtureStatus('Unsaved changes.');
+}
+
+function changeFixtureValue(value) {
+    if (value !== fixtureEdit.value) {
+        fixtureEdit.value = value;
+        fixtureEdit.textStale = true;
+        markFixtureDirty();
+    }
+    renderFixtureEditor();
+}
+
+function setFixtureMode(mode) {
+    const edit = fixtureEdit;
+    if (!edit || edit.mode === mode) return;
+    if (mode === 'json') {
+        if (edit.textStale) edit.text = formatFixture(edit.value);
+        edit.textStale = false;
+    } else {
+        const parsed = parseFixture(edit.text);
+        if (parsed.error) { setFixtureStatus(parsed.error, 'error'); return; }
+        if (countNodes(parsed.value) > maxTreeNodes) {
+            setFixtureStatus(`This fixture has more than ${maxTreeNodes} values; edit it as JSON.`);
+            return;
+        }
+        edit.value = parsed.value;
+        if (fixtureStatus.classList.contains('error')) setFixtureStatus(edit.dirty ? 'Unsaved changes.' : '');
+    }
+    edit.mode = mode;
+    renderFixtureEditor();
+}
+
+async function saveFixture() {
+    const edit = fixtureEdit;
+    if (!edit || edit.saving) return;
+    let content = edit.text;
+    if (edit.mode === 'tree') {
+        if (edit.textStale) content = formatFixture(edit.value);
+    } else {
+        const parsed = parseFixture(content);
+        if (parsed.error) { setFixtureStatus(parsed.error, 'error'); return; }
+    }
+    edit.saving = true;
+    setFixtureStatus('Saving…');
+    renderFixtureEditor();
+    try {
+        const res = await fetch('fixture', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body: JSON.stringify({ file: edit.file, content, version: edit.version }),
+            signal: AbortSignal.timeout(10000),
+        });
+        if (res.status === 409) {
+            const reply = await res.json();
+            if (fixtureEdit === edit) setFixtureStatus(`Not saved: ${reply.error}. Your edits are kept; Reload discards them.`, 'error');
+            return;
+        }
+        if (!res.ok) throw new Error((await res.text()).trim() || `status ${res.status}`);
+        const reply = await res.json();
+        edit.version = reply.version;
+        edit.text = content;
+        edit.textStale = false;
+        edit.dirty = false;
+        if (fixtureEdit === edit) setFixtureStatus('Saved. The next response uses it.', 'ok');
+    } catch (error) {
+        if (fixtureEdit === edit) setFixtureStatus(`Not saved: ${error.message}`, 'error');
+    } finally {
+        edit.saving = false;
+        if (fixtureEdit === edit) renderFixtureEditor();
+    }
+}
+
+editFixtureButton.addEventListener('click', () => {
+    const route = selectedRoute(selection);
+    if (!route?.fixture) return;
+    if (isEditingFixture(route)) { fixtureEdit.open = false; renderInspector(); return; }
+    openFixture(route);
+});
+fixtureTreeTab.addEventListener('click', () => setFixtureMode('tree'));
+fixtureJsonTab.addEventListener('click', () => setFixtureMode('json'));
+fixtureText.addEventListener('input', () => {
+    if (!fixtureEdit) return;
+    fixtureEdit.text = fixtureText.value;
+    markFixtureDirty();
+});
+fixtureFormat.addEventListener('click', () => {
+    if (!fixtureEdit) return;
+    const parsed = parseFixture(fixtureEdit.text);
+    if (parsed.error) { setFixtureStatus(parsed.error, 'error'); return; }
+    const text = formatFixture(parsed.value);
+    if (text !== fixtureEdit.text) { fixtureEdit.text = text; markFixtureDirty(); }
+    renderFixtureEditor();
+});
+fixtureRevert.addEventListener('click', () => {
+    const route = selectedRoute(selection);
+    if (!route || !fixtureEdit) return;
+    loadFixture(route);
+});
+fixtureSave.addEventListener('click', saveFixture);
+fixtureClose.addEventListener('click', () => {
+    if (!fixtureEdit) return;
+    fixtureEdit.open = false;
+    renderInspector();
+    editFixtureButton.focus();
+});
+
 function renderEmptyState(message) {
     requestTableBody.replaceChildren();
     const row = requestTableBody.insertRow();
@@ -953,7 +1171,9 @@ async function loadRoutes() {
         if (routesJSON === lastRoutesJSON) return;
         lastRoutesJSON = routesJSON;
         if (selection.kind === 'route') {
-            selection = afterRoutesLoaded(selection, routes);
+            // Saving a fixture reloads the routes; keep the edited route selected.
+            const route = selection.route;
+            selection = afterRoutesLoaded(selection, routes, fixtureEdit?.key === fixtureKey(route) ? route : null);
             renderInspector();
         }
         routeCount.textContent = String(routes.length).padStart(2, '0');

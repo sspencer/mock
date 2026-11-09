@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Edit fixture** in the admin UI's route inspector edits a route's `@fixture` JSON file as a tree (typed values; rename, add, duplicate and remove fields) or as text, and saves it through the new `GET`/`PUT /fixture` admin endpoint. Writes are limited to current routes' fixture files, must be valid JSON, are atomic, and are refused with `409` if the file changed since it was read. The next response uses the saved file.
+
+- The admin UI's primary buttons (**Send**, **Save**) now show their accent background instead of the plain button gradient.
+
 - Add browser-level admin UI tests (`make test-browser`, run in CI): headless Chrome, driven over the DevTools Protocol with no npm dependencies, checks layout at desktop and phone widths, dark mode, divider dragging, keyboard navigation and resend/compare against a running `mock`.
 
 - **Compare…** in the admin UI inspector shows two logged requests side by side: overview, query parameters and headers as tables, and the request and response bodies as a line diff (JSON compared with sorted keys), with a difference count and an **Only differences** toggle.

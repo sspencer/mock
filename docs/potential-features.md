@@ -55,7 +55,7 @@ and with the items above done they are the next thing to revisit.
 
 ### Admin UI
 
-- **Graphical fixture editing:** lower priority.
+(All Admin UI ideas are implemented; see below.)
 
 ### Tooling, distribution and docs
 
@@ -90,6 +90,8 @@ Recorded so these are not proposed again without a new reason:
   Client-style tool.
 
 ## Implemented from the original ideas
+
+- **Fixture editing:** **Edit fixture** in the route inspector edits a route's `@fixture` JSON as a tree or as text and saves it through `GET`/`PUT /fixture` (current routes' fixture files only, valid JSON, atomic, `409` on a concurrent change).
 
 - **Browser-level UI tests:** `make test-browser` (and CI) drives headless Chrome over the DevTools Protocol (`internal/ui/browser/cdp.mjs`, no npm dependencies) against a built `mock`: desktop and phone layouts, dark mode contrast, divider drag/keyboard/persistence, keyboard navigation, the help dialog, and resend/compare end to end.
 

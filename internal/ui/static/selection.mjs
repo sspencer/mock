@@ -25,10 +25,14 @@ export function afterEventsChanged(selection, isDisplayed, exists = isDisplayed)
 }
 
 // A selected route follows the freshly loaded list: it is replaced by the
-// route with the same id, or kept (for display) and marked stale.
-export function afterRoutesLoaded(selection, routes) {
+// route with the same id, or kept (for display) and marked stale. With
+// follow ({ source, line, name }), a route whose id changed is replaced by
+// the route at that place instead: saving a fixture reloads the routes, and
+// the route being edited should stay selected.
+export function afterRoutesLoaded(selection, routes, follow = null) {
     if (selection.kind !== 'route') return selection;
-    const current = routes.find(route => route.id === selection.route.id);
+    const current = routes.find(route => route.id === selection.route.id)
+        || (follow && routes.find(route => route.source === follow.source && route.line === follow.line && route.name === follow.name));
     if (current) return selectRoute(current);
     return selection.stale ? selection : { ...selection, stale: true };
 }

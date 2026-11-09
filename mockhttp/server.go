@@ -44,6 +44,8 @@ type Server struct {
 	requestHook atomic.Pointer[func(RequestEvent)]
 	// redact masks credentials in request events (SetRedact).
 	redact atomic.Bool
+	// fixtureMu serializes PUT /fixture version checks and writes.
+	fixtureMu sync.Mutex
 	// limiters holds the @rate-limit state of each route, by routeKey.
 	limiters map[string]*rateLimiter
 	limitMu  sync.Mutex
