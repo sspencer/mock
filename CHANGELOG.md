@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## v0.5.0 - 2026-11-08
+
+Work with real APIs and richer responses: forward unmatched requests upstream, record or import traffic as routes, check mocks for drift, and serve fixtures, callbacks, streams, faults, rate limits and compression. The admin UI gains resend, compare, fixture editing, filtering, an access token and credential redaction. This release has breaking changes; see below.
+
+- **Breaking:** `@stream`, `@fault`, `@seed`, `@template` and `@trim` are now control variables, not `{{name}}` variables, and invalid values are load errors. A `|` inside a `{{$...}}` placeholder now starts a filter, and `{{#repeat` and `{{/repeat}}` are now block tags. A `< path` containing `{{...}}` is now a templated path rather than a literal file name.
 
 - **Edit fixture** in the admin UI's route inspector edits a route's `@fixture` JSON file as a tree (typed values; rename, add, duplicate and remove fields) or as text, and saves it through the new `GET`/`PUT /fixture` admin endpoint. Writes are limited to current routes' fixture files, must be valid JSON, are atomic (through a symlink, the target is replaced), and are refused with `409` if the file changed since it was read. Files the tree view would rewrite (integers beyond 2^53, numbers such as `1.0`, repeated or reordered field names) open in the JSON view and are saved as written. The next response uses the saved file.
 
@@ -105,7 +109,6 @@
 - Add `@fault = reset` and `@fault = truncate`, optionally applied to a share of requests (`@fault = reset 25%`). Request events carry `response.fault`, and the admin UI shows a reset as `RST`. Routes report `stream` and `fault`, and a delay range as `"100ms..800ms"`.
 - Add `@template = auto|on|off` to choose whether placeholders are expanded in a body file, or to serve a body and headers exactly as written.
 - Add `@trim = off` to keep an inline body exactly as written, including its line endings and trailing blank lines.
-- **Breaking:** `@stream`, `@fault`, `@seed`, `@template` and `@trim` are now control variables, not `{{name}}` variables, and invalid values are load errors. A `|` inside a `{{$...}}` placeholder now starts a filter, and `{{#repeat` and `{{/repeat}}` are now block tags. A `< path` containing `{{...}}` is now a templated path rather than a literal file name.
 
 ## v0.4.0 - 2026-11-06
 
