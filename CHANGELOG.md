@@ -14,7 +14,7 @@
 
 - Add `-R` (`--redact`) to mask credentials in the request log: credential-like headers (keeping the `Authorization` scheme and cookie names), query parameters, JSON members (whatever their type) and form fields become `[redacted]` in the admin UI, copies, HAR exports, `GET /requests`, the event stream and the request log line, and `@callback` URLs are masked in callback events and log lines. `-r` recordings keep the real values so recorded routes replay. Library users call `Server.SetRedact`; `Server.SetRequestHook` still gets the real event.
 
-- Add `-t` (`--ui-token`, or `MOCK_UI_TOKEN`) to require a token for the admin UI and API: browsers open `/?token=TOKEN` once and get a same-site cookie; API clients send `Authorization: Bearer TOKEN`. Binding to all interfaces with a token no longer warns. Library users can wrap a handler with `ui.RequireToken`.
+- Add `-t` (`--ui-token`, or `MOCK_UI_TOKEN`) to require a token for the admin UI and API: browsers open `/?token=TOKEN` once and get a same-site cookie holding a digest of the token; API clients send `Authorization: Bearer TOKEN` (any case of `Bearer`). Spaces around the token are ignored. Binding to all interfaces with a token no longer warns. Library users can wrap a handler with `ui.RequireToken`.
 
 - The admin UI's traffic filter understands `2xx`..`5xx`, `matched`, `unmatched`, method names and `route:Name`, combines terms, and excludes with `-term`. Clicking a route's hit count filters the traffic to the requests it answered.
 

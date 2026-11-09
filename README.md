@@ -1983,7 +1983,8 @@ The UI is served at the root of the admin port (`-a`, default `8081`):
 
 The admin UI and API are open to anyone who can reach the admin port.
 `-t TOKEN` (`--ui-token`, or the `MOCK_UI_TOKEN` environment variable)
-requires a token for every admin page and endpoint:
+requires a token for every admin page and endpoint (spaces around it, such
+as a trailing newline read from a file, are ignored):
 
 ```sh
 MOCK_UI_TOKEN=$(openssl rand -hex 16) mock -b 0.0.0.0 api.http
@@ -1991,8 +1992,10 @@ MOCK_UI_TOKEN=$(openssl rand -hex 16) mock -b 0.0.0.0 api.http
 
 - In a browser, open the UI once as `http://HOST:8081/?token=TOKEN`. `mock`
   sets an HTTP-only, same-site cookie and redirects to the plain URL, so the
-  token leaves the address bar.
-- API clients send `Authorization: Bearer TOKEN` (or add `?token=TOKEN`):
+  token leaves the address bar. The cookie holds a SHA-256 digest of the
+  token, not the token itself.
+- API clients send `Authorization: Bearer TOKEN` (the scheme in any case) or
+  add `?token=TOKEN`:
 
   ```sh
   curl -H "Authorization: Bearer $MOCK_UI_TOKEN" http://127.0.0.1:8081/requests
