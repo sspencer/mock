@@ -2008,9 +2008,10 @@ token too.
 The request log keeps what clients sent, including `Authorization` headers,
 cookies and passwords in bodies. `-R` (`--redact`) masks credentials before a
 request is logged, so the admin UI, **Copy cURL**, **Copy as route**, HAR
-exports, `GET /requests`, the event stream, the request log line and `-r`
-recordings never see them. Responses are sent unchanged and matching always
-uses the real request. A value is masked as `[redacted]` when its name looks
+exports, `GET /requests`, the event stream and the request and `@callback`
+log lines never see them. Responses are sent unchanged, and matching and
+[`-r`](#recording-forwarded-requests) recordings always use the real request, so recorded routes
+replay what was sent. A value is masked as `[redacted]` when its name looks
 like a credential: it contains `token`, `secret`, `passw`, `apikey`,
 `authorization`, `credential`, `cookie`, `signature`, `session` or
 `privatekey`, or is `auth`, `key`, `sig`, `pwd`, `jwt`, `otp` or `pin`
@@ -2020,8 +2021,11 @@ like a credential: it contains `token`, `secret`, `passw`, `apikey`,
   the cookie names, and `Set-Cookie` keeps its attributes. Other
   credential-like headers, such as `X-Api-Key`, are masked whole.
 - Query parameters, such as `?access_token=[redacted]`.
-- String members of JSON bodies, such as `"password": "[redacted]"`, at any
-  depth, and fields of URL-encoded forms. Other bodies are logged as sent.
+- Members of JSON bodies, such as `"password": "[redacted]"`, at any depth.
+  The whole value is masked, whether it is a string, a number, `true`, `null`,
+  an object or an array. Fields of URL-encoded forms too. Other bodies are
+  logged as sent.
+- Query parameters in the URL of a `@callback` request and in its error.
 - Values that near-miss explanations quote for those names.
 
 Redaction is a guard against accidental sharing, not a guarantee: a secret in

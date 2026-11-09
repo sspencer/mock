@@ -1,6 +1,7 @@
 package mockhttp
 
 import (
+	"encoding/json"
 	"mime"
 	"net/http"
 	"net/url"
@@ -13,9 +14,9 @@ const redactedValue = "[redacted]"
 
 // SetRedact turns credential redaction on or off for request events recorded
 // from now on (--redact). Redaction masks credential-like header, cookie,
-// query, JSON and form values in the request log, the event stream, the
-// request hook and the request log line. Matching always sees the real
-// request.
+// query, JSON and form values in the request log, the event stream and the
+// request and callback log lines. Matching and the request hook always see
+// the real request.
 func (s *Server) SetRedact(on bool) {
 	s.redact.Store(on)
 }
@@ -61,6 +62,16 @@ func redactEvent(event RequestEvent) RequestEvent {
 	response.Headers = redactHeaders(response.Headers)
 	response.Body = redactEventBody(response.Body, firstHeader(event.Response.Headers, "Content-Type"))
 	response.Details = redactDetails(response.Details, false)
+	if event.Callback != nil {
+		// A failed callback's error, and the details that repeat it, can quote
+		// the callback URL.
+		info := *event.Callback
+		info.Error = redactURLsInText(info.Error)
+		event.Callback = &info
+		if info.Error != "" {
+			response.Details = redactURLsInText(response.Details)
+		}
+	}
 	event.Response = response
 
 	if len(event.Match.Candidates) > 0 {
@@ -146,6 +157,17 @@ func redactURL(raw string) string {
 	return base + "?" + redactPairs(query, "&") + fragment
 }
 
+// urlInText finds absolute URLs in free text, such as an error message.
+var urlInText = regexp.MustCompile(`[A-Za-z][A-Za-z0-9+.-]*://[^\s"'<>]+`)
+
+// redactURLsInText masks sensitive query values in every URL in text.
+func redactURLsInText(text string) string {
+	if !strings.Contains(text, "://") {
+		return text
+	}
+	return urlInText.ReplaceAllStringFunc(text, redactURL)
+}
+
 // redactPairs masks sensitive values in name=value pairs joined by sep, as
 // in a query string or a URL-encoded form.
 func redactPairs(text, sep string) string {
@@ -171,13 +193,11 @@ func redactPairs(text, sep string) string {
 	return strings.Join(pairs, sep)
 }
 
-// jsonStringMember finds "name": "value" members in JSON text.
-var jsonStringMember = regexp.MustCompile(`"((?:[^"\\]|\\.)*)"(\s*:\s*)"(?:[^"\\]|\\.)*"`)
-
-// redactBody masks sensitive JSON string members and URL-encoded form
-// values. Other bodies are returned unchanged. A body with no media type or
-// text/plain (what a route without Content-Type sends) is treated as JSON when
-// it starts like JSON. JSON is rewritten in place so its formatting is kept.
+// redactBody masks the values of sensitive JSON members (strings, numbers,
+// literals, objects and arrays alike) and URL-encoded form values. Other
+// bodies are returned unchanged. A body with no media type or text/plain
+// (what a route without Content-Type sends) is treated as JSON when it starts
+// like JSON. JSON is rewritten in place so its formatting is kept.
 func redactBody(text, contentType string) string {
 	if text == "" {
 		return text
@@ -187,15 +207,115 @@ func redactBody(text, contentType string) string {
 	case media == "application/x-www-form-urlencoded":
 		return redactPairs(text, "&")
 	case media == "application/json" || strings.HasSuffix(media, "+json") || (media == "" || media == "text/plain") && looksLikeJSON(text):
-		return jsonStringMember.ReplaceAllStringFunc(text, func(member string) string {
-			parts := jsonStringMember.FindStringSubmatch(member)
-			if !sensitiveName(parts[1]) {
-				return member
-			}
-			return `"` + parts[1] + `"` + parts[2] + `"` + redactedValue + `"`
-		})
+		return redactJSON(text)
 	}
 	return text
+}
+
+// redactJSON replaces the value of every member with a sensitive name with
+// "[redacted]". It scans the text rather than decoding it, so formatting is
+// kept and a truncated body is still masked up to its end.
+func redactJSON(text string) string {
+	var out strings.Builder
+	last := 0
+	for i := 0; i < len(text); {
+		if text[i] != '"' {
+			i++
+			continue
+		}
+		end := jsonStringEnd(text, i)
+		if end < 0 {
+			break
+		}
+		colon := skipJSONSpace(text, end)
+		if colon < len(text) && text[colon] == ':' && sensitiveName(jsonStringText(text[i:end])) {
+			start := skipJSONSpace(text, colon+1)
+			if stop := jsonValueEnd(text, start); stop > start {
+				out.WriteString(text[last:start])
+				out.WriteString(`"` + redactedValue + `"`)
+				last, i = stop, stop
+				continue
+			}
+		}
+		i = end
+	}
+	if last == 0 {
+		return text
+	}
+	out.WriteString(text[last:])
+	return out.String()
+}
+
+// jsonStringEnd returns the index just past the string starting at text[i]
+// (a quote), or -1 when it is not terminated.
+func jsonStringEnd(text string, i int) int {
+	for j := i + 1; j < len(text); j++ {
+		switch text[j] {
+		case '\\':
+			j++
+		case '"':
+			return j + 1
+		}
+	}
+	return -1
+}
+
+// jsonStringText decodes a quoted JSON string, or returns it unquoted as is.
+func jsonStringText(quoted string) string {
+	var value string
+	if json.Unmarshal([]byte(quoted), &value) == nil {
+		return value
+	}
+	return strings.Trim(quoted, `"`)
+}
+
+func skipJSONSpace(text string, i int) int {
+	for i < len(text) && (text[i] == ' ' || text[i] == '\t' || text[i] == '\n' || text[i] == '\r') {
+		i++
+	}
+	return i
+}
+
+// jsonValueEnd returns the index just past the JSON value starting at
+// text[i], or len(text) when the value runs to the end of a truncated body.
+func jsonValueEnd(text string, i int) int {
+	if i >= len(text) {
+		return i
+	}
+	switch text[i] {
+	case '"':
+		if end := jsonStringEnd(text, i); end >= 0 {
+			return end
+		}
+		return len(text)
+	case '{', '[':
+		depth := 0
+		for j := i; j < len(text); j++ {
+			switch text[j] {
+			case '"':
+				end := jsonStringEnd(text, j)
+				if end < 0 {
+					return len(text)
+				}
+				j = end - 1
+			case '{', '[':
+				depth++
+			case '}', ']':
+				depth--
+				if depth == 0 {
+					return j + 1
+				}
+			}
+		}
+		return len(text)
+	case ',', '}', ']', ':':
+		return i
+	}
+	j := i
+	for j < len(text) && !strings.ContainsRune(", \t\n\r}]", rune(text[j])) {
+		j++
+	}
+	return j
 }
 
 func looksLikeJSON(text string) bool {

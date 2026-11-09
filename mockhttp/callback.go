@@ -193,9 +193,13 @@ func (s *Server) sendCallback(p pendingCallback) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	attrs := []any{"method", p.method, "url", p.url, "trigger", p.trigger, "duration", elapsed}
+	target, errorText := p.url, event.Callback.Error
+	if s.redact.Load() {
+		target, errorText = redactURL(target), redactURLsInText(errorText)
+	}
+	attrs := []any{"method", p.method, "url", target, "trigger", p.trigger, "duration", elapsed}
 	if err != nil {
-		logger.Warn("callback failed", append(attrs, "error", event.Callback.Error)...)
+		logger.Warn("callback failed", append(attrs, "error", errorText)...)
 		return
 	}
 	logger.Info("callback sent", append(attrs, "status", response.StatusCode)...)

@@ -12,7 +12,7 @@
 
 - **Resend** in the admin UI inspector replays a logged request, optionally edited (method, path, headers, body), through the new `POST /resend` admin endpoint, which answers it in-process as if a client had sent it to the mock port. The new request is selected and marked **resent** (`resendOf` in the event).
 
-- Add `-R` (`--redact`) to mask credentials in the request log: credential-like headers (keeping the `Authorization` scheme and cookie names), query parameters, JSON string members and form fields become `[redacted]` in the admin UI, copies, HAR exports, `GET /requests`, the event stream, the request log line and `-r` recordings. Library users call `Server.SetRedact`.
+- Add `-R` (`--redact`) to mask credentials in the request log: credential-like headers (keeping the `Authorization` scheme and cookie names), query parameters, JSON members (whatever their type) and form fields become `[redacted]` in the admin UI, copies, HAR exports, `GET /requests`, the event stream and the request log line, and `@callback` URLs are masked in callback events and log lines. `-r` recordings keep the real values so recorded routes replay. Library users call `Server.SetRedact`; `Server.SetRequestHook` still gets the real event.
 
 - Add `-t` (`--ui-token`, or `MOCK_UI_TOKEN`) to require a token for the admin UI and API: browsers open `/?token=TOKEN` once and get a same-site cookie; API clients send `Authorization: Bearer TOKEN`. Binding to all interfaces with a token no longer warns. Library users can wrap a handler with `ui.RequireToken`.
 

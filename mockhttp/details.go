@@ -148,16 +148,18 @@ func readRequestBody(r *http.Request) (loggedBody, requestBody) {
 
 // logRequest records a handled request and returns its event ID.
 func (s *Server) logRequest(r *http.Request, requestBody loggedBody, response *responseCapture, status int, methodName string, arrivedAt time.Time, elapsed time.Duration) uint64 {
-	event := s.redactEvent(newRequestEvent(r, requestBody, response, status, arrivedAt, elapsed))
+	event := newRequestEvent(r, requestBody, response, status, arrivedAt, elapsed)
 	resend := resendStateOf(r)
 	if resend != nil {
 		from := resend.from
 		event.ResendOf = &from
 	}
-	id := s.publishRequest(event)
+	id := s.publishRequest(s.redactEvent(event))
 	if resend != nil {
 		resend.id = id
 	}
+	// The hook gets the real request: -r turns it into routes, and a
+	// "[redacted]" matcher or response would not replay what was recorded.
 	if hook := s.requestHook.Load(); hook != nil {
 		event.ID, event.Session = id, s.session
 		(*hook)(event)
