@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add browser-level admin UI tests (`make test-browser`, run in CI): headless Chrome, driven over the DevTools Protocol with no npm dependencies, checks layout at desktop and phone widths, dark mode, divider dragging, keyboard navigation and resend/compare against a running `mock`.
+
 - **Compare…** in the admin UI inspector shows two logged requests side by side: overview, query parameters and headers as tables, and the request and response bodies as a line diff (JSON compared with sorted keys), with a difference count and an **Only differences** toggle.
 
 - **Resend** in the admin UI inspector replays a logged request, optionally edited (method, path, headers, body), through the new `POST /resend` admin endpoint, which answers it in-process as if a client had sent it to the mock port. The new request is selected and marked **resent** (`resendOf` in the event).

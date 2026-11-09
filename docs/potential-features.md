@@ -55,10 +55,6 @@ and with the items above done they are the next thing to revisit.
 
 ### Admin UI
 
-- **Browser-level UI tests:** the admin UI's logic is unit tested in Node
-  (`internal/ui/tests/`), but layout, theming and real browser interaction
-  (splitters, keyboard navigation, mobile views) have never been checked in a
-  real browser. Headless browser tests or screenshot checks would cover that.
 - **Graphical fixture editing:** lower priority.
 
 ### Tooling, distribution and docs
@@ -94,6 +90,8 @@ Recorded so these are not proposed again without a new reason:
   Client-style tool.
 
 ## Implemented from the original ideas
+
+- **Browser-level UI tests:** `make test-browser` (and CI) drives headless Chrome over the DevTools Protocol (`internal/ui/browser/cdp.mjs`, no npm dependencies) against a built `mock`: desktop and phone layouts, dark mode contrast, divider drag/keyboard/persistence, keyboard navigation, the help dialog, and resend/compare end to end.
 
 - **Compare two requests:** **Compare…** in the inspector picks request A, then **Compare with #N** shows A and B side by side: overview, query and header tables, and line diffs of the bodies (JSON with sorted keys), with a difference count that ignores timing (`compare.mjs`).
 

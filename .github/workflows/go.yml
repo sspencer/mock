@@ -35,6 +35,20 @@ jobs:
       - name: Build
         run: go build -trimpath -o /tmp/mock .
 
+      - name: Browser UI tests
+        run: make test-browser
+        env:
+          MOCK_BIN: /tmp/mock
+          BROWSER_ARTIFACTS: ${{ runner.temp }}/browser-artifacts
+
+      - name: Upload browser test screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-screenshots
+          path: ${{ runner.temp }}/browser-artifacts
+          if-no-files-found: ignore
+
       - name: Check dependencies
         run: make vulncheck
 
