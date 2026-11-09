@@ -19,6 +19,8 @@ type Config struct {
 	Version   string `json:"version"`
 	MockPort  int    `json:"mockPort"`
 	MultiPort bool   `json:"multiPort,omitempty"`
+	// Redact is set when -R masks credentials in the request log.
+	Redact bool `json:"redact,omitempty"`
 }
 
 // NewHandler serves the request console and its API at the root of the

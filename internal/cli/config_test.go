@@ -343,6 +343,17 @@ func TestParseConfigDelayAndFault(t *testing.T) {
 	}
 }
 
+func TestParseConfigRedact(t *testing.T) {
+	for _, args := range [][]string{{"-R", "api.http"}, {"--redact", "api.http"}} {
+		if cfg, err := parseConfig(args); err != nil || !cfg.Redact {
+			t.Errorf("%v: redact=%v, %v", args, cfg.Redact, err)
+		}
+	}
+	if cfg, _ := parseConfig([]string{"api.http"}); cfg.Redact {
+		t.Error("redaction should be off by default")
+	}
+}
+
 func TestParseConfigUIToken(t *testing.T) {
 	t.Setenv("MOCK_UI_TOKEN", "")
 	cfg, err := parseConfig([]string{"-t", "abc", "api.http"})

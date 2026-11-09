@@ -128,6 +128,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		mockServer = mockhttp.New(input.Methods, logger)
 		mockServer.SetRouteDefaults(cfg.Defaults)
 		mockServer.SetUpstream(cfg.Upstream)
+		mockServer.SetRedact(cfg.Redact)
 		if cfg.Record != "" {
 			rec, err := newRecorder(cfg.Record, cfg.Port, logger)
 			if err != nil {
@@ -169,6 +170,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			Version:   currentVersion(),
 			MockPort:  plan.uiPort(),
 			MultiPort: len(plan.ports) > 1,
+			Redact:    cfg.Redact,
 		})
 		adminListener, err = net.Listen("tcp", listenAddress(cfg.Bind, cfg.AdminPort))
 		if err != nil {

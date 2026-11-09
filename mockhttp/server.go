@@ -42,6 +42,8 @@ type Server struct {
 	defaults atomic.Pointer[RouteDefaults]
 	// requestHook is called with each handled request's event.
 	requestHook atomic.Pointer[func(RequestEvent)]
+	// redact masks credentials in request events (SetRedact).
+	redact atomic.Bool
 	// limiters holds the @rate-limit state of each route, by routeKey.
 	limiters map[string]*rateLimiter
 	limitMu  sync.Mutex

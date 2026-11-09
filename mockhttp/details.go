@@ -148,7 +148,7 @@ func readRequestBody(r *http.Request) (loggedBody, requestBody) {
 
 // logRequest records a handled request and returns its event ID.
 func (s *Server) logRequest(r *http.Request, requestBody loggedBody, response *responseCapture, status int, methodName string, arrivedAt time.Time, elapsed time.Duration) uint64 {
-	event := newRequestEvent(r, requestBody, response, status, arrivedAt, elapsed)
+	event := s.redactEvent(newRequestEvent(r, requestBody, response, status, arrivedAt, elapsed))
 	id := s.publishRequest(event)
 	if hook := s.requestHook.Load(); hook != nil {
 		event.ID, event.Session = id, s.session
@@ -159,9 +159,13 @@ func (s *Server) logRequest(r *http.Request, requestBody loggedBody, response *r
 	if logger == nil {
 		logger = slog.Default()
 	}
+	path := r.URL.RequestURI()
+	if s.redact.Load() {
+		path = redactURL(path)
+	}
 	attrs := []any{
 		"method", r.Method,
-		"path", r.URL.RequestURI(),
+		"path", path,
 		"status", status,
 		"route", methodName,
 		"duration", elapsed,

@@ -55,8 +55,6 @@ and with the items above done they are the next thing to revisit.
 
 ### Admin UI
 
-- **Credential redaction:** optional redaction for diagnostic history, copied
-  requests, and exports. Current captures and Copy cURL include credentials.
 - **Browser-level UI tests:** the admin UI's logic is unit tested in Node
   (`internal/ui/tests/`), but layout, theming and real browser interaction
   (splitters, keyboard navigation, mobile views) have never been checked in a
@@ -102,6 +100,8 @@ Recorded so these are not proposed again without a new reason:
   Client-style tool.
 
 ## Implemented from the original ideas
+
+- **Credential redaction:** `-R` (`--redact`) masks credential-like headers, query parameters, JSON string members and form fields as `[redacted]` before a request is logged, so the admin UI, copies, HAR exports, `/requests`, the event stream and `-r` recordings never see them.
 
 - **Admin access token:** `-t`/`--ui-token` (or `MOCK_UI_TOKEN`) requires a
   token for the admin UI and API (`ui.RequireToken`): a Bearer header, or a

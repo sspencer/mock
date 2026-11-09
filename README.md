@@ -248,6 +248,7 @@ Flags:
 | `-a`, `--ui-port` | `MOCK_UI_PORT`, else `8081`, or random if `-p` / `MOCK_PORT` is set | Admin UI port. `0` picks a random free port |
 | `-x`, `--no-ui` | (off) | Do not start the admin UI. Cannot be combined with `-a` |
 | `-t`, `--ui-token` | `MOCK_UI_TOKEN` | Require this token for the admin UI and API (see [Admin access token](#admin-access-token)). Cannot be combined with `-x` |
+| `-R`, `--redact` | | Mask credentials in the request log, the admin UI, copies and exports (see [Credential redaction](#credential-redaction)) |
 | `-b`, `--bind` | `127.0.0.1`, or `MOCK_BIND` | Bind address. Use `0.0.0.0` to listen on all interfaces |
 | `-u`, `--upstream` | (off) | Forward requests no route matches to this `http` or `https` URL and return its response (see [Passing unmatched requests to a real API](#passing-unmatched-requests-to-a-real-api)) |
 | `-r`, `--record` | (off) | With `-u`, append a draft `.http` section to this file for each method and path the upstream answered (see [Recording forwarded requests](#recording-forwarded-requests)) |
@@ -1999,6 +2000,30 @@ print it. The mock ports are not affected. This is access control on plain
 HTTP: anyone who can read the traffic between you and `mock` can read the
 token too.
 
+### Credential redaction
+
+The request log keeps what clients sent, including `Authorization` headers,
+cookies and passwords in bodies. `-R` (`--redact`) masks credentials before a
+request is logged, so the admin UI, **Copy cURL**, **Copy as route**, HAR
+exports, `GET /requests`, the event stream, the request log line and `-r`
+recordings never see them. Responses are sent unchanged and matching always
+uses the real request. A value is masked as `[redacted]` when its name looks
+like a credential: it contains `token`, `secret`, `passw`, `apikey`,
+`authorization`, `credential`, `cookie`, `signature`, `session` or
+`privatekey`, or is `auth`, `key`, `sig`, `pwd`, `jwt`, `otp` or `pin`
+(ignoring case, `-` and `_`).
+
+- Headers: `Authorization: Bearer [redacted]` keeps the scheme, `Cookie` keeps
+  the cookie names, and `Set-Cookie` keeps its attributes. Other
+  credential-like headers, such as `X-Api-Key`, are masked whole.
+- Query parameters, such as `?access_token=[redacted]`.
+- String members of JSON bodies, such as `"password": "[redacted]"`, at any
+  depth, and fields of URL-encoded forms. Other bodies are logged as sent.
+- Values that near-miss explanations quote for those names.
+
+Redaction is a guard against accidental sharing, not a guarantee: a secret in
+a header, field or body with an ordinary name is still logged.
+
 Selecting a route shows a sample `curl` command for that route's port (the
 default mock port when the route declares none), ready to paste
 into a shell (**Copy cURL** copies it). The host is the one you used to open the
@@ -2076,7 +2101,8 @@ On narrow screens, selecting traffic or a route opens the inspector; use
 - **Copy body** copies original captured text; binary captures offer **Copy base64**.
 - **Copy cURL** produces a shell-quoted command including captured headers and
   complete text bodies. Incomplete or binary request bodies show an explanation
-  instead of producing a misleading replay command. Copied credentials are included.
+  instead of producing a misleading replay command. Copied credentials are
+  included unless `mock` runs with [`-R`](#credential-redaction).
 - Matched requests show the fixture name, source file/line, configuration revision,
   and elapsed time. Unmatched requests show up to five
   nearby routes with method, path, query, header, and body mismatch explanations.
@@ -2147,7 +2173,8 @@ UI rejects cross-origin clear requests.
 Binding to all interfaces (`-b 0.0.0.0`) without `-t` prints a warning: the
 admin UI is unauthenticated and request logs may include `Authorization`
 headers and bodies. Set an [admin access token](#admin-access-token) to
-require a token for the UI and API.
+require a token for the UI and API, and [`-R`](#credential-redaction) to keep
+credentials out of the log.
 
 Normal HTTP writes have a 30-second budget beginning after any configured
 response delay. SSE writes have a renewable 10-second deadline and idle streams

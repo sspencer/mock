@@ -39,7 +39,9 @@ type config struct {
 	// UIToken, when set, is required by the admin UI and API (-t, or
 	// MOCK_UI_TOKEN).
 	UIToken string
-	Args    []string
+	// Redact masks credentials in the request log (-R).
+	Redact bool
+	Args   []string
 	// Upstream receives requests no route matches (-u); nil answers 404.
 	Upstream *url.URL
 	// Record is the file that requests --upstream answered are appended to
@@ -95,6 +97,9 @@ flags:
   -t, --ui-token TOKEN require TOKEN for the admin UI and API: open the UI
                        as /?token=TOKEN or send "Authorization: Bearer TOKEN"
                        (default MOCK_UI_TOKEN)
+  -R, --redact         mask credential-like headers, cookies, query
+                       parameters and JSON or form fields in the request
+                       log, the admin UI and exports
   -b, --bind ADDR      bind address; use 0.0.0.0 for all interfaces
                        (default 127.0.0.1, or MOCK_BIND)
   -u, --upstream URL   forward requests no route matches to this http or
@@ -157,6 +162,9 @@ func parseConfig(args []string) (config, error) {
 	}
 	for _, name := range []string{"t", "ui-token"} {
 		flagSet.StringVar(&cfg.UIToken, name, os.Getenv("MOCK_UI_TOKEN"), "")
+	}
+	for _, name := range []string{"R", "redact"} {
+		flagSet.BoolVar(&cfg.Redact, name, false, "")
 	}
 	for _, name := range []string{"b", "bind"} {
 		flagSet.StringVar(&cfg.Bind, name, bindDefault, "")

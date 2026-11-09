@@ -50,6 +50,10 @@ const routeView = document.getElementById('routeView');
 const routeDetails = document.getElementById('routeDetails');
 const copyNotice = document.getElementById('copyNotice');
 const copyCurlButton = document.getElementById('copyCurlButton');
+if (MOCK_CONFIG.redact) {
+    // -R masked credentials before they reached the log, so copies and exports carry no secrets.
+    for (const button of [exportButton, copyCurlButton]) button.title = 'Credentials are redacted (-R)';
+}
 const copyRouteDraftButton = document.getElementById('copyRouteDraftButton');
 const copyUnmatchedButton = document.getElementById('copyUnmatchedButton');
 const mismatchPanel = document.getElementById('mismatchPanel');
