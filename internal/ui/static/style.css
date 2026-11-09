@@ -857,6 +857,76 @@ tbody tr[data-id]:focus-visible {
     padding: 0 14px;
 }
 
+.resend-form {
+    display: grid;
+    gap: 6px;
+    margin: 10px 14px 0;
+    padding: 10px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface-sunken);
+}
+
+.resend-form[hidden] { display: none; }
+
+.resend-line {
+    display: flex;
+    gap: 6px;
+}
+
+.resend-input {
+    width: 100%;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface-raised);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 0.78rem;
+}
+
+textarea.resend-input { resize: vertical; }
+
+.resend-input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.resend-input:disabled { color: var(--faint); }
+
+.resend-method {
+    flex: 0 0 7.5em;
+    text-transform: uppercase;
+}
+
+.resend-label {
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
+.resend-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.resend-actions .match-summary { margin: 0; }
+
+.primary-button {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--accent-ink);
+}
+
+.primary-button:hover:not(:disabled) {
+    border-color: var(--accent);
+    background: var(--accent);
+    filter: brightness(1.08);
+}
+
 .detail-meta > * {
     margin: 10px 0 0;
 }

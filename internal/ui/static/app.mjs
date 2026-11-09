@@ -1,5 +1,6 @@
 import { formatMessage, bodyNotice, buildCurl, buildRouteCurl, formatRoute, hitsLabel } from './inspector.mjs';
 import { buildRouteDraft, buildRouteDrafts } from './draft.mjs';
+import { resendDraft, buildResend } from './resend.mjs';
 import { attachSplitter, alignedTrafficHeight } from './layout.mjs';
 import { buildHAR } from './har.mjs';
 import { filterTerms, matchesFilter, routeFilter } from './filter.mjs';
@@ -55,6 +56,14 @@ if (MOCK_CONFIG.redact) {
     for (const button of [exportButton, copyCurlButton]) button.title = 'Credentials are redacted (-R)';
 }
 const copyRouteDraftButton = document.getElementById('copyRouteDraftButton');
+const resendButton = document.getElementById('resendButton');
+const resendForm = document.getElementById('resendForm');
+const resendMethod = document.getElementById('resendMethod');
+const resendUrl = document.getElementById('resendUrl');
+const resendHeaders = document.getElementById('resendHeaders');
+const resendBody = document.getElementById('resendBody');
+const resendStatus = document.getElementById('resendStatus');
+const resendSend = document.getElementById('resendSend');
 const copyUnmatchedButton = document.getElementById('copyUnmatchedButton');
 const mismatchPanel = document.getElementById('mismatchPanel');
 const mismatchDetails = document.getElementById('mismatchDetails');
@@ -66,6 +75,10 @@ const pretty = { request: true, response: true };
 let selection = noSelection;
 let returnFocus = null;
 let copyGeneration = 0;
+// resending is the open resend editor: { id, draft } for the event it edits.
+let resending = null;
+// pendingSelectId is a resent request to select once its event is shown.
+let pendingSelectId = null;
 
 /** @type {Map<number, any>} */
 const eventsById = new Map();
@@ -524,6 +537,18 @@ function renderTable() {
     if (focusWasInTable && focusTarget) {
         focusTarget.focus({ preventScroll: true });
     }
+    selectPendingResend(visibleIDs);
+}
+
+// selectPendingResend selects a resent request once its row exists. A
+// request the filter hides is not waited for.
+function selectPendingResend(visibleIDs) {
+    if (pendingSelectId == null || !eventsById.has(pendingSelectId)) return;
+    const id = pendingSelectId;
+    pendingSelectId = null;
+    if (!visibleIDs.has(id)) return;
+    const row = getDataRows().find(r => Number(r.dataset.id) === id);
+    if (row) selectRow(row, eventsById.get(id));
 }
 
 function updateDetail(element, newContent) {
@@ -553,6 +578,8 @@ function resetInspector() {
     matchSummary.textContent = '';
     copyCurlButton.disabled = true;
     copyRouteDraftButton.hidden = true;
+    resendButton.hidden = true;
+    closeResend();
     mismatchPanel.hidden = true;
     copyNotice.textContent = '';
     for (const kind of ['request', 'response']) {
@@ -590,6 +617,8 @@ function renderInspector() {
         : `${match?.upstream ? `Proxied to ${match.upstream} · no` : 'No'} matching route · revision ${match?.revision ?? '?'} · ${event.response.time}`;
     mismatchPanel.hidden = !!route;
     copyRouteDraftButton.hidden = !!event.callback;
+    resendButton.hidden = !!event.callback;
+    if (resending && resending.id !== event.id) closeResend();
     copyRouteDraftButton.title = route
         ? `Copy a draft .http section for a more specific variant of ${route.name}`
         : 'Copy a draft .http section that would answer this request';
@@ -650,6 +679,63 @@ copyRouteDraftButton.addEventListener('click', () => {
     try { copyText(buildRouteDraft(eventsById.get(selectedRequestId(selection)), { mockPort: MOCK_CONFIG.mockPort })); }
     catch (error) { copyNotice.textContent = error.message; }
 });
+function closeResend() {
+    resending = null;
+    resendForm.hidden = true;
+    resendButton.setAttribute('aria-expanded', 'false');
+    resendStatus.textContent = '';
+}
+
+resendButton.addEventListener('click', () => {
+    if (resending) { closeResend(); return; }
+    const event = eventsById.get(selectedRequestId(selection));
+    const draft = resendDraft(event);
+    if (draft.error) { copyNotice.textContent = draft.error; return; }
+    resending = { id: event.id, draft };
+    resendMethod.value = draft.method;
+    resendUrl.value = draft.url;
+    resendHeaders.value = draft.headers;
+    resendBody.value = draft.bodyEditable ? draft.body : '';
+    resendBody.disabled = !draft.bodyEditable;
+    resendBody.placeholder = draft.bodyEditable ? 'No body' : 'The binary body is resent unchanged.';
+    resendStatus.textContent = draft.host ? `Sent to ${draft.host} through the admin server.` : '';
+    resendForm.hidden = false;
+    resendButton.setAttribute('aria-expanded', 'true');
+    resendMethod.focus();
+});
+
+document.getElementById('resendCancel').addEventListener('click', closeResend);
+
+resendForm.addEventListener('submit', async (submit) => {
+    submit.preventDefault();
+    if (!resending) return;
+    let payload;
+    try {
+        payload = buildResend(resending.draft, { method: resendMethod.value, url: resendUrl.value, headers: resendHeaders.value, body: resendBody.value }, resending.id);
+    } catch (error) {
+        resendStatus.textContent = error.message;
+        return;
+    }
+    resendSend.disabled = true;
+    resendStatus.textContent = 'Sending…';
+    try {
+        const res = await fetch('resend', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error((await res.text()).trim() || `Resend failed with HTTP ${res.status}.`);
+        const { id } = await res.json();
+        closeResend();
+        pendingSelectId = id;
+        scheduleRender();
+    } catch (error) {
+        resendStatus.textContent = error.message || 'Resend failed.';
+    } finally {
+        resendSend.disabled = false;
+    }
+});
+
 copyUnmatchedButton.addEventListener('click', async () => {
     const events = [...eventOrder].reverse().map(id => eventsById.get(id)).filter(Boolean);
     const { text, count } = buildRouteDrafts(events, { mockPort: MOCK_CONFIG.mockPort });

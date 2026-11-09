@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#ebe3d1" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
     <title>Mock Server</title>
-    <link rel="stylesheet" href="style.css?v=20261104-effects" />
+    <link rel="stylesheet" href="style.css?v=20261108-resend" />
 </head>
 <body>
 <main class="app-shell">
@@ -109,8 +109,24 @@
                             <button id="copyRequestBody" class="clear-button" type="button" disabled>Copy body</button>
                             <button id="copyCurlButton" class="clear-button" type="button" disabled>Copy cURL</button>
                             <button id="copyRouteDraftButton" class="clear-button" type="button" title="Copy a draft .http section that would answer this request" hidden>Copy as route</button>
+                            <button id="resendButton" class="clear-button" type="button" title="Edit and send this request again through the admin server" aria-controls="resendForm" aria-expanded="false" hidden>Resend</button>
                         </div>
                     </div>
+                    <form id="resendForm" class="resend-form" aria-label="Resend request" hidden>
+                        <div class="resend-line">
+                            <input id="resendMethod" class="resend-input resend-method" aria-label="Method" autocomplete="off" spellcheck="false" />
+                            <input id="resendUrl" class="resend-input" aria-label="Path and query" autocomplete="off" spellcheck="false" />
+                        </div>
+                        <label class="resend-label" for="resendHeaders">Headers</label>
+                        <textarea id="resendHeaders" class="resend-input" rows="4" spellcheck="false" placeholder="Name: value"></textarea>
+                        <label class="resend-label" for="resendBody">Body</label>
+                        <textarea id="resendBody" class="resend-input" rows="5" spellcheck="false"></textarea>
+                        <div class="resend-actions">
+                            <button id="resendSend" class="clear-button primary-button" type="submit">Send</button>
+                            <button id="resendCancel" class="clear-button" type="button">Cancel</button>
+                            <p id="resendStatus" class="match-summary" role="status"></p>
+                        </div>
+                    </form>
                     <div class="detail-meta">
                         <p id="matchSummary" class="match-summary"></p>
                         <details id="mismatchPanel" hidden><summary>Why didn’t this request match?</summary><div id="mismatchDetails"></div></details>
@@ -193,7 +209,7 @@
             </div>
             <div><dt>Resize panels</dt><dd>Drag a divider to resize adjacent panels. Focus a divider and use arrow keys (Shift for larger steps), Home or End. Double-click restores its default size. Sizes are remembered.</dd></div>
             <div><dt>Inspect &amp; copy</dt><dd>Pretty formats valid JSON; Raw preserves captured content. Copy body copies the captured text (or base64 for binary data). Copy cURL creates a shell-quoted command for complete text requests. Captured credentials are included unless mock runs with -R (--redact), which masks them before they are logged.</dd></div>
-            <div><dt>Route diagnostics</dt><dd>The number beside each route is how many requests it has answered. Select a route to inspect its requirements and response template, plus a sample cURL command for the mock server. Copy cURL copies it; path parameters such as <code>:id</code> are filled with sample values. Request details identify the route that answered (the first one that matched). Unmatched requests list nearby routes and failed constraints. Copy as route copies a draft <code>.http</code> section that answers the request, to paste into a request file; for a request a route answered, the draft reuses its response and is a starting point for a more specific variant, which must go above that route to match first. Copy unmatched as routes, above the traffic list, copies one draft section per distinct method and path among all unmatched requests in the log (proxied ones use the upstream response).</dd></div>
+            <div><dt>Route diagnostics</dt><dd>The number beside each route is how many requests it has answered. Select a route to inspect its requirements and response template, plus a sample cURL command for the mock server. Copy cURL copies it; path parameters such as <code>:id</code> are filled with sample values. Request details identify the route that answered (the first one that matched). Unmatched requests list nearby routes and failed constraints. Copy as route copies a draft <code>.http</code> section that answers the request, to paste into a request file; for a request a route answered, the draft reuses its response and is a starting point for a more specific variant, which must go above that route to match first. Resend opens an editor with the request's method, path, headers and body; Send replays it through the admin server, as if a client had sent it to the mock port, and selects the new request, labeled <code>resent</code>. Copy unmatched as routes, above the traffic list, copies one draft section per distinct method and path among all unmatched requests in the log (proxied ones use the upstream response).</dd></div>
             <div><dt>Reload status</dt><dd>Failed reloads retain active routes and show an error banner only when needed. On narrow screens, use Back to traffic &amp; routes to return from the inspector.</dd></div>
         </dl>
     </div>

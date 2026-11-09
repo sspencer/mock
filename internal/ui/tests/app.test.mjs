@@ -40,8 +40,8 @@ globalThis.localStorage={getItem(){throw new Error('storage blocked');},setItem(
 let source;globalThis.EventSource=class extends EventTarget{constructor(){super();source=this;}};
 const frames=[];globalThis.requestAnimationFrame=fn=>frames.push(fn);
 const realInterval=globalThis.setInterval;globalThis.setInterval=()=>0;
-let posted=[]; let routesData=[]; let stateData={revision:1,routeCount:0,lastSuccess:'2026-09-06T00:00:00Z'};
-globalThis.fetch=async(url,options)=>{if(options?.method==='POST')posted.push(url);return {ok:true,headers:{get:name=>name==='X-Mock-Session'?'two':'500'},json:async()=>url==='state'?stateData:routesData};};
+let posted=[]; let postedBodies=[]; let resendReply={ok:true,id:0}; let routesData=[]; let stateData={revision:1,routeCount:0,lastSuccess:'2026-09-06T00:00:00Z'};
+globalThis.fetch=async(url,options)=>{if(options?.method==='POST'){posted.push(url);postedBodies.push(options.body);}if(url==='resend')return {ok:resendReply.ok,status:resendReply.ok?200:400,text:async()=>'bad request',json:async()=>({id:resendReply.id})};return {ok:true,headers:{get:name=>name==='X-Mock-Session'?'two':'500'},json:async()=>url==='state'?stateData:routesData};};
 await import('../static/app.mjs');
 globalThis.setInterval=realInterval;
 const flush=()=>{while(frames.length)frames.shift()();};
@@ -148,4 +148,36 @@ test('the filter understands status classes and route hit counts filter traffic'
  assert.equal(element('filterInput').value,'route:"Create user"');assert.deepEqual(ids(),['4','1']);
  hits.dispatchEvent(new Event('click'));
  assert.equal(element('filterInput').value,'');assert.equal(ids().length,4);
+});
+
+test('resend edits a request, posts it to the admin server and selects the new event', async () => {
+ control('reset',0,'resend');
+ const original={...event(1,'resend'),request:{...event(1,'resend').request,method:'POST',url:'/users',host:'localhost:8080',headers:{'Content-Type':['application/json'],'Content-Length':['13'],Host:['localhost:8080']},body:{text:'{"name":"Al"}',size:13,capturedSize:13,truncated:false}},match:{revision:1,route:{name:'Create'}}};
+ source.onmessage({data:JSON.stringify(original)});flush();
+ element('filterInput').value='';element('filterInput').dispatchEvent(new Event('input'));flush();
+ const row=element('requestTableBody').children[0];
+ const key=new Event('keydown');Object.defineProperty(key,'target',{value:row});Object.defineProperty(key,'key',{value:'Enter'});element('requestTableBody').dispatchEvent(key);
+ assert.equal(element('resendButton').hidden,false);
+ click('resendButton');
+ assert.equal(element('resendForm').hidden,false);
+ assert.equal(element('resendMethod').value,'POST');assert.equal(element('resendUrl').value,'/users');
+ assert.equal(element('resendHeaders').value,'Content-Type: application/json');
+ assert.equal(element('resendBody').value,'{"name":"Al"}');
+ element('resendBody').value='{"name":"Bo"}';
+ element('resendHeaders').value='not a header';
+ element('resendForm').dispatchEvent(new Event('submit'));await new Promise(resolve=>setImmediate(resolve));
+ assert.match(element('resendStatus').textContent,/Name: value/);
+ element('resendHeaders').value='Content-Type: application/json\nX-Try: 2';
+ resendReply={ok:true,id:2};posted=[];postedBodies=[];
+ element('resendForm').dispatchEvent(new Event('submit'));await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(posted,['resend']);
+ assert.deepEqual(JSON.parse(postedBodies[0]),{from:1,method:'POST',url:'/users',host:'localhost:8080',headers:{'Content-Type':['application/json'],'X-Try':['2']},body:'{"name":"Bo"}'});
+ assert.equal(element('resendForm').hidden,true);
+ source.onmessage({data:JSON.stringify({...original,id:2,resendOf:1,request:{...original.request,details:'request 2'}})});flush();
+ assert.equal(element('requestTableBody').children[0].classes.has('selected'),true);
+ click('resendButton');resendReply={ok:false,id:0};
+ element('resendForm').dispatchEvent(new Event('submit'));await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(element('resendStatus').textContent,'bad request');
+ assert.equal(element('resendForm').hidden,false);
+ click('resendCancel');assert.equal(element('resendForm').hidden,true);
 });

@@ -59,10 +59,6 @@ and with the items above done they are the next thing to revisit.
   (`internal/ui/tests/`), but layout, theming and real browser interaction
   (splitters, keyboard navigation, mobile views) have never been checked in a
   real browser. Headless browser tests or screenshot checks would cover that.
-- **Resend a request** (S–M): replay a captured request from the inspector,
-  optionally edited. The UI is on the admin port and `mock` sends no CORS
-  headers, so the browser cannot call the mock port directly; the resend has
-  to go through an admin endpoint that issues the request server-side.
 - **Compare two requests** (S–M): a side-by-side diff of headers and bodies for
   two selected requests, for "why did this one match and that one not".
 - **Graphical fixture editing:** lower priority.
@@ -100,6 +96,8 @@ Recorded so these are not proposed again without a new reason:
   Client-style tool.
 
 ## Implemented from the original ideas
+
+- **Resend a request:** the inspector's **Resend** opens an editor (method, path, headers, body) and replays the request through `POST /resend`, which answers it in-process as if a client had sent it to the mock port; the new event is selected and marked **resent**.
 
 - **Credential redaction:** `-R` (`--redact`) masks credential-like headers, query parameters, JSON string members and form fields as `[redacted]` before a request is logged, so the admin UI, copies, HAR exports, `/requests`, the event stream and `-r` recordings never see them.
 

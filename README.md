@@ -1975,6 +1975,7 @@ The UI is served at the root of the admin port (`-a`, default `8081`):
 | `/state` | `GET` active revision, route count, last successful reload, and reload error |
 | `/routes` | `GET` route configuration, including source location, port, matchers, status, delay, body preview, and `hits` (requests answered) |
 | `/requests` | `GET` the request log as JSON, optionally filtered (see below) |
+| `/resend` | `POST` answers a request as if a client sent it to the mock port (see [Resending a request](#resending-a-request)) |
 
 ### Admin access token
 
@@ -2039,7 +2040,7 @@ UI features: theme toggle, filter, pause stream, clear log,
 HAR export, a Help dialog, and a routes panel that refreshes after hot-reload.
 When `mock` listens on more than one port, the request table shows each
 request's host and port, and routes are labeled with their port.
-The `/clear` and `/reload` POST endpoints require an `X-Requested-With` header
+The `/clear`, `/reload` and `/resend` POST endpoints require an `X-Requested-With` header
 or a JSON `Content-Type`, and reject cross-origin and cross-site requests.
 
 ### Reading the request log
@@ -2067,6 +2068,35 @@ curl -s 'http://127.0.0.1:8081/requests?matched=false' | jq -r '.[].request.url'
 A test can assert what its code under test sent: `POST /clear` (with
 `X-Requested-With`) before the test, then read `/requests` after it. An
 invalid `matched`, `callbacks` or `since` value returns `400`.
+
+### Resending a request
+
+The admin UI runs on its own port and `mock` sends no CORS headers, so the
+browser cannot call the mock port itself. `POST /resend` answers a request
+in-process instead, exactly as if a client had sent it to the mock port:
+routes match (on the port in `host`), delays, faults, rate limits,
+`--upstream`, callbacks and `--strict` counts apply, and the request is logged
+with `resendOf` set to `from` (or `0`). The response is `{"id": N}`, the new
+event's `id`; read the response from the request log.
+
+```sh
+curl -s -X POST -H 'Content-Type: application/json' http://127.0.0.1:8081/resend \
+  -d '{"method":"POST","url":"/users?notify=1","host":"localhost:8080",
+       "headers":{"Content-Type":["application/json"]},"body":"{\"name\":\"Ada\"}"}'
+```
+
+| Field | Meaning |
+|-------|---------|
+| `method` | Request method (required) |
+| `url` | Path and query, starting with `/` (required) |
+| `host` | `Host` header; its port picks the mock port. Without a port, routes on every port can match |
+| `headers` | Request headers, `{"Name": ["value"]}`. `Host`, `Content-Length`, `Transfer-Encoding` and `Connection` are ignored |
+| `body` | Request body text, or base64 with `"encoding": "base64"` |
+| `from` | The event `id` this request was copied from |
+
+Invalid input returns `400`. With [`-R`](#credential-redaction), logged
+credentials are `[redacted]`, so a resent copy carries that text unless you
+edit it.
 
 ### Filtering traffic
 
@@ -2127,6 +2157,11 @@ On narrow screens, selecting traffic or a route opens the inspector; use
   a proxied request) and begins with a `# Variant of "Name" (file:line)`
   comment. Place it above that route, since the first matching route wins,
   and tighten its matchers, such as `@query.page = 2` instead of `*`.
+- **Resend** opens an editor with the request's method, path and query,
+  headers and body; **Send** replays it (see
+  [Resending a request](#resending-a-request)) and selects the new request,
+  marked **resent**. It appears on every request except callbacks and requests
+  whose body was not captured completely. Binary bodies are resent unchanged.
 - **Copy unmatched as routes**, above the traffic list, copies one draft
   section per distinct method and path among every unmatched request in the
   log, oldest first, so a session of traffic becomes a starting request file.
