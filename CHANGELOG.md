@@ -4,7 +4,7 @@
 
 - Docs: the README is now a short introduction (install, a first mock, the admin UI, a feature list). The reference moved to pages under `docs/`, indexed by `docs/README.md`: getting started, install, command line, request files, placeholders, matching, delays and faults, real APIs, testing, recipes and the admin UI. Release archives include the `docs/` pages.
 
-- Redesign the admin UI: the traffic log and inspector are two cards on a neutral page, with a new accent color, colored method names, tinted status pills, segmented **Pretty**/**Raw** and **Tree**/**JSON** switches and a full-width traffic filter. Icons are now inline SVG (toolbar, fixture editor, favicon). Labels, shortcuts and behavior are unchanged.
+- Redesign the admin UI with its own look: ink, electric violet and acid lime on warm paper (deep violet in dark mode). The traffic log and inspector are two hard-edged cards under an ink toolbar, section titles are mono capitals, methods are outlined tags, statuses are solid blocks, and the selected request or route is highlighted in lime. **Pretty**/**Raw** and **Tree**/**JSON** are segmented switches and the traffic filter is full width. Icons are now inline SVG (toolbar, fixture editor, favicon). Labels, shortcuts and behavior are unchanged.
 
 ## v0.5.0 - 2026-11-08
 
