@@ -9,13 +9,13 @@ import (
 )
 
 // knownExampleWarnings lists examples that warn on purpose, with the number
-// of warnings each should report. The README documents small.http's.
+// of warnings each should report. docs/cli.md documents small.http's.
 var knownExampleWarnings = map[string]int{
 	"small.http": 2,
 }
 
 // TestExamplesValidate runs `mock validate -strict` over every bundled
-// example, alone and (for examples/matching) as the set the README serves.
+// example, alone and (for examples/matching) as the set docs/getting-started.md serves.
 func TestExamplesValidate(t *testing.T) {
 	root := filepath.Join("..", "..", "examples")
 	var files []string
