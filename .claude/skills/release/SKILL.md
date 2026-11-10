@@ -36,7 +36,7 @@ make vulncheck
 - Rename `## Unreleased` to `## vX.Y.Z - YYYY-MM-DD`, using today's date.
 - Keep the one-line summary under the heading, in the same style as earlier entries.
 - Don't add a new empty Unreleased section. The next change adds it.
-- Check that README.md still matches the behavior described in the changelog entries. README is the spec.
+- Check that README.md and the pages in `docs/` still match the behavior described in the changelog entries. The `docs/` pages are the spec.
 
 ## 4. Commit, then confirm before anything leaves the machine
 

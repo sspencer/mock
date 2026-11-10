@@ -36,6 +36,15 @@ you add or change a scenario there, update `matchingScenarios` in
 that warns on purpose goes in `knownExampleWarnings` in
 `internal/cli/examples_test.go`.
 
+## Layout
+
+- `main.go` is the thin entry point; `internal/cli/` holds CLI flags, input loading, ports, watching, lifecycle, and `mock validate`.
+- `restclient/` parses `.http` files.
+- `mockhttp/` matches requests, renders responses, and streams request-log events.
+- `internal/ui/` contains the request log UI (`static/`, embedded at build time), its admin handler, and its Node tests.
+- `examples/` contains request files you can run locally; `examples/matching/` shows off request matching.
+- `README.md` is the short introduction. `docs/` holds the user documentation (indexed by `docs/README.md`), which is the spec for user-facing behavior; keep it in sync when behavior changes.
+
 ## Pull requests
 
 - Keep the change scoped to one concern.

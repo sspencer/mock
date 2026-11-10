@@ -29,6 +29,8 @@ archives:
     files:
       - LICENSE
       - README.md
+      - docs/*.md
+      - docs/*.png
       - CHANGELOG.md
 
 checksum:

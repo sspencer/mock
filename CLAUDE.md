@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-`mock` is a single Go binary. It turns REST Client-style `.http` files into a local HTTP mock server with hot reload and an admin request-log UI. README.md documents the user-facing behavior (file dialect, placeholders, matching, ports, admin API) and is the spec. Keep it in sync when behavior changes.
+`mock` is a single Go binary. It turns REST Client-style `.http` files into a local HTTP mock server with hot reload and an admin request-log UI. The pages in `docs/` (indexed by `docs/README.md`) document the user-facing behavior (file dialect, placeholders, matching, ports, admin API) and are the spec. Keep them in sync when behavior changes. `README.md` is a short introduction (install, a first mock, the admin UI screenshot, a feature list) that links to those pages; keep it short, and add a line there only for a headline feature. `docs/potential-features.md` and `docs/stateful-scenarios.md` are design notes, not spec.
 
 ## Commands
 

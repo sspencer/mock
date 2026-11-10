@@ -313,5 +313,5 @@ Admin paths above (`/events`, `/clear`, `/state`, `/routes`) are served on the a
 - The traffic list omits the duration beneath each request; elapsed time remains
   available in the inspector.
 
-See [README.md](../README.md) for supported behavior and controls, and
+See the [documentation](README.md) for supported behavior and controls, and
 [CHANGELOG.md](../CHANGELOG.md) for release history.
