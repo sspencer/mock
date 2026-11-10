@@ -27,5 +27,4 @@ New here? Start with the [project README](../README.md), then
 
 These describe ideas, not shipped behavior.
 
-- [Potential features](potential-features.md)
-- [Stateful scenarios](stateful-scenarios.md)
+- [Ideas](ideas.md)

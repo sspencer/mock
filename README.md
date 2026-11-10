@@ -137,5 +137,5 @@ make verify   # format check, vet, Go tests and UI tests
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and pull-request notes.
 Release history is in [CHANGELOG.md](CHANGELOG.md), and
-[docs/potential-features.md](docs/potential-features.md) collects ideas for
+[docs/ideas.md](docs/ideas.md) collects ideas for
 future work.
