@@ -3,32 +3,49 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="favicon.ico" type="image/x-icon" />
-    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
-    <meta name="theme-color" content="#ebe3d1" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="favicon.ico" sizes="32x32" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0c0e12" media="(prefers-color-scheme: dark)" />
     <title>Mock Server</title>
-    <link rel="stylesheet" href="style.css?v=20261108-fixture" />
+    <link rel="stylesheet" href="style.css?v=20261110-redesign" />
 </head>
 <body>
+<svg class="icon-sprite" aria-hidden="true">
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.2A8 8 0 0 1 9.8 4 8 8 0 1 0 20 14.2z"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.7 2.2c-.8.5-1.3 1-1.3 2M12 16.8v.2"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l.8 11.6a1 1 0 0 0 1 .9h7.4a1 1 0 0 0 1-.9L17.5 7M10 11v5M14 11v5"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4.5H15"/></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-duplicate" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></symbol>
+</svg>
 <main class="app-shell">
     <header class="topbar">
         <div class="brand-lockup">
-            <span class="brand-mark" aria-hidden="true"></span>
+            <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="7"/><path d="M8 12h8"/><circle cx="7.5" cy="12" r="2.6"/><circle cx="16.5" cy="12" r="2.6"/></svg>
             <h1>mock</h1>
             <p class="status-line"><span class="live-pip" aria-hidden="true"></span><span id="streamStatus" role="status">Connecting</span></p>
         </div>
         <div class="topbar-actions" role="toolbar" aria-label="Console controls">
             <button id="pauseButton" class="clear-button" type="button" aria-label="Pause request log" aria-pressed="false">
-                <span class="button-icon pause-icon" aria-hidden="true"></span><span class="button-label">Pause</span>
+                <svg class="icon icon-pause" aria-hidden="true"><use href="#i-pause"/></svg><svg class="icon icon-play" aria-hidden="true"><use href="#i-play"/></svg><span class="button-label">Pause</span>
             </button>
             <button id="exportButton" class="clear-button" type="button" aria-label="Export request log as HAR">
-                <span class="button-icon export-icon" aria-hidden="true"></span><span class="button-label">Export HAR</span>
+                <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg><span class="button-label">Export HAR</span>
             </button>
             <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle color theme">
-                <span class="button-icon theme-icon" aria-hidden="true"></span><span id="themeToggleLabel" class="button-label">Dark</span>
+                <svg class="icon icon-moon" aria-hidden="true"><use href="#i-moon"/></svg><svg class="icon icon-sun" aria-hidden="true"><use href="#i-sun"/></svg><span id="themeToggleLabel" class="button-label">Dark</span>
             </button>
-            <button id="helpButton" class="clear-button icon-button" type="button" aria-label="Help" aria-haspopup="dialog" aria-controls="helpDialog">?</button>
+            <button id="helpButton" class="clear-button icon-button" type="button" aria-label="Help" aria-haspopup="dialog" aria-controls="helpDialog"><svg class="icon" aria-hidden="true"><use href="#i-help"/></svg></button>
         </div>
     </header>
 
@@ -45,14 +62,14 @@
                     </div>
                 </div>
                 <div class="panel-actions">
-                    <label class="filter-control">
-                        <span class="filter-icon" aria-hidden="true"></span>
-                        <input id="filterInput" class="filter-input" type="search" placeholder="Filter: 4xx, unmatched, POST, route:Name, text" aria-label="Filter requests by status class, method, route, match state or text" />
-                        <span class="key-hint" aria-hidden="true">/</span>
-                    </label>
                     <button id="copyUnmatchedButton" class="clear-button" type="button" title="Copy a draft .http section for each distinct method and path no route matched">Copy unmatched as routes</button>
-                    <button id="clearRequestsButton" class="clear-button danger-button" type="button" title="Clear traffic in every connected tab">Clear log</button>
+                    <button id="clearRequestsButton" class="clear-button danger-button" type="button" title="Clear traffic in every connected tab"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span>Clear log</span></button>
                 </div>
+                <label class="filter-control">
+                    <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
+                    <input id="filterInput" class="filter-input" type="search" placeholder="Filter: 4xx, unmatched, POST, route:Name, text" aria-label="Filter requests by status class, method, route, match state or text" />
+                    <span class="key-hint" aria-hidden="true">/</span>
+                </label>
                 <p id="clearError" class="clear-error" role="alert" hidden></p>
             </div>
 
@@ -83,9 +100,9 @@
                     </div>
                     <div class="routes-panel-actions">
                         <button id="routesToggleButton" class="clear-button route-toggle-button" type="button" aria-expanded="true" aria-controls="routesList" aria-label="Hide configured routes">
-                            <span class="button-icon collapse-icon" aria-hidden="true"></span><span id="routesToggleLabel" class="route-toggle-label">Hide</span>
+                            <svg class="icon icon-collapse" aria-hidden="true"><use href="#i-chevron-down"/></svg><span id="routesToggleLabel" class="route-toggle-label">Hide</span>
                         </button>
-                        <button id="refreshRoutesButton" class="clear-button" type="button"><span class="button-icon refresh-icon" aria-hidden="true"></span><span>Refresh</span></button>
+                        <button id="refreshRoutesButton" class="clear-button" type="button"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg><span>Refresh</span></button>
                     </div>
                 </div>
                 <ul id="routesList" class="routes-list">
@@ -97,15 +114,17 @@
         <div id="workspaceSplitter" class="splitter vertical" role="separator" aria-label="Resize traffic and inspector panels" aria-orientation="vertical" aria-controls="requestPanel inspectorPanel" tabindex="0"></div>
         <section id="inspectorPanel" class="side-panel" aria-label="Inspector">
             <div class="inspector-header">
-                <button id="backToList" class="clear-button mobile-back" type="button">← Back to traffic &amp; routes</button>
+                <button id="backToList" class="clear-button mobile-back" type="button"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"/></svg><span>Back to traffic &amp; routes</span></button>
             </div>
             <section id="exchangeView" class="detail-panel" aria-label="Request and response details">
                 <div class="detail-section">
                     <div class="panel-header">
                         <h2 id="requestTitle" tabindex="-1">Request</h2>
                         <div class="detail-actions" role="group" aria-label="Request display">
-                            <button id="requestPretty" class="clear-button" type="button" aria-pressed="true">Pretty</button>
-                            <button id="requestRaw" class="clear-button" type="button" aria-pressed="false">Raw</button>
+                            <span class="segmented">
+                                <button id="requestPretty" class="clear-button" type="button" aria-pressed="true">Pretty</button>
+                                <button id="requestRaw" class="clear-button" type="button" aria-pressed="false">Raw</button>
+                            </span>
                             <button id="copyRequestBody" class="clear-button" type="button" disabled>Copy body</button>
                             <button id="copyCurlButton" class="clear-button" type="button" disabled>Copy cURL</button>
                             <button id="copyRouteDraftButton" class="clear-button" type="button" title="Copy a draft .http section that would answer this request" hidden>Copy as route</button>
@@ -140,8 +159,10 @@
                     <div class="panel-header compact">
                         <h2>Response</h2>
                         <div class="detail-actions" role="group" aria-label="Response display">
-                            <button id="responsePretty" class="clear-button" type="button" aria-pressed="true">Pretty</button>
-                            <button id="responseRaw" class="clear-button" type="button" aria-pressed="false">Raw</button>
+                            <span class="segmented">
+                                <button id="responsePretty" class="clear-button" type="button" aria-pressed="true">Pretty</button>
+                                <button id="responseRaw" class="clear-button" type="button" aria-pressed="false">Raw</button>
+                            </span>
                             <button id="copyResponseBody" class="clear-button" type="button" disabled>Copy body</button>
                         </div>
                     </div>
@@ -166,7 +187,7 @@
                 <div id="fixtureEditor" class="fixture-editor" aria-labelledby="fixtureEditorTitle" role="region" hidden>
                     <div class="fixture-toolbar">
                         <h3 id="fixtureEditorTitle" class="fixture-title">Fixture <code id="fixtureFile"></code></h3>
-                        <div class="fixture-modes" role="group" aria-label="Editor view">
+                        <div class="fixture-modes segmented" role="group" aria-label="Editor view">
                             <button id="fixtureTreeTab" class="clear-button" type="button" aria-pressed="true">Tree</button>
                             <button id="fixtureJsonTab" class="clear-button" type="button" aria-pressed="false">JSON</button>
                         </div>
@@ -204,7 +225,7 @@
 <dialog id="helpDialog" class="help-dialog" aria-labelledby="helpDialogTitle">
     <div class="help-dialog-header">
         <h2 id="helpDialogTitle">Help</h2>
-        <button id="helpCloseButton" class="help-dialog-x" type="button" aria-label="Close help">&times;</button>
+        <button id="helpCloseButton" class="help-dialog-x" type="button" aria-label="Close help"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
     </div>
     <div class="help-dialog-body">
         <p class="help-dialog-intro">This page is a live log of HTTP traffic handled by the mock server.</p>

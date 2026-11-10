@@ -23,11 +23,12 @@ export function renderFixtureTree(container, root, { onChange, onError, toggled 
         try { onChange(edit(root)); } catch (error) { onError(error.message); }
     };
 
-    function button(label, title, action) {
+    // button is an icon button; icon names a symbol of the sprite in index.html.
+    function button(icon, title, action) {
         const element = document.createElement('button');
         element.type = 'button';
         element.className = 'fx-action';
-        element.textContent = label;
+        element.innerHTML = `<svg class="icon" aria-hidden="true"><use href="#i-${icon}"/></svg>`;
         element.title = title;
         element.setAttribute('aria-label', title);
         element.addEventListener('click', action);
@@ -95,7 +96,7 @@ export function renderFixtureTree(container, root, { onChange, onError, toggled 
         row.className = 'fx-row';
 
         if (container) {
-            const toggle = button(open ? '▾' : '▸', `${open ? 'Collapse' : 'Expand'} ${pathLabel(path)}`, () => {
+            const toggle = button(open ? 'chevron-down' : 'chevron-right', `${open ? 'Collapse' : 'Expand'} ${pathLabel(path)}`, () => {
                 const key = pathKey(path);
                 if (toggled.has(key)) toggled.delete(key); else toggled.add(key);
                 onChange(root);
@@ -147,14 +148,14 @@ export function renderFixtureTree(container, root, { onChange, onError, toggled 
         const actions = document.createElement('span');
         actions.className = 'fx-actions';
         if (container) {
-            actions.append(button('+', type === 'array' ? `Add an item to ${pathLabel(path)}` : `Add a field to ${pathLabel(path)}`, () => {
+            actions.append(button('plus', type === 'array' ? `Add an item to ${pathLabel(path)}` : `Add a field to ${pathLabel(path)}`, () => {
                 const key = pathKey(path);
                 if (!open) { if (toggled.has(key)) toggled.delete(key); else toggled.add(key); }
                 apply(current => addChild(current, path));
             }));
         }
-        if (parentType === 'array') actions.append(button('⧉', `Duplicate ${pathLabel(path)}`, () => apply(current => duplicateAt(current, path))));
-        if (path.length) actions.append(button('×', `Remove ${pathLabel(path)}`, () => apply(current => removeAt(current, path))));
+        if (parentType === 'array') actions.append(button('duplicate', `Duplicate ${pathLabel(path)}`, () => apply(current => duplicateAt(current, path))));
+        if (path.length) actions.append(button('x', `Remove ${pathLabel(path)}`, () => apply(current => removeAt(current, path))));
         row.append(actions);
         wrapper.append(row);
 

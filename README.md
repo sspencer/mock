@@ -135,9 +135,12 @@ mock examples/matching/*.http
 ./examples/matching/requests.sh      # -p PORT or MOCK_PORT, like send-requests.sh
 ```
 
-![Web Interface](./docs/web.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs/web-dark.png">
+  <img alt="Admin UI: traffic log and routes on the left, the selected request and its response on the right" src="./docs/web.png">
+</picture>
 
-*Dark-mode request console populated with `examples/send-requests.sh`, showing a successful POST request and its response.*
+*The admin UI populated with `examples/send-requests.sh`, showing a successful POST request and its response. It follows the system light or dark theme; the toolbar switches it.*
 
 You can also pipe a request file through stdin:
 
