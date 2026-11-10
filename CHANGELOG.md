@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Redesign the admin UI: the traffic log and inspector are two cards on a neutral page, with a new accent color, colored method names, tinted status pills, segmented **Pretty**/**Raw** and **Tree**/**JSON** switches and a full-width traffic filter. Icons are now inline SVG (toolbar, fixture editor, favicon). Labels, shortcuts and behavior are unchanged.
+
 ## v0.5.0 - 2026-11-08
 
 Work with real APIs and richer responses: forward unmatched requests upstream, record or import traffic as routes, check mocks for drift, and serve fixtures, callbacks, streams, faults, rate limits and compression. The admin UI gains resend, compare, fixture editing, filtering, an access token and credential redaction. This release has breaking changes; see below.
