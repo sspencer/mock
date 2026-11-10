@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## v0.5.1 - 2026-11-10
+
+A new look for the admin UI and a reorganized manual: the UI gets a bolder ink, violet and lime design with SVG icons, and the README is now a short introduction that links to reference pages under `docs/`.
 
 - Docs: the README is now a short introduction (install, a first mock, the admin UI, a feature list). The reference moved to pages under `docs/`, indexed by `docs/README.md`: getting started, install, command line, request files, placeholders, matching, delays and faults, real APIs, testing, recipes and the admin UI. Release archives include the `docs/` pages.
 
