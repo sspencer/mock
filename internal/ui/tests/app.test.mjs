@@ -80,7 +80,7 @@ test('inspector toggles Pretty/Raw, shows match metadata, and copies original bo
  source.onmessage({data:JSON.stringify(sample)});flush();
  const row=element('requestTableBody').children[0];
  const key=new Event('keydown');Object.defineProperty(key,'target',{value:row});Object.defineProperty(key,'key',{value:'Enter'});element('requestTableBody').dispatchEvent(key);
- assert.match(element('matchSummary').textContent,/users.http:12 · revision 2/);
+ assert.match(element('matchSummary').textContent,/Answered by User detail \(users.http:12, revision 2\)/);
  assert.equal(element('copyRouteDraftButton').hidden,false);
  assert.match(element('copyRouteDraftButton').title,/variant of User detail/);
  assert.ok(element('requestDetails').textContent.includes('\n  "name": "Alex"'));
@@ -130,7 +130,7 @@ test('request column hides the host on a single-port server',()=>{
  const row=element('requestTableBody').children[0];
  const spans=row.children[2].children;
  assert.equal(spans.length,2);assert.equal(spans[1].textContent,' /token');
- assert.equal(row.title,'GET /token · 1ms');
+ assert.equal(row.title,'GET /token in 1ms');
 });
 
 test('the filter understands status classes and route hit counts filter traffic',()=>{

@@ -88,6 +88,21 @@ the regex, and `!` matchers are left out.
 
 UI features: theme toggle, filter, pause stream, clear log,
 HAR export, a Help dialog, and a routes panel that refreshes after hot-reload.
+
+The traffic log reads like a line map, newest request at the top. Each request
+is a stop on the line, lit by its status: green for `2xx`, blue for `3xx`,
+amber for `4xx` and red for `5xx` or a connection fault. A hollow stop is a
+request no route answered. Each HTTP method has its own color plate (`GET`
+blue, `POST` green, `PUT` orange, `PATCH` pink, `DELETE` red, others grey),
+in the traffic log and the route list alike. The selected request or route is
+highlighted in yellow. Request and response text is colored: header names and
+JSON keys violet, strings green, numbers orange, and the start line in its
+method or status color (bodies over 200,000 characters stay plain). Selecting
+a route shows it as a sheet: its method and path, a table of its settings,
+then its requirements, sample request and response.
+
+The UI's typeface, Overpass (SIL Open Font License), is built into the binary,
+so the page loads nothing from the network.
 When `mock` listens on more than one port, the request table shows each
 request's host and port, and routes are labeled with their port.
 The `/clear`, `/reload` and `/resend` POST endpoints and `PUT /fixture` require an `X-Requested-With` header

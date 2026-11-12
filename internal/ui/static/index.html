@@ -5,10 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="favicon.ico" sizes="32x32" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-    <meta name="theme-color" content="#16122b" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#141026" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#4a1fd0" />
     <title>Mock Server</title>
-    <link rel="stylesheet" href="style.css?v=20261110-identity" />
+    <link rel="stylesheet" href="style.css?v=20261112-highlighter" />
 </head>
 <body>
 <svg class="icon-sprite" aria-hidden="true">
@@ -31,7 +30,7 @@
 <main class="app-shell">
     <header class="topbar">
         <div class="brand-lockup">
-            <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5"/><path d="M8 12h8"/><circle cx="7.5" cy="12" r="2.6"/><circle cx="16.5" cy="12" r="2.6"/></svg>
+            <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="12"/><path d="M8 12h8"/><circle cx="7.5" cy="12" r="2.6"/><circle cx="16.5" cy="12" r="2.6"/></svg>
             <h1>mock</h1>
             <p class="status-line"><span class="live-pip" aria-hidden="true"></span><span id="streamStatus" role="status">Connecting</span></p>
         </div>
@@ -58,7 +57,7 @@
                 <div class="panel-heading">
                     <div class="panel-title-line">
                         <h2>Traffic</h2>
-                        <span id="requestCount" class="count-display" aria-label="0 requests">000/1000</span>
+                        <span id="requestCount" class="count-display" aria-label="0 requests">0 of 1000</span>
                     </div>
                 </div>
                 <div class="panel-actions">
@@ -84,7 +83,7 @@
                     </thead>
                     <tbody id="requestTableBody">
                     <tr>
-                        <td colspan="3" class="empty-state">No requests yet</td>
+                        <td colspan="3" class="empty-state">No requests yet. Send one to the mock port and it shows up here.</td>
                     </tr>
                     </tbody>
                 </table>
@@ -213,7 +212,7 @@
                     </form>
                     <p id="routeSummary" class="match-summary"></p>
                 </div>
-                <pre id="routeDetails" class="detail-content" tabindex="0" aria-label="Route configuration content"></pre>
+                <div id="routeDetails" class="detail-content route-sheet" tabindex="0" aria-label="Route configuration content"></div>
                 <div id="fixtureEditor" class="fixture-editor" aria-labelledby="fixtureEditorTitle" role="region" hidden>
                     <div class="fixture-toolbar">
                         <h3 id="fixtureEditorTitle" class="fixture-title">Fixture <code id="fixtureFile"></code></h3>

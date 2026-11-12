@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A new, more colorful look for the admin UI: a violet band over two floating panels, with every surface tinted violet in both themes. The traffic log is a line map (each request a lamp lit by its status, hollow when no route answered, popping onto the line as it arrives), each HTTP method has a color plate, and the selected row is run over with a yellow highlighter. Request and response text is colored: header names and JSON keys violet, strings green, numbers orange, and the start line in its method or status color. A selected route is shown as a sheet (method and path, a table of settings, then requirements and response) instead of a block of text. The typeface is Overpass, embedded in the binary (about 50 KB). Summary lines read as sentences, and the request count reads `12 of 1000`. Behavior and shortcuts are unchanged.
+- Fixed the admin UI's Resend form spilling over the response when it was taller than the request section; it now scrolls.
+
 - **Breaking (build):** `mock` now needs Go 1.27 to build or `go install` (`go.mod` pins the 1.27.4 toolchain). Release binaries and the Docker image are unaffected for users.
 
 - `mock check` compares nested JSON keys and value types (string versus number and so on), with paths such as `user.address` and `items[0].sku`, down to `-depth` levels (3 by default; `null` matches any type), and compares chosen response headers with `-check-header Name`.
