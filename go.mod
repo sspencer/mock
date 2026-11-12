@@ -1,8 +1,8 @@
 module github.com/sspencer/mock
 
-go 1.26
+go 1.27
 
-toolchain go1.26.11
+toolchain go1.27.4
 
 require (
 	github.com/fsnotify/fsnotify v1.10.1

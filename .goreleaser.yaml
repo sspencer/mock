@@ -91,7 +91,7 @@ release:
   header: |
     Release {{.Tag}} of `mock`.
 
-    Install with Go 1.26+:
+    Install with Go 1.27+:
 
     ```sh
     go install github.com/sspencer/mock@{{.Tag}}

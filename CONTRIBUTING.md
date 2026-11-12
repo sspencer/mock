@@ -4,7 +4,7 @@ Thanks for looking at `mock`. Small, focused changes are welcome.
 
 ## Setup
 
-Go 1.26 or newer is required (`go.mod`). Node.js 22+ runs the dependency-free dashboard tests; it is not needed to build or run the binary.
+Go 1.27 or newer is required (`go.mod`). Node.js 22+ runs the dependency-free dashboard tests; it is not needed to build or run the binary.
 
 ```sh
 git clone https://github.com/sspencer/mock.git
