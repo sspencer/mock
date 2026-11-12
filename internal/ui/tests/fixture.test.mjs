@@ -4,6 +4,7 @@ import {
     addChild, convertValue, countNodes, duplicateAt, formatFixture, getAt, losslessIssue,
     parseFixture, pathLabel, removeAt, renameAt, retype, setAt, valueType,
 } from '../static/fixture.mjs';
+import { editableFixture } from '../static/fixture.mjs';
 
 test('parseFixture returns the value or an error with a position', () => {
     assert.deepEqual(parseFixture('{"a": [1, 2]}'), { value: { a: [1, 2] } });
@@ -99,4 +100,12 @@ test('losslessIssue flags data the tree view would rewrite', () => {
     assert.match(losslessIssue('{"name": "x", "10": 1}'), /"10" would move to the front/);
     assert.equal(losslessIssue('{"1": 1, "2": 2, "name": "x"}'), '');
     assert.equal(losslessIssue('{"a": {"x": 1}, "b": {"x": 2}}'), '');
+});
+
+test('only JSON fixtures are editable', () => {
+    assert.ok(editableFixture('data/users.json'));
+    assert.ok(editableFixture('data/users.txt'));
+    assert.ok(!editableFixture('data/users.CSV'));
+    assert.ok(!editableFixture('events.ndjson'));
+    assert.ok(!editableFixture('events.jsonl'));
 });

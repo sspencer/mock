@@ -64,6 +64,14 @@ range is `200`–`999`; invalid codes are load errors. Brackets that do not hold
 only digits, such as `### [beta] Users`, stay part of the name. The old
 `$status` variable is no longer supported and is also a load error.
 
+The status can also come from the request, so one route answers with whatever
+status a client asks for: `### [{{$query.status | default 200}}] Echo status`.
+`@status = {{$json.code}}` does the same as a directive. The placeholder is
+rendered for each response; a result that isn't a status from `200` to `999`
+answers `500` and logs why. `@status` with a plain number, such as
+`@status = 202`, sets a fixed status. A status in the section name wins over a
+file-level `@status`, and a section that sets both is a load error.
+
 ### Default response headers
 
 `@default.header.Name = value` gives every section in the file a response
@@ -284,6 +292,29 @@ cannot read outside the fixture directories. Templated paths are not watched
 for reloads, because they name no fixed file; each request reads the file
 afresh anyway.
 
+`@missing` sets what a missing file does, for templated and fixed paths alike:
+
+- `@missing = next` treats the route as not matching, so a later route
+  answers. With "one JSON file per record", the next route can be a `404`
+  with a body of your own:
+
+  ```http
+  ### Order
+  @missing = next
+  GET /orders/:id
+
+  < orders/{{$path.id}}.json
+
+  ### [404] No such order
+  GET /orders/:id
+  Content-Type: application/json
+
+  {"error": "no order {{$path.id}}"}
+  ```
+
+- `@missing = 410` (or any status from `200` to `999`) answers with that
+  status instead of the default `404` (templated path) or `500` (fixed path).
+
 ## Variables
 
 A variable is defined on a line of its own as `@name = value`. The name cannot
@@ -340,12 +371,17 @@ in the file, or in a section, where it replaces the file value.
 | `@seed` | any non-empty text | random | Make generated values reproducible per request. See [Reproducible data](placeholders.md#reproducible-data). |
 | `@template` | `auto`, `on` or `off` | `auto` | Whether placeholders are expanded in the body. See [External response bodies](#external-response-bodies). |
 | `@trim` | `on` or `off` | `on` | With `off` the inline body keeps its exact text and line endings. See [Supported dialect](#supported-dialect). |
-| `@fixture` | JSON file path | none | Data file that `{{$fixture.path}}` placeholders read. See [Fixture data](placeholders.md#fixture-data). |
-| `@callback` | `METHOD URL` | none | Send a request after responding, with `@callback.delay`, `@callback.header.Name` and `@callback.body`. See [Webhook callbacks](responses.md#webhook-callbacks). |
+| `@fixture` | JSON, CSV or NDJSON file path | none | Data file that `{{$fixture.path}}` placeholders read. See [Fixture data](placeholders.md#fixture-data). |
+| `@callback` | `METHOD URL` | none | Send a request after responding, with `@callback.delay`, `@callback.header.Name` and `@callback.body`. `@callback.1`, `@callback.2` ... send more, in order, and `@callback.retries` retries failures. See [Webhook callbacks](responses.md#webhook-callbacks). |
 | `@proxy` | `http` or `https` URL | none | Forward the requests this section matches to the URL instead of answering. See [Per-route proxying](real-apis.md#per-route-proxying). |
 | `@fallback` | `true` or `false` | `false` | Try the section after every section without it, whatever the load order. See [Fallback routes](matching.md#fallback-routes). |
 | `@match.chance` | a percentage above `0%`, such as `20%` | `100%` | Let the section answer only that share of the requests it matches; the rest go on to later routes. Reproducible with `@seed`. See [Occasional responses](matching.md#occasional-responses). |
 | `@default.header.Name` | header value, which may hold placeholders | none | Add the response header to every section in scope that does not set it. See [Default response headers](#default-response-headers). |
+| `@status` | status from `200` to `999`, or a placeholder such as `{{$query.status \| default 200}}` | `200` | The response status, when the section name has none. See [Request file format](#request-file-format). |
+| `@etag` | `auto` or `off` | `off` | Add a hash `ETag` and answer a matching `If-None-Match` with `304`. See [ETags](responses.md#etags). |
+| `@missing` | `next`, or a status such as `404` | `404` for a templated `< path`, else `500` | What a missing `< path` file does: `next` lets later routes answer. See [Placeholders in file paths](#placeholders-in-file-paths). |
+| `@require` | a `$reference`, such as `$fixture.users[id=$path.id]` | none | Match only when the reference has a value for the request. See [Looking up a record](placeholders.md#looking-up-a-record). |
+| `@jwt.secret` | text, which may hold placeholders | none (unsigned) | The HS256 secret for `{{$jwt}}` tokens. See [Signed tokens](placeholders.md#signed-tokens). |
 | `@port` | port number | `-p` (`8080`) | Serve the section on this port. A port in the request URL takes precedence. See [Multiple ports](matching.md#multiple-ports). |
 | `@header.Name` | [matcher value](matching.md#matcher-values): `text`, `*`, `!`, `~regex`, `!text` or `!~regex` | none | Require the incoming request header to match. A section's header matcher replaces a file one of the same name. See [Header matching](matching.md#header-matching). |
 | `@cookie.name` | matcher value | none | Require the request cookie to match. See [Cookie matching](matching.md#cookie-matching). |

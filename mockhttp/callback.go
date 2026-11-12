@@ -16,8 +16,15 @@ import (
 )
 
 // callbackTimeout bounds each @callback request, from connecting to reading
-// the response. Callbacks are never retried.
+// the response.
 var callbackTimeout = 10 * time.Second
+
+// callbackBackoff is the wait before a callback's first retry; each later
+// retry waits twice as long as the one before, up to maxCallbackBackoff.
+var (
+	callbackBackoff    = time.Second
+	maxCallbackBackoff = 30 * time.Second
+)
 
 // CallbackInfo marks a request event as an outbound @callback rather than a
 // request the mock received.
@@ -27,25 +34,33 @@ type CallbackInfo struct {
 	// Error says why no response was received, such as a timeout, a refused
 	// connection or an invalid rendered URL. Response.Status is 0 then.
 	Error string `json:"error,omitempty"`
+	// Index is the callback's number: 0 for @callback, N for @callback.N.
+	Index int `json:"index,omitempty"`
+	// Attempt counts sends of this callback, from 1, when it may be retried.
+	Attempt int `json:"attempt,omitempty"`
 }
 
 // pendingCallback is a rendered @callback waiting for its delay.
 type pendingCallback struct {
+	index   int
 	method  string
 	url     string
 	headers http.Header
 	body    string
 	delay   time.Duration
+	retries int
+	// attempt counts sends from 1 when the callback may be retried.
+	attempt int
 	trigger uint64
 	route   MatchInfo
 	err     error
 }
 
-// renderCallback renders the route's @callback against the request that
-// triggered it. It runs in the handler, while the request is still readable.
-func renderCallback(method *restclient.Method, render *renderer) pendingCallback {
-	c := method.Callback
-	p := pendingCallback{method: c.Method, delay: c.Delay, headers: make(http.Header)}
+// renderCallback renders one of the route's callbacks against the request
+// that triggered it. It runs in the handler, while the request is still
+// readable.
+func renderCallback(c *restclient.Callback, render *renderer) pendingCallback {
+	p := pendingCallback{index: c.Index, method: c.Method, delay: c.Delay, retries: c.Retries, headers: make(http.Header)}
 	target, err := render.text(c.URL, false)
 	if err == nil {
 		if restclient.FileIsTemplate(target) {
@@ -88,23 +103,61 @@ func callbackContentType(body string) string {
 	return "text/plain; charset=utf-8"
 }
 
-// scheduleCallback sends a rendered @callback after its delay, in the
-// background. Close cancels callbacks that have not finished.
+// scheduleCallback sends the route's rendered callbacks in the background,
+// in order: each waits for its delay after the previous one finished
+// (including its retries). Close cancels callbacks that have not finished.
 func (s *Server) scheduleCallback(r *http.Request, method *restclient.Method, render *renderer, trigger uint64, match MatchInfo) {
-	if method.Callback == nil {
+	if len(method.Callbacks) == 0 {
 		return
 	}
-	p := renderCallback(method, render)
-	p.trigger, p.route = trigger, match
-	if s.looped(r) {
-		p.err = errors.New("not sent: the request came from this mock's own callback or proxy, so sending would loop")
+	looped := s.looped(r)
+	pending := make([]pendingCallback, len(method.Callbacks))
+	for i, c := range method.Callbacks {
+		p := renderCallback(c, render)
+		p.trigger, p.route = trigger, match
+		if looped {
+			p.err = errors.New("not sent: the request came from this mock's own callback or proxy, so sending would loop")
+		}
+		pending[i] = p
 	}
 	s.callbackMu.Lock()
 	defer s.callbackMu.Unlock()
 	if s.closed {
 		return
 	}
-	s.callbacks.Go(func() { s.sendCallback(p) })
+	s.callbacks.Go(func() {
+		for _, p := range pending {
+			if !s.sendWithRetries(p) {
+				return
+			}
+		}
+	})
+}
+
+// sendWithRetries sends one callback after its delay, retrying with backoff
+// while it fails (no response, 429 or 5xx) and retries remain. It reports
+// false when the server is closing.
+func (s *Server) sendWithRetries(p pendingCallback) bool {
+	if p.err == nil && !sleep(s.callbackCtx, p.delay) {
+		return false
+	}
+	wait := callbackBackoff
+	for attempt := 1; ; attempt++ {
+		if p.retries > 0 {
+			p.attempt = attempt
+		}
+		retry := s.sendCallback(p)
+		if s.callbackCtx.Err() != nil {
+			return false
+		}
+		if !retry || p.err != nil || attempt > p.retries {
+			return true
+		}
+		if !sleep(s.callbackCtx, wait) {
+			return false
+		}
+		wait = min(2*wait, maxCallbackBackoff)
+	}
 }
 
 // Close cancels @callback requests that are waiting or in flight and waits
@@ -118,12 +171,12 @@ func (s *Server) Close() {
 	s.callbacks.Wait()
 }
 
-func (s *Server) sendCallback(p pendingCallback) {
-	if p.err == nil && !sleep(s.callbackCtx, p.delay) {
-		return
-	}
+// sendCallback sends a callback once, publishes the attempt as a request
+// event and logs it. It reports whether the attempt failed in a way worth
+// retrying: no response, 429 or 5xx.
+func (s *Server) sendCallback(p pendingCallback) (retry bool) {
 	startedAt := time.Now()
-	event := RequestEvent{Callback: &CallbackInfo{Trigger: p.trigger}, Match: p.route}
+	event := RequestEvent{Callback: &CallbackInfo{Trigger: p.trigger, Index: p.index, Attempt: p.attempt}, Match: p.route}
 	event.Request = EventRequest{
 		Method: p.method, HTTPVersion: "HTTP/1.1", Headers: p.headers.Clone(),
 		Body: eventBody(loggedBody{text: p.body}, int64(len(p.body))),
@@ -185,7 +238,7 @@ func (s *Server) sendCallback(p pendingCallback) {
 		event.Response.Details = strings.TrimRight(details.String(), "\n")
 	}
 	if s.callbackCtx.Err() != nil {
-		return // Shutting down: the request was cancelled, not failed.
+		return false // Shutting down: the request was cancelled, not failed.
 	}
 	s.publishRequest(s.redactEvent(event))
 
@@ -198,11 +251,18 @@ func (s *Server) sendCallback(p pendingCallback) {
 		target, errorText = redactURL(target), redactURLsInText(errorText)
 	}
 	attrs := []any{"method", p.method, "url", target, "trigger", p.trigger, "duration", elapsed}
+	if p.index > 0 {
+		attrs = append(attrs, "callback", p.index)
+	}
+	if p.attempt > 0 {
+		attrs = append(attrs, "attempt", p.attempt)
+	}
 	if err != nil {
 		logger.Warn("callback failed", append(attrs, "error", errorText)...)
-		return
+		return true
 	}
 	logger.Info("callback sent", append(attrs, "status", response.StatusCode)...)
+	return response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= 500
 }
 
 // callbackError describes a failed callback without the "Post \"url\":"
@@ -225,15 +285,23 @@ var callbackClient = &http.Client{
 	Transport:     &http.Transport{Proxy: http.ProxyFromEnvironment, MaxIdleConnsPerHost: 4, IdleConnTimeout: 30 * time.Second},
 }
 
-// describeCallback summarizes a route's @callback for the admin UI.
+// describeCallback summarizes a route's callbacks for the admin UI, such as
+// "POST {{$json.callbackUrl}} after 1s (3 retries), then POST ...".
 func describeCallback(method restclient.Method) string {
-	c := method.Callback
-	if c == nil {
-		return ""
+	parts := make([]string, 0, len(method.Callbacks))
+	for _, c := range method.Callbacks {
+		text := c.Method + " " + c.URL
+		if c.Delay > 0 {
+			text += " after " + c.Delay.String()
+		}
+		switch c.Retries {
+		case 0:
+		case 1:
+			text += " (1 retry)"
+		default:
+			text += fmt.Sprintf(" (%d retries)", c.Retries)
+		}
+		parts = append(parts, text)
 	}
-	text := c.Method + " " + c.URL
-	if c.Delay > 0 {
-		text += " after " + c.Delay.String()
-	}
-	return text
+	return strings.Join(parts, ", then ")
 }

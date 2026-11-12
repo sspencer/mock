@@ -1,6 +1,7 @@
 package mockhttp
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -146,5 +147,65 @@ func TestCloseCancelsPendingCallbacks(t *testing.T) {
 	}
 	if events := s.Requests(RequestFilter{Callbacks: true}); len(events) != 0 {
 		t.Errorf("callback events = %d", len(events))
+	}
+}
+
+func TestCallbacksInOrderWithRetries(t *testing.T) {
+	old := callbackBackoff
+	callbackBackoff = 5 * time.Millisecond
+	t.Cleanup(func() { callbackBackoff = old })
+
+	var mu sync.Mutex
+	var paths []string
+	failures := 2
+	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		paths = append(paths, r.URL.Path)
+		if r.URL.Path == "/pending" && failures > 0 {
+			failures--
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(receiver.Close)
+	s := newTestServer(t, `### [202] Pay
+@callback.retries = 3
+@callback = POST `+receiver.URL+`/pending
+@callback.2 = POST `+receiver.URL+`/succeeded
+@callback.1 = POST `+receiver.URL+`/processing
+POST /payments
+
+{}
+`)
+	t.Cleanup(s.Close)
+	if code, _ := serveRequest(t, s, "POST", "/payments", "", ""); code != 202 {
+		t.Fatalf("status = %d", code)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && len(s.Requests(RequestFilter{Callbacks: true})) < 5 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	mu.Lock()
+	got := strings.Join(paths, " ")
+	mu.Unlock()
+	if want := "/pending /pending /pending /processing /succeeded"; got != want {
+		t.Fatalf("callbacks sent = %q, want %q", got, want)
+	}
+	var attempts []int
+	var indexes []int
+	for _, event := range s.Requests(RequestFilter{Callbacks: true}) {
+		if event.Callback == nil {
+			continue
+		}
+		attempts = append(attempts, event.Callback.Attempt)
+		indexes = append(indexes, event.Callback.Index)
+	}
+	if fmt.Sprint(attempts) != "[1 2 3 1 1]" || fmt.Sprint(indexes) != "[0 0 0 1 2]" {
+		t.Errorf("attempts = %v, indexes = %v", attempts, indexes)
+	}
+	if got := describeRoute(s.Methods()[0], 0, 1).Callback; !strings.Contains(got, "(3 retries), then POST") {
+		t.Errorf("describe = %q", got)
 	}
 }

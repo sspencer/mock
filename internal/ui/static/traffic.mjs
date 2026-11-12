@@ -39,7 +39,9 @@ export function eventBadge(event) {
     if (event?.callback) {
         const route = event.match?.route?.name || 'a route';
         const outcome = event.callback.error ? ` · failed: ${event.callback.error}` : '';
-        return { text: 'callback', title: `Sent by ${route} after request #${event.callback.trigger}${outcome}` };
+        const sent = event.callback.index ? `Callback ${event.callback.index} sent` : 'Sent';
+        const attempt = event.callback.attempt > 1 ? ` · attempt ${event.callback.attempt}` : '';
+        return { text: event.callback.attempt > 1 ? 'retry' : 'callback', title: `${sent} by ${route} after request #${event.callback.trigger}${attempt}${outcome}` };
     }
     if (event?.resendOf != null) {
         const proxied = event.match?.upstream ? ` and forwarded to ${event.match.upstream}` : '';

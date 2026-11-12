@@ -446,7 +446,7 @@ func TestRejectInvalidVariableDefinitions(t *testing.T) {
 		"### r\n@json.ro*les = a\nGET /x": "invalid variable name",
 		"### r\n@json.*x = a\nGET /x":     "invalid variable name",
 		"### r\n@query.* = a\nGET /x":     "invalid variable name",
-		"### r\n@status = 201\nGET /x":    "@status is not supported",
+		"### r\n@status = teapot\nGET /x": "@status must be a status",
 		"### r\n# $delay=1s\nGET /x":      `use "@delay = 1s"`,
 		"not a request\n### r\nGET /x":    "content before first ### section",
 	} {

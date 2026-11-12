@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- The response status can come from the request: `### [{{$query.status | default 200}}] Echo` or `@status = {{$json.code}}`. `@status = 202` sets a fixed status for sections whose name has none.
+
+- `{{#if $ref}} ... {{else}} ... {{/if}}` blocks, with presence tests and `==` / `!=` comparisons, keep optional fields and variants in one route.
+
+- Fixture records by key: `{{$fixture.users[id=$path.id].name}}`. `[field=value]` selectors work in every JSON path, including `{{$json.*}}` and `@json.*` matchers. `@require = $reference` makes a route match only when the reference has a value, so a missing record falls through to a `404` route; the near-miss list says why.
+
+- `{{#each ... | offset n | limit n}}` pages through an array, with `$reference` arguments such as `$query.limit`, and `| length` counts it.
+
+- New filters: `length`, `slice`, `replace`, `base64decode`, `sha256`, `hmac`, `int`, `round`, `sub`, `mul` and `date`. `add` now takes decimals too. Filter arguments can be `$references`, such as `| mul $query.rate`.
+
+- New generators: `{{$oneOf a b c}}`, `{{$randomFloat min max [decimals]}}`, `{{$randomDate from to}}`, `{{$company}}`, `{{$city}}`, `{{$country}}`, `{{$address}}`, `{{$ip}}`, `{{$word}}`, `{{$price}}` and `{{$ulid}}`.
+
+- `{{$jwt sub=$json.user exp=1h}}` builds a JSON Web Token, signed with HS256 when `@jwt.secret` is set and unsigned otherwise.
+
+- `@fixture` reads CSV (an array of row objects keyed by the header) and NDJSON (`.ndjson`, `.jsonl`) files, chosen by extension. `{{$fixture}}` is the whole file. The fixture editor stays JSON-only.
+
+- `@etag = auto` adds a hash `ETag` and answers a matching `If-None-Match` with `304`, for inline and templated bodies too.
+
+- `@callback.1`, `@callback.2` ... send further callbacks in order after `@callback`, each after the previous one finished, and `@callback.retries` (or `@callback.N.retries`) retries a callback that got no response, a `429` or a `5xx`, with exponential backoff. Callback events carry `index` and `attempt`; retries are marked **retry** in the admin UI.
+
+- `@missing = next` lets later routes answer when a route's `< path` file is missing, and `@missing = 410` (or another status) changes the status it answers with.
+
+- `/routes` reports `statusTemplate`, `require`, `missing` and `etag`, and the route inspector shows them.
+
 - `@default.header.Name = value` adds a response header to every section that does not set it (usually at file scope, such as `@default.header.Content-Type = application/json`), and `-H 'Name: value'` (`--header`) does the same for every request file. A section's own headers win, then `@default.header`, then `-H`. A default `Content-Type` is used only when the type cannot be guessed from the `< path` file's extension or by sniffing the body with `http.DetectContentType` (which finds types such as `image/png` and `text/html`, but sees JSON as plain text); `/routes` shows it as `defaultContentType`. `@proxy` sections get none.
 
 - A request line may list several methods, such as `GET,HEAD,OPTIONS /health`, or use `*` for any method, instead of one copy of the section per method.

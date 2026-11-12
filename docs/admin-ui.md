@@ -13,7 +13,7 @@ The UI is served at the root of the admin port (`-a`, default `8081`):
 | `/clear` | `POST` clears stored events |
 | `/reload` | `POST` reloads the request files now and returns the new state (see [Reloading](cli.md#reloading)) |
 | `/state` | `GET` active revision, route count, last successful reload, and reload error |
-| `/routes` | `GET` route configuration, including source location, port, matchers, status, delay, `fallback`, `chance` and `defaultContentType` when set, body preview, and `hits` (requests answered) |
+| `/routes` | `GET` route configuration, including source location, port, matchers, status, delay, `fallback`, `chance`, `defaultContentType`, `statusTemplate`, `require`, `missing` and `etag` when set, body preview, and `hits` (requests answered) |
 | `/requests` | `GET` the request log as JSON, optionally filtered (see below) |
 | `/resend` | `POST` answers a request as if a client sent it to the mock port (see [Resending a request](#resending-a-request)) |
 | `/fixture` | `GET ?route=ID` reads a route's `@fixture` file; `PUT` writes it (see [Editing fixtures](#editing-fixtures)) |
@@ -148,8 +148,9 @@ edit it.
 
 ### Editing fixtures
 
-A route with [`@fixture`](placeholders.md#fixture-data) shows **Edit fixture** in the route
-inspector. The editor has two views:
+A route with a JSON [`@fixture`](placeholders.md#fixture-data) shows **Edit fixture** in the route
+inspector (CSV and NDJSON fixtures are edited in an editor; `/fixture`
+answers `409` for them). The editor has two views:
 
 - **Tree** shows the JSON as rows you can expand and collapse. Each value has
   a type (string, number, boolean, null, object or array) and an editor for

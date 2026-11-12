@@ -92,8 +92,9 @@ export a HAR file. See [Admin UI and API](docs/admin-ui.md).
 - **Match on more than the path.** Choose a route by header, query, path
   parameter, cookie, JSON, form or XML body value, with exact, wildcard, regex
   and negated matchers. [Matching](docs/matching.md)
-- **Generate data.** Faker values, dates, repeated lists, fixture files, the
-  echoed request, and seeds for repeatable output.
+- **Generate data.** Faker values, dates, signed tokens, repeated lists,
+  conditional blocks, fixture files (JSON, CSV or NDJSON, with lookup by key
+  and paging), the echoed request, and seeds for repeatable output.
   [Placeholders](docs/placeholders.md)
 - **Serve files.** Send a response body from a file, with range and
   conditional requests. [Request files](docs/request-files.md#external-response-bodies)

@@ -56,6 +56,15 @@ type RouteInfo struct {
 	Variables     map[string]string `json:"variables"`
 	Body          string            `json:"body"`
 	BodyTruncated bool              `json:"bodyTruncated"`
+	// StatusTemplate is the placeholder the status is rendered from, when set.
+	StatusTemplate string `json:"statusTemplate,omitempty"`
+	// Require is the @require reference, such as
+	// "$fixture.users[id=$path.id]", when set.
+	Require string `json:"require,omitempty"`
+	// Missing is the @missing setting, "next" or a status, when set.
+	Missing string `json:"missing,omitempty"`
+	// ETag is set for @etag = auto.
+	ETag bool `json:"etag,omitempty"`
 	// DefaultContentType is the @default.header or -H Content-Type, sent
 	// when the type cannot be guessed from the file extension or the body.
 	DefaultContentType string `json:"defaultContentType,omitempty"`
@@ -105,7 +114,7 @@ func describeRoute(method restclient.Method, index int, revision uint64) RouteIn
 	}
 	return RouteInfo{ID: fmt.Sprintf("%d:%d", revision, index), Revision: revision, Name: method.Name, Method: method.Method,
 		Path: (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath(), Query: method.Query.Encode(), Port: method.Port, Source: method.Source, Line: method.Line, Status: method.Status,
-		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), Proxy: method.Proxy, Fixture: method.Fixture, Compress: method.Compress, Callback: describeCallback(method), RateLimit: describeRateLimit(method), DefaultContentType: method.DefaultContentType, Fallback: method.Fallback, Chance: describeChance(method), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
+		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), Proxy: method.Proxy, Fixture: method.Fixture, Compress: method.Compress, Callback: describeCallback(method), RateLimit: describeRateLimit(method), DefaultContentType: method.DefaultContentType, StatusTemplate: method.StatusTemplate, Require: describeRequire(method), Missing: describeMissing(method), ETag: method.ETag, Fallback: method.Fallback, Chance: describeChance(method), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
 		MatchQuery: cloneValues(method.MatchQuery), MatchPath: cloneOptional(method.MatchPath),
 		MatchBody: method.MatchBody, MatchJSON: cloneOptional(method.MatchJSON), MatchXML: cloneOptional(method.MatchXML), MatchForm: cloneValues(method.MatchForm), MatchCookies: cloneValues(method.MatchCookies),
 		Variables: cloneVariables(method.Variables), Body: body, BodyTruncated: truncated}
@@ -381,9 +390,18 @@ func closestRoutes(methods []restclient.Method, facts *requestFacts) []RouteMism
 	candidates := make([]RouteMismatch, 0, len(methods))
 	for _, method := range methods {
 		candidate := mismatch(method, facts)
-		if len(candidate.Reasons) == 0 && method.Chance > 0 {
-			// It matched but lost its @match.chance draw.
-			candidate.Reasons = []string{"Skipped by @match.chance = " + describeChance(method) + " for this request"}
+		if len(candidate.Reasons) == 0 {
+			// It matched, but a @require, @missing = next or @match.chance
+			// draw turned the request away.
+			if values, ok := facts.match(&method, facts.r.Method); ok {
+				path, _ := matchPath(routePattern(method), facts.r.URL.EscapedPath())
+				if reason := unavailable(&method, templateValues{values: values, path: path, facts: facts}); reason != "" {
+					candidate.Reasons = []string{reason}
+				}
+			}
+			if len(candidate.Reasons) == 0 && method.Chance > 0 {
+				candidate.Reasons = []string{"Skipped by @match.chance = " + describeChance(method) + " for this request"}
+			}
 		}
 		candidates = append(candidates, candidate)
 	}

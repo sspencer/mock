@@ -15,17 +15,31 @@ type JSONSegment struct {
 	// Quoted is set for a ["key"] segment, which is always an object key,
 	// even when it is "*" or all digits, and may contain dots.
 	Quoted bool
+	// Select is set for a [key=value] segment, which keeps the elements of
+	// an array that are objects whose Name field equals Value. Value may be
+	// a "$reference" that the caller resolves.
+	Select bool
+	Value  string
 }
 
-// ParseJSONPath splits a JSON field path such as user.roles.0, items.*.sku
-// or meta["user.id"].name into segments. Plain segments use letters,
-// digits, '_' and '-'; ["key"] segments hold any key without double quotes or
-// whitespace and may follow a segment directly or after a dot.
+// ParseJSONPath splits a JSON field path such as user.roles.0, items.*.sku,
+// meta["user.id"].name or users[id=42].name into segments. Plain segments use
+// letters, digits, '_' and '-'; ["key"] segments hold any key without double
+// quotes or whitespace; [key=value] selectors pick array elements by a field.
+// Bracketed segments may follow a segment directly or after a dot.
 func ParseJSONPath(path string) ([]JSONSegment, error) {
 	var segments []JSONSegment
 	rest := path
 	for {
-		if strings.HasPrefix(rest, `["`) {
+		if strings.HasPrefix(rest, "[") && !strings.HasPrefix(rest, `["`) {
+			end := strings.IndexByte(rest, ']')
+			key, value, ok := strings.Cut(rest[1:max(end, 1)], "=")
+			if end < 0 || !ok || key == "*" || !validPlainSegment(key) || value == "" || strings.ContainsAny(value, "\" \t{}") {
+				return nil, fmt.Errorf(`invalid [field=value] selector in JSON path %q (example: users[id=42].name)`, path)
+			}
+			segments = append(segments, JSONSegment{Name: key, Select: true, Value: value})
+			rest = rest[end+1:]
+		} else if strings.HasPrefix(rest, `["`) {
 			end := strings.Index(rest[2:], `"]`)
 			if end < 0 {
 				return nil, fmt.Errorf(`unterminated ["key"] in JSON path %q`, path)
@@ -51,14 +65,14 @@ func ParseJSONPath(path string) ([]JSONSegment, error) {
 		switch {
 		case rest == "":
 			return segments, nil
-		case strings.HasPrefix(rest, `.["`):
+		case strings.HasPrefix(rest, ".["):
 			rest = rest[1:]
 		case rest[0] == '.':
 			rest = rest[1:]
 			if rest == "" {
 				return nil, fmt.Errorf("invalid JSON path %q (it ends with a dot)", path)
 			}
-		case strings.HasPrefix(rest, `["`):
+		case rest[0] == '[':
 		default:
 			return nil, fmt.Errorf("invalid JSON path %q", path)
 		}

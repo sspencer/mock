@@ -77,6 +77,30 @@ They take the same values as `@delay` and `@fault`. A route's own `@delay` or
 `@fault` takes precedence, so `@delay = 0` or `@fault = reset 0%` keeps one
 route fast and reliable. Unmatched requests (404s and `--upstream`
 forwarding) are not affected.
+### ETags
+
+`@etag = auto` adds an `ETag` response header, a hash of the body as sent, and
+answers a `GET` or `HEAD` whose `If-None-Match` lists it with `304 Not
+Modified` and no body. Clients that cache can then be tested against inline
+and templated bodies too:
+
+```http
+@etag = auto
+
+### Settings
+GET /settings
+Content-Type: application/json
+
+{"theme": "dark", "user": "{{$header.X-User}}"}
+```
+
+- Only `200` responses get an ETag, and a section's own `ETag` header wins.
+- The tag changes whenever the rendered body does, so a templated body gets a
+  new tag when the request changes what it renders. A compressed body has its
+  own tag per encoding.
+- A `< path` file served as raw bytes already supports
+  [conditional requests](request-files.md#range-and-conditional-requests);
+  with `@etag = auto` it also answers `If-None-Match`.
 
 ### Compressed responses
 
@@ -132,6 +156,8 @@ Content-Type: application/json
 | `@callback.delay` | non-negative duration, such as `500ms` | `0s` (right after the response) |
 | `@callback.header.Name` | header value | none |
 | `@callback.body` | body template on one line | empty |
+| `@callback.retries` | retries for each failed callback, `0` to `10` | `0` |
+| `@callback.N` | `METHOD URL` for callback number `N` (1 to 99), with `@callback.N.delay`, `.header.Name`, `.body` and `.retries` | none |
 
 - The URL, header values and body are templates rendered against the request
   that triggered the callback, with every [placeholder](placeholders.md#placeholders) the
@@ -143,9 +169,13 @@ Content-Type: application/json
 - Without `@callback.header.Content-Type`, a body that starts with `{` or `[`
   is sent as `application/json`, anything else as `text/plain`. Callbacks
   carry `User-Agent: mock-callback` unless you set one, and a `Via` header.
-- One request is sent per response, with no retries. It times out after 10
-  seconds and does not follow redirects. A route whose response failed to
-  render sends no callback; one with `@fault` still does.
+- Each callback is one request per response. It times out after 10 seconds
+  and does not follow redirects. A route whose response failed to render sends
+  no callback; one with `@fault` still does.
+- `@callback.retries = 3` sends a failed callback again, up to three more
+  times, after 1s, 2s, 4s and so on (at most 30s). A callback fails when no
+  response comes back, or the response is `429` or `5xx`. Each attempt is
+  logged; retries are marked **retry**.
 - Callbacks are logged in the admin UI, marked **callback** (the filter
   matches `callback`), with the request sent and the response received, or
   `ERR` and the reason when none came back: a timeout, a refused connection,
@@ -158,6 +188,31 @@ Content-Type: application/json
 - Callbacks are not requests the mock received, so `/requests` leaves them
   out unless you ask for `callbacks=true`, and they don't count for
   [strict mode](testing.md#strict-mode-and-route-coverage) or route hits.
+
+### Callback sequences
+
+Webhook providers often send several events for one request, such as
+`payment.pending` and then `payment.succeeded`. Number further callbacks
+`@callback.1`, `@callback.2` and so on. `@callback` (if any) goes first, then
+the numbered ones in order, each waiting for its own delay after the previous
+one finished, including its retries:
+
+```http
+### [202] Create payment
+@callback.retries = 2
+@callback = POST {{$json.callbackUrl}}
+@callback.body = {"type": "payment.pending", "id": "{{$json.id}}"}
+@callback.1 = POST {{$json.callbackUrl}}
+@callback.1.delay = 2s
+@callback.1.body = {"type": "payment.succeeded", "id": "{{$json.id}}"}
+POST /payments
+
+{"id": "{{$json.id}}", "status": "pending"}
+```
+
+`@callback.retries` applies to every callback of the section;
+`@callback.N.retries` overrides it for one. A failed callback doesn't stop the
+ones after it.
 
 `mock` sends callbacks to whatever URL the request names, so only point
 clients you trust at a `mock` that has `@callback` routes.

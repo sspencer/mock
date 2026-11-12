@@ -158,6 +158,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.logRequest(r, requestBody, capture, capture.statusCode(), method.Name, arrivedAt, time.Since(arrivedAt))
 		return
 	}
+	if method.StatusTemplate != "" {
+		rendered, err := renderStatus(method, render)
+		if err != nil {
+			s.logResponseRenderError(err)
+			http.Error(capture, "mock: "+err.Error(), http.StatusInternalServerError)
+			s.logRequest(r, requestBody, capture, capture.statusCode(), method.Name, arrivedAt, time.Since(arrivedAt))
+			return
+		}
+		status = rendered
+	}
 	file, hasFile, err := render.file()
 	var body []byte
 	var headers http.Header
@@ -169,6 +179,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		switch {
+		case method.Missing != 0 && (errors.Is(err, errNoResponseFile) || errors.Is(err, os.ErrNotExist)):
+			http.Error(capture, "mock: no response file for this request", method.Missing)
 		case errors.Is(err, errNoResponseFile):
 			http.Error(capture, "mock: no response file for this request", http.StatusNotFound)
 		case errors.Is(err, errRenderedTooLarge):
@@ -210,6 +222,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		body = compressBody(encoding, body)
 		capture.Header().Set("Content-Encoding", encoding)
 		render.verbatim = false // Ranges would apply to the compressed bytes.
+	}
+	if method.ETag && status == http.StatusOK && capture.Header().Get("ETag") == "" {
+		capture.Header().Set("ETag", bodyETag(body))
+		// http.ServeContent answers If-None-Match itself for verbatim files.
+		if !render.verbatim && (r.Method == http.MethodGet || r.Method == http.MethodHead) && etagMatches(r.Header.Get("If-None-Match"), capture.Header().Get("ETag")) {
+			status, body = http.StatusNotModified, nil
+		}
 	}
 	if render.verbatim && status == http.StatusOK && method.Stream == 0 && method.Fault == "" &&
 		(r.Method == http.MethodGet || r.Method == http.MethodHead) {
@@ -376,7 +395,7 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 				logger.Warn("{{$fixture.*}} placeholders will stay literal", "method", method.Name, "source", method.Source, "line", method.Line, "error", err)
 			}
 		}
-		if method.Proxy != "" && method.Callback != nil {
+		if method.Proxy != "" && len(method.Callbacks) > 0 {
 			logger.Warn("@callback is ignored for a section with @proxy", "method", method.Name, "source", method.Source, "line", method.Line)
 		}
 		if method.Proxy != "" && (method.Body != "" || method.File != "" || len(method.Headers) > 0 || method.Stream > 0 || method.Fault != "") {
@@ -443,7 +462,7 @@ func warnShadowedRoutes(logger *slog.Logger, methods []restclient.Method) {
 // b's (see pathCovers), a has no @match.chance, and each of a's constraints
 // is also one of b's. It errs towards false; routes it misses still work.
 func shadows(a, b restclient.Method) bool {
-	if !acceptsAllMethods(a, b) || (a.Port != 0 && a.Port != b.Port) || a.Chance > 0 {
+	if !acceptsAllMethods(a, b) || (a.Port != 0 && a.Port != b.Port) || a.Chance > 0 || a.Require != "" || a.MissingNext {
 		return false
 	}
 	segments, ok := pathCovers(routePattern(a), routePattern(b))
@@ -665,10 +684,11 @@ func cloneMethods(methods []restclient.Method) []restclient.Method {
 			out[i].Variables[k] = v
 		}
 		out[i].VariableLines = maps.Clone(methods[i].VariableLines)
-		if c := methods[i].Callback; c != nil {
+		out[i].Callbacks = nil
+		for _, c := range methods[i].Callbacks {
 			callback := *c
 			callback.Headers = c.Headers.Clone()
-			out[i].Callback = &callback
+			out[i].Callbacks = append(out[i].Callbacks, &callback)
 		}
 		out[i].Query = make(map[string][]string, len(methods[i].Query))
 		for k, v := range methods[i].Query {
@@ -725,6 +745,10 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method, fixt
 			case eachNode:
 				check(node.children, true)
 				continue
+			case ifNode:
+				check(node.children, inRepeat)
+				check(node.elseChildren, inRepeat)
+				continue
 			case textNode:
 				continue
 			}
@@ -738,6 +762,12 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method, fixt
 				}
 				if _, ok := method.Variables[key]; !ok {
 					warn("unresolved placeholder preserved literally (no @"+key+" variable is defined)", key)
+				}
+				continue
+			}
+			if key == "jwt" {
+				if err := checkJWTArgs(node.args); err != nil {
+					warn("invalid placeholder arguments preserved literally", node.text, "error", err)
 				}
 				continue
 			}
@@ -757,7 +787,7 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method, fixt
 				switch {
 				case method.Fixture == "":
 					warn("unresolved placeholder preserved literally (no @fixture file is set)", key)
-				case fixture != nil && len(selectJSON(fixture, path)) == 0:
+				case fixture != nil && !strings.Contains(path, "=$") && len(selectJSON(fixture, path)) == 0:
 					warn("unresolved placeholder preserved literally (@fixture "+method.Fixture+" has no value at "+path+")", key)
 				}
 				continue

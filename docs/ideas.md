@@ -44,11 +44,9 @@ The ideas with the best value for their effort, in suggested order:
 | ID | Idea | Effort | Why |
 |----|------|--------|-----|
 | [`ST-1`](#stateful-behavior) | `@times` | M | Retry tests ("fail twice, then succeed") cannot be expressed today |
-| [`RE-1`](#responses-and-templating) | Status from a placeholder | S | One route can answer with a status the client asks for |
 | [`DI-1`](#distribution-and-editor-support) | Published Docker image and Homebrew formula | S | Removes the Go toolchain from the install path |
 | [`TE-1`](#testing-and-ci) | `mock run -- command` | M | Start, test, stop and report coverage in one CI step |
 | [`MA-1`](#matching-and-routing) | `mock match` | S | Answers "which route gets this request?" without serving |
-| [`RE-3`](#responses-and-templating) | Fixture lookup by key | M | `GET /users/:id` from one fixture file, with a real `404` |
 | [`CL-1`](#command-line-and-configuration) | `@import` | M | Shared variables across files; the only "not supported" dialect item users ask for |
 | [`UI-1`](#admin-ui) | Route switches in the UI | M | Turn a route off or add a fault while demonstrating or exploring |
 | [`TE-4`](#testing-and-ci) | Temporary routes through the admin API | M | Opens per-test stubbing to every language, not only Go |
@@ -87,17 +85,7 @@ decides whether a route is eligible.
 
 | ID | Idea | Effort | Description |
 |----|------|--------|-------------|
-| `RE-1` | Status from a placeholder | **S** | `### [{{$query.status \| default 200}}] Echo status` or `@status = {{$json.code}}`. One route then serves "return whatever status I ask for", which `httpbin`-style test endpoints need. |
-| `RE-2` | Conditional blocks | **M** | `{{#if $query.expand}} ... {{else}} ... {{/if}}` in bodies, beside the `{{#repeat}}` and `{{#each}}` blocks. Keeps optional fields in one route instead of two near-identical sections. Keep it to presence and equality tests so templates do not become a language. |
-| `RE-3` | Fixture lookup by key | **M** | `{{$fixture.users[id=$path.id].name}}` selects the array element whose `id` equals the path parameter, and `@require = $fixture.users[id=$path.id]` makes the route fall through (to a `404` route) when there is none. Today a fixture is read by fixed index only. |
-| `RE-4` | Slices and paging in `{{#each}}` | **M** | `{{#each $fixture.users \| offset $query.offset \| limit $query.limit}}`, plus `{{$fixture.users \| length}}` for a total. Makes paginated list endpoints from one fixture. |
-| `RE-5` | More filters | **S** | `length`, `slice a b`, `replace a b`, `base64decode`, `sha256`, `hmac key`, `int`, `round n`, `sub n`, `mul n`, and `date layout` to reformat a timestamp. Each is a few lines in the filter table. |
-| `RE-6` | More generators | **S** | `{{$oneOf a b c}}`, `{{$randomFloat min max}}`, `{{$company}}`, `{{$city}}`, `{{$country}}`, `{{$address}}`, `{{$ip}}`, `{{$price}}`, `{{$word}}`, `{{$ulid}}`, and `{{$randomDate from to}}`. `$oneOf` is the most useful: enum fields have no generator today. |
-| `RE-7` | Signed tokens | **M** | `{{$jwt sub=$json.user exp=1h}}` builds a JWT (HS256 with a configured secret, or unsigned), so mocked login endpoints return tokens that client libraries can decode and check for expiry. |
-| `RE-8` | Fixtures in more formats | **M** | `@fixture` reads JSON only. Accept YAML, CSV (an array of row objects) and NDJSON, chosen by extension. CSV in particular suits test data kept in spreadsheets. The fixture editor would stay JSON-only at first. |
-| `RE-10` | Automatic `ETag` for inline bodies | **S** | `@etag = auto` adds a hash `ETag` and answers `If-None-Match` with `304`. File bodies already get conditional requests through `http.ServeContent`; inline bodies do not. |
-| `RE-11` | More than one callback, with retries | **M** | Allow `@callback.1`, `@callback.2` (webhook sequences such as `payment.pending` then `payment.succeeded`) and `@callback.retries = 3` with backoff when the receiver fails. Today a route has one callback and no retries. |
-| `RE-12` | Response from a directory | **S** | `< ./orders/{{$path.id}}.json` already renders placeholders in file paths; add `@missing = 404` so a missing file answers `404` instead of an error, making "one JSON file per record" a supported pattern. |
+| `RE-8` | YAML fixtures | **M** | `@fixture` reads JSON, CSV and NDJSON. YAML needs a third-party parser (the first new dependency besides `fsnotify` and `faker`), or a small subset reader for maps, lists and scalars. The fixture editor would stay JSON-only. |
 
 ## Latency and faults
 
@@ -227,6 +215,7 @@ reason.
   checking against a schema, not generating routes from one.
 - **Scripted or exec responses.** A JavaScript or shell handler would turn
   `mock` into an application server. Matchers, captures and templates are the
-  intended tools, which is why `RE-2` is kept small.
+  intended tools, which is why `{{#if}}` blocks test only presence and
+  equality.
 - **gRPC and WebSockets.** Different protocols, out of scope for a REST
   Client-style tool.
