@@ -64,6 +64,54 @@ range is `200`–`999`; invalid codes are load errors. Brackets that do not hold
 only digits, such as `### [beta] Users`, stay part of the name. The old
 `$status` variable is no longer supported and is also a load error.
 
+### Default response headers
+
+`@default.header.Name = value` gives every section in the file a response
+header it does not set itself. A header written after a section's request line
+always wins, and a section can set its own `@default.header.Name` to replace the
+file's. Header names compare case-insensitively.
+
+```http
+@default.header.Content-Type = application/json
+@default.header.X-Request-Id = {{$uuid}}
+
+### Users
+GET /users
+
+[{"id":1}]
+
+### Home page
+GET /
+Content-Type: text/html
+
+<h1>Home</h1>
+```
+
+The value may hold placeholders, rendered per response like any response
+header. `@proxy` sections answer with the upstream's headers and get no
+defaults.
+
+A default `Content-Type` is a last resort. For a section with no `Content-Type`
+of its own, `mock` picks the response type in this order:
+
+1. The type of the `< path` file's extension, such as `text/html` for
+   `< index.html` or `application/json` for `< users/{{$path.id}}.json`.
+2. A specific type found by sniffing the response body with Go's
+   [`http.DetectContentType`](https://pkg.go.dev/net/http#DetectContentType),
+   such as `image/png` for PNG bytes or `text/html` for a body starting with
+   `<!DOCTYPE html>`.
+3. The default `Content-Type`.
+4. What sniffing found otherwise: `text/plain; charset=utf-8` for text
+   (sniffing cannot recognize JSON) or `application/octet-stream`.
+
+Without a default, steps 1, 2 and 4 are how `mock` has always typed responses.
+Before the body is rendered, the default also counts as the section's type
+when there is no extension type: it decides whether a file with an unknown
+extension has its placeholders expanded, and whether an inline body is rendered
+in JSON mode (values inside JSON strings escaped).
+
+[`-H 'Name: value'`](cli.md) (`--header`, repeatable) does the same for every
+request file, below both a section's own headers and `@default.header`.
 
 ### REST Client files
 
@@ -297,6 +345,7 @@ in the file, or in a section, where it replaces the file value.
 | `@proxy` | `http` or `https` URL | none | Forward the requests this section matches to the URL instead of answering. See [Per-route proxying](real-apis.md#per-route-proxying). |
 | `@fallback` | `true` or `false` | `false` | Try the section after every section without it, whatever the load order. See [Fallback routes](matching.md#fallback-routes). |
 | `@match.chance` | a percentage above `0%`, such as `20%` | `100%` | Let the section answer only that share of the requests it matches; the rest go on to later routes. Reproducible with `@seed`. See [Occasional responses](matching.md#occasional-responses). |
+| `@default.header.Name` | header value, which may hold placeholders | none | Add the response header to every section in scope that does not set it. See [Default response headers](#default-response-headers). |
 | `@port` | port number | `-p` (`8080`) | Serve the section on this port. A port in the request URL takes precedence. See [Multiple ports](matching.md#multiple-ports). |
 | `@header.Name` | [matcher value](matching.md#matcher-values): `text`, `*`, `!`, `~regex`, `!text` or `!~regex` | none | Require the incoming request header to match. A section's header matcher replaces a file one of the same name. See [Header matching](matching.md#header-matching). |
 | `@cookie.name` | matcher value | none | Require the request cookie to match. See [Cookie matching](matching.md#cookie-matching). |

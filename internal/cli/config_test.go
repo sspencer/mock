@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -371,5 +372,18 @@ func TestParseConfigUIToken(t *testing.T) {
 		if _, err := parseConfig(args); ExitCode(err) != 2 {
 			t.Errorf("%v: %v", args, err)
 		}
+	}
+}
+
+func TestParseConfigHeaders(t *testing.T) {
+	cfg, err := parseConfig([]string{"-H", "Content-Type: application/json", "--header", "X-Env:  dev", "api.http"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := http.Header(cfg.Headers); got.Get("Content-Type") != "application/json" || got.Get("X-Env") != "dev" {
+		t.Errorf("Headers = %v", got)
+	}
+	if _, err := parseConfig([]string{"-H", "no colon", "api.http"}); ExitCode(err) != 2 {
+		t.Errorf("bad -H error = %v", err)
 	}
 }

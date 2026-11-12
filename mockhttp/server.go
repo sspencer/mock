@@ -165,7 +165,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		body, err = render.body(file, hasFile)
 	}
 	if err == nil {
-		headers, err = render.headers(file)
+		headers, err = render.headers(file, body)
 	}
 	if err != nil {
 		switch {

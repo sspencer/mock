@@ -30,6 +30,7 @@ Flags:
 | `-u`, `--upstream` | (off) | Forward requests no route matches to this `http` or `https` URL and return its response (see [Passing unmatched requests to a real API](real-apis.md#passing-unmatched-requests-to-a-real-api)) |
 | `-r`, `--record` | (off) | With `-u`, append a draft `.http` section to this file for each method and path the upstream answered (see [Recording forwarded requests](real-apis.md#recording-forwarded-requests)) |
 | `-s`, `--strict` | (off) | At shutdown, list requests no route matched and routes that never matched, and exit `1` if any request was unmatched (see [Strict mode and route coverage](testing.md#strict-mode-and-route-coverage)) |
+| `-H`, `--header` | | `NAME: VALUE`: add this response header to every route that sets no header of that name and no `@default.header` for it. Repeat for more headers (see [Default response headers](request-files.md#default-response-headers)) |
 | `-v`, `--var` | | `NAME=VALUE`: set the `@NAME` variable in every request file, overriding its definitions. Repeat for more variables (see [Variables from the command line](request-files.md#variables-from-the-command-line)) |
 | `-e`, `--env` | | Use this REST Client environment for `{{NAME}}` references no `@NAME` defines (see [REST Client environments](request-files.md#rest-client-environments)) |
 | `-E`, `--env-file` | `http-client.env.json`, else `.vscode/settings.json` | With `-e`, read the environments from this file |

@@ -52,6 +52,9 @@ type config struct {
 	Strict bool
 	// Vars override or supply @name variables in every request file (-v).
 	Vars varFlag
+	// Headers are response headers for every route that sets no header of
+	// that name and no @default.header for it (-H).
+	Headers headerFlag
 	// Env selects a REST Client environment whose values fill in variables
 	// no @name defines (-e, -E).
 	Env envFlags
@@ -111,6 +114,10 @@ flags:
                        unmatched
   -v, --var NAME=VALUE set @NAME in every request file, overriding its
                        definitions; repeat for more variables
+  -H, --header 'NAME: VALUE'
+                       add this response header to every route that sets no
+                       header of that name (and no @default.header for it);
+                       repeat for more headers
   -e, --env NAME       use the REST Client environment NAME (with $shared)
                        from http-client.env.json and http-client.private.env.json,
                        else .vscode/settings.json, for variables no @name
@@ -181,6 +188,9 @@ func parseConfig(args []string) (config, error) {
 	}
 	for _, name := range []string{"v", "var"} {
 		flagSet.Var(&cfg.Vars, name, "")
+	}
+	for _, name := range []string{"H", "header"} {
+		flagSet.Var(&cfg.Headers, name, "")
 	}
 	for _, name := range []string{"e", "env"} {
 		flagSet.StringVar(&cfg.Env.Name, name, "", "")

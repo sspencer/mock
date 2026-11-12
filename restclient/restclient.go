@@ -101,6 +101,11 @@ type Method struct {
 	// RateWindow, after which the route answers 429. 0 means no limit.
 	RateLimit  int
 	RateWindow time.Duration
+	// DefaultContentType is the Content-Type from @default.header or
+	// Options.Headers for a route that sets none. It may hold placeholders.
+	// The server sends it only when neither a "< path" file's extension nor
+	// sniffing the body gives a specific type.
+	DefaultContentType string
 	// Fallback is set by @fallback = true: the route is tried after every
 	// route without it, whatever the load order.
 	Fallback bool
@@ -306,6 +311,10 @@ type Options struct {
 	// such as a REST Client environment; @name definitions and Vars win.
 	// Names that IsDefaultVariable rejects are ignored.
 	Defaults map[string]string
+	// Headers are response headers for every route that sets no header of
+	// that name, either after its request line or with @default.header.Name
+	// (which wins). @proxy routes get none.
+	Headers http.Header
 }
 
 // IsDefaultVariable reports whether name can be supplied by Options.Defaults:
@@ -313,7 +322,7 @@ type Options struct {
 // variable such as @port or @delay, which a default must not set by accident.
 func IsDefaultVariable(name string) bool {
 	_, control := controlVariables[name]
-	return CheckVariableOverride(name) == nil && !control && !strings.HasPrefix(name, "callback.")
+	return CheckVariableOverride(name) == nil && !control && !strings.HasPrefix(name, "callback.") && !strings.HasPrefix(name, defaultHeaderPrefix)
 }
 
 // CheckVariableOverride reports whether name can be set with Options.Vars:
@@ -624,6 +633,8 @@ func scopeDefinitions(fileDefs, methodDefs []definition, opts Options) []definit
 		key := def.name
 		if headerName, ok := strings.CutPrefix(key, "header."); ok {
 			key = "header." + http.CanonicalHeaderKey(headerName)
+		} else if headerName, ok := strings.CutPrefix(key, defaultHeaderPrefix); ok {
+			key = defaultHeaderPrefix + http.CanonicalHeaderKey(headerName)
 		}
 		if i, ok := index[key]; ok {
 			merged[i] = def
@@ -664,7 +675,7 @@ func parseSection(pending pendingSection, fileDefs []definition, opts Options, s
 
 	defs := scopeDefinitions(fileDefs, pending.directives.defs, opts)
 	for _, def := range defs {
-		if isMatcherName(def.name) {
+		if isMatcherName(def.name) || strings.HasPrefix(def.name, defaultHeaderPrefix) {
 			continue
 		}
 		method.Variables[def.name] = def.value
@@ -807,6 +818,9 @@ func parseSection(pending pendingSection, fileDefs []definition, opts Options, s
 	}
 	bodyStart := i
 	bodyLines := trimTrailingBlankLines(lines[i:])
+	if err := applyDefaultHeaders(&method, defs, opts.Headers, source); err != nil {
+		return method, err
+	}
 	if len(bodyLines) > 0 && strings.HasPrefix(bodyLines[0], "< ") {
 		// The path is everything after "< ", whitespace included.
 		path := bodyLines[0][2:]
@@ -835,6 +849,49 @@ func parseSection(pending pendingSection, fileDefs []definition, opts Options, s
 	}
 	method.Body = strings.Join(bodyLines, "\n")
 	return method, nil
+}
+
+// defaultHeaderPrefix starts @default.header.Name, a response header for
+// every route in scope that does not set it.
+const defaultHeaderPrefix = "default.header."
+
+// applyDefaultHeaders adds the @default.header.Name values, then the
+// Options.Headers, for each header name the route does not set itself.
+// Values may hold placeholders, rendered per response like any response
+// header. A @proxy route answers with the upstream's headers, so it gets
+// none. A default Content-Type goes to DefaultContentType instead of
+// Headers: the server uses it only when it cannot tell the type from a
+// "< path" file's extension or by sniffing the body.
+func applyDefaultHeaders(method *Method, defs []definition, extra http.Header, source string) error {
+	defaults := make(http.Header)
+	for _, def := range defs {
+		name, ok := strings.CutPrefix(def.name, defaultHeaderPrefix)
+		if !ok {
+			continue
+		}
+		if !ValidHeaderName(name) || !ValidHeaderValue(def.value) {
+			return parseErrorf(source, def.line,
+				`section %q: @%s needs a valid header name and value (example: "@default.header.Content-Type = application/json")`, method.Name, def.name)
+		}
+		defaults.Set(name, def.value)
+	}
+	if method.Proxy != "" {
+		return nil
+	}
+	for _, source := range []http.Header{defaults, extra} {
+		for name, values := range source {
+			if http.CanonicalHeaderKey(name) == "Content-Type" {
+				if method.DefaultContentType == "" && method.Headers.Get(name) == "" && len(values) > 0 {
+					method.DefaultContentType = values[0]
+				}
+				continue
+			}
+			if len(method.Headers.Values(name)) == 0 && len(values) > 0 {
+				method.Headers[http.CanonicalHeaderKey(name)] = append([]string(nil), values...)
+			}
+		}
+	}
+	return nil
 }
 
 const fileVariableRemoved = `$file and @file are no longer supported; start the response body with "< path" instead (example: "< ./users.json")`

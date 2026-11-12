@@ -193,7 +193,10 @@ export function hitsLabel(hits = 0) {
 }
 
 export function formatRoute(route, sampleCurl = '') {
-    const responseHeaders = Object.entries(route.headers || {}).flatMap(([name, values]) => values.map(value => `${name}: ${value}`)).join('\n');
+    const responseHeaders = [
+        ...Object.entries(route.headers || {}).flatMap(([name, values]) => values.map(value => `${name}: ${value}`)),
+        route.defaultContentType ? `Content-Type: ${route.defaultContentType} (default, unless guessed from the file extension or body)` : '',
+    ].filter(Boolean).join('\n');
     const describe = describeMatcher;
     const matchHeaders = Object.entries(route.matchHeaders || {}).flatMap(([name, values]) => values.map(value => `${name}: ${describe(value)}`)).join('\n');
     const matchQuery = Object.entries(route.matchQuery || {}).flatMap(([name, values]) => values.map(value => `${name}: ${describe(value)}`)).join('\n');

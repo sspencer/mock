@@ -56,6 +56,9 @@ type RouteInfo struct {
 	Variables     map[string]string `json:"variables"`
 	Body          string            `json:"body"`
 	BodyTruncated bool              `json:"bodyTruncated"`
+	// DefaultContentType is the @default.header or -H Content-Type, sent
+	// when the type cannot be guessed from the file extension or the body.
+	DefaultContentType string `json:"defaultContentType,omitempty"`
 	// Fallback is set for an @fallback = true route, tried after the others.
 	Fallback bool `json:"fallback,omitempty"`
 	// Chance is the @match.chance share, such as "20%", when set.
@@ -102,7 +105,7 @@ func describeRoute(method restclient.Method, index int, revision uint64) RouteIn
 	}
 	return RouteInfo{ID: fmt.Sprintf("%d:%d", revision, index), Revision: revision, Name: method.Name, Method: method.Method,
 		Path: (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath(), Query: method.Query.Encode(), Port: method.Port, Source: method.Source, Line: method.Line, Status: method.Status,
-		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), Proxy: method.Proxy, Fixture: method.Fixture, Compress: method.Compress, Callback: describeCallback(method), RateLimit: describeRateLimit(method), Fallback: method.Fallback, Chance: describeChance(method), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
+		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), Proxy: method.Proxy, Fixture: method.Fixture, Compress: method.Compress, Callback: describeCallback(method), RateLimit: describeRateLimit(method), DefaultContentType: method.DefaultContentType, Fallback: method.Fallback, Chance: describeChance(method), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
 		MatchQuery: cloneValues(method.MatchQuery), MatchPath: cloneOptional(method.MatchPath),
 		MatchBody: method.MatchBody, MatchJSON: cloneOptional(method.MatchJSON), MatchXML: cloneOptional(method.MatchXML), MatchForm: cloneValues(method.MatchForm), MatchCookies: cloneValues(method.MatchCookies),
 		Variables: cloneVariables(method.Variables), Body: body, BodyTruncated: truncated}
