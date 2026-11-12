@@ -164,7 +164,7 @@ func checkRoute(ctx context.Context, client *http.Client, upstream *url.URL, ext
 	case method.Proxy != "":
 		result.Result, result.Reason = "skipped", "@proxy route forwards to a real service already"
 		return result
-	case !all && !safeMethod(method.Method):
+	case !all && !safeMethod(sample.Method):
 		result.Result, result.Reason = "skipped", "not a safe method; use -all to send it"
 		return result
 	}
@@ -181,7 +181,7 @@ func checkRoute(ctx context.Context, client *http.Client, upstream *url.URL, ext
 		return result
 	}
 	result.Upstream = real
-	result.Differences = compareResponses(method.Method, mock, real)
+	result.Differences = compareResponses(sample.Method, mock, real)
 	result.Result = "ok"
 	if len(result.Differences) > 0 {
 		result.Result = "drift"

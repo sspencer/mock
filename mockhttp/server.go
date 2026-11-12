@@ -27,7 +27,10 @@ import (
 type Server struct {
 	methods []restclient.Method
 	// hits counts the requests each route in methods answered.
-	hits           []*atomic.Uint64
+	hits []*atomic.Uint64
+	// rolls counts each route's @match.chance draws, which seed the draws
+	// under @seed.
+	rolls          []*atomic.Uint64
 	unmatched      unmatchedLog
 	logger         *slog.Logger
 	events         []RequestEvent
@@ -64,6 +67,7 @@ func New(methods []restclient.Method, logger *slog.Logger) *Server {
 	s := &Server{
 		methods:     cloneMethods(methods),
 		hits:        carryHits(methods, nil, nil),
+		rolls:       carryHits(methods, nil, nil),
 		session:     rand.Text(),
 		logger:      logger,
 		subscribers: make(map[chan RequestEvent]struct{}),
@@ -81,6 +85,7 @@ func (s *Server) SetMethods(methods []restclient.Method) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.hits = carryHits(compiled, s.methods, s.hits)
+	s.rolls = carryHits(compiled, s.methods, s.rolls)
 	s.pruneLimiters(compiled)
 	s.methods = compiled
 	s.config.Revision++
@@ -405,15 +410,28 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 // wins, so such a route is dead configuration, often left over from files
 // written for the removed response rotation.
 func warnShadowedRoutes(logger *slog.Logger, methods []restclient.Method) {
-	for j := range methods {
+	// Routes are tried in load order, @fallback routes last.
+	ordered := make([]restclient.Method, 0, len(methods))
+	for _, fallback := range []bool{false, true} {
+		for _, method := range methods {
+			if method.Fallback == fallback {
+				ordered = append(ordered, method)
+			}
+		}
+	}
+	for j := range ordered {
 		for i := range j {
-			if !shadows(methods[i], methods[j]) {
+			if !shadows(ordered[i], ordered[j]) {
 				continue
 			}
-			logger.Warn(fmt.Sprintf("route can never match: earlier route %q (%s:%d) matches every request it would; put more specific routes first", methods[i].Name, methods[i].Source, methods[i].Line),
-				"method", methods[j].Name,
-				"source", methods[j].Source,
-				"line", methods[j].Line,
+			earlier := "earlier"
+			if ordered[j].Fallback && !ordered[i].Fallback {
+				earlier = "non-fallback"
+			}
+			logger.Warn(fmt.Sprintf("route can never match: %s route %q (%s:%d) matches every request it would; put more specific routes first", earlier, ordered[i].Name, ordered[i].Source, ordered[i].Line),
+				"method", ordered[j].Name,
+				"source", ordered[j].Source,
+				"line", ordered[j].Line,
 			)
 			break
 		}
@@ -421,11 +439,11 @@ func warnShadowedRoutes(logger *slog.Logger, methods []restclient.Method) {
 }
 
 // shadows reports whether route a matches every request route b matches:
-// they share method and port, a's path pattern covers b's (see
-// pathCovers), and each of a's constraints is also one of b's. It errs
-// towards false; routes it misses still work.
+// a accepts every method b does, they share a port, a's path pattern covers
+// b's (see pathCovers), a has no @match.chance, and each of a's constraints
+// is also one of b's. It errs towards false; routes it misses still work.
 func shadows(a, b restclient.Method) bool {
-	if a.Method != b.Method || (a.Port != 0 && a.Port != b.Port) {
+	if !acceptsAllMethods(a, b) || (a.Port != 0 && a.Port != b.Port) || a.Chance > 0 {
 		return false
 	}
 	segments, ok := pathCovers(routePattern(a), routePattern(b))
@@ -858,4 +876,22 @@ func (s *Server) serveFileContent(w http.ResponseWriter, r *http.Request, path s
 		w.Header().Set("Content-Type", http.DetectContentType(body))
 	}
 	http.ServeContent(w, r, "", modTime, bytes.NewReader(body))
+}
+
+// acceptsAllMethods reports whether route a accepts every method route b
+// accepts.
+func acceptsAllMethods(a, b restclient.Method) bool {
+	if a.Method == restclient.AnyMethod {
+		return true
+	}
+	methods := b.Methods()
+	if methods == nil {
+		return false
+	}
+	for _, method := range methods {
+		if !a.Accepts(method) {
+			return false
+		}
+	}
+	return true
 }

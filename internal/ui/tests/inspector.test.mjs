@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sampleFormBody, sampleJSONBody, buildCurl, buildRouteCurl, formatMessage, formatRoute, bodyNotice, sampleParam, describeMatcher, isSampleExact, jsonPathSegments } from '../static/inspector.mjs';
+import { sampleFormBody, sampleJSONBody, buildCurl, buildRouteCurl, formatMessage, formatRoute, bodyNotice, sampleParam, describeMatcher, isSampleExact, jsonPathSegments, sampleMethod, methodClass } from '../static/inspector.mjs';
 import { attachSplitter, clampPercent, alignedTrafficHeight } from '../static/layout.mjs';
 
 const message = {
@@ -195,3 +195,23 @@ test('JSON paths with quoted keys', () => {
     assert.equal(sampleJSONBody({ 'labels["app.name"]': 'web', 'items.*.sku': 'A1', 'm["0"]': 'z' }),
         '{"labels":{"app.name":"web"},"items":[{"sku":"A1"}],"m":{"0":"z"}}');
 });
+
+test('method lists and any-method routes', () => {
+    assert.equal(sampleMethod('GET'), 'GET');
+    assert.equal(sampleMethod('OPTIONS,GET'), 'OPTIONS');
+    assert.equal(sampleMethod('*'), 'GET');
+    assert.equal(methodClass('POST,PUT'), 'method-post');
+    assert.equal(methodClass('*'), 'method-any');
+    const origin = 'http://localhost:8080';
+    assert.equal(buildRouteCurl({ method: 'HEAD,GET', path: '/health' }, origin), "curl --head 'http://localhost:8080/health'");
+    assert.equal(buildRouteCurl({ method: 'PUT,PATCH', path: '/x' }, origin), "curl --request PUT 'http://localhost:8080/x'");
+    assert.equal(buildRouteCurl({ method: '*', path: '/x' }, origin), "curl 'http://localhost:8080/x'");
+});
+
+test('formatRoute shows @fallback and @match.chance', () => {
+    const text = formatRoute({ method: '*', path: '/*', fallback: true, chance: '20%' });
+    assert.ok(text.includes('Fallback: tried after every other route'));
+    assert.ok(text.includes('Chance: answers 20% of matching requests'));
+    assert.ok(!formatRoute({ method: 'GET', path: '/x' }).includes('Fallback'));
+});
+

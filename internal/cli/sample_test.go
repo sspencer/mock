@@ -64,3 +64,14 @@ func TestBuildSampleRequestBodies(t *testing.T) {
 		t.Errorf("array root = %q", got)
 	}
 }
+
+func TestBuildSampleRequestMethodLists(t *testing.T) {
+	for source, want := range map[string]string{
+		"### Health\nOPTIONS,GET /health\n": "OPTIONS",
+		"### Any\n* /anything\n":            "GET",
+	} {
+		if got := buildSampleRequest(parseOne(t, source)).Method; got != want {
+			t.Errorf("%q sample method = %q, want %q", source, got, want)
+		}
+	}
+}

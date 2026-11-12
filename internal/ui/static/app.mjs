@@ -1,4 +1,4 @@
-import { formatMessage, bodyNotice, buildCurl, buildRouteCurl, formatRoute, hitsLabel } from './inspector.mjs';
+import { formatMessage, bodyNotice, buildCurl, buildRouteCurl, formatRoute, hitsLabel, methodClass } from './inspector.mjs';
 import { buildRouteDraft, buildRouteDrafts } from './draft.mjs';
 import { resendDraft, buildResend } from './resend.mjs';
 import { attachSplitter, alignedTrafficHeight } from './layout.mjs';
@@ -1200,7 +1200,7 @@ async function loadRoutes() {
         for (const route of routes) {
             const li = document.createElement('li');
             const method = document.createElement('span');
-            method.className = `method-${(route.method || '').toLowerCase()}`;
+            method.className = methodClass(route.method);
             method.textContent = route.method;
             const path = document.createElement('span');
             path.className = 'route-path';

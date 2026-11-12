@@ -151,8 +151,9 @@ export function buildRouteCurl(route, origin) {
     const url = `${origin}${path}${queryText ? '?' + queryText : ''}`;
     const parts = ['curl'];
     if (origin.startsWith('https:')) parts.push('--insecure');
-    if (route.method === 'HEAD') parts.push('--head');
-    else if (route.method !== 'GET') parts.push('--request', route.method);
+    const method = sampleMethod(route.method);
+    if (method === 'HEAD') parts.push('--head');
+    else if (method !== 'GET') parts.push('--request', method);
     for (const [name, values] of Object.entries(route.matchHeaders || {})) {
         for (const value of values) {
             if (value !== '!') parts.push('--header', shellQuote(`${name}: ${isSampleExact(value) ? value : 'example'}`));
@@ -171,6 +172,19 @@ export function buildRouteCurl(route, origin) {
     if (body) parts.push('--data-raw', shellQuote(body));
     parts.push(shellQuote(url));
     return parts.join(' ');
+}
+
+// sampleMethod is the method to try a route with: the first of a
+// comma-separated list such as "GET,HEAD", or GET for "*" (any method).
+export function sampleMethod(method = '') {
+    if (!method || method === '*') return 'GET';
+    return method.split(',')[0];
+}
+
+// methodClass is the CSS class that colors a route's method by its first
+// method; "*" (any method) gets method-any.
+export function methodClass(method = '') {
+    return `method-${method === '*' ? 'any' : sampleMethod(method).toLowerCase()}`;
 }
 
 // hitsLabel describes how many requests a route has answered.
@@ -202,6 +216,8 @@ export function formatRoute(route, sampleCurl = '') {
         route.fixture ? `Fixture: ${route.fixture}` : '',
         route.callback ? `Callback: ${route.callback}` : '',
         route.rateLimit ? `Rate limit: ${route.rateLimit} (then 429 with Retry-After)` : '',
+        route.chance ? `Chance: answers ${route.chance} of matching requests` : '',
+        route.fallback ? 'Fallback: tried after every other route' : '',
         `Request header requirements\n${matchHeaders || '(none)'}`,
         matchQuery ? `Query requirements\n${matchQuery}` : '',
         matchPath ? `Path parameter requirements\n${matchPath}` : '',

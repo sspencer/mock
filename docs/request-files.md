@@ -40,12 +40,30 @@ ignored. This lets one file serve both a REST client and `mock`, as in
 still read as the mock's response, so a REST client's request headers there
 trigger a warning.
 
+The method may be a comma-separated list with no spaces, such as
+`GET,HEAD,OPTIONS /health`, or `*` for any method, as in `* /maintenance`. One
+section then answers each of those methods instead of a copy of the section
+per method. Methods are case-insensitive and shown upper-cased.
+
+```http
+### Health
+GET,HEAD,OPTIONS /health
+
+ok
+
+### [503] Down for maintenance
+* /admin/*
+
+{"error":"maintenance"}
+```
+
 Start a section name with a status code in square brackets to set the response
 status: `### [204] Delete user` returns `204` and is named "Delete user". The
 bracketed code is optional and defaults to `200`. The supported final status
 range is `200`–`999`; invalid codes are load errors. Brackets that do not hold
 only digits, such as `### [beta] Users`, stay part of the name. The old
 `$status` variable is no longer supported and is also a load error.
+
 
 ### REST Client files
 
@@ -117,7 +135,7 @@ is read at startup; restart `mock` to pick up changes to it.
 |-----------|----------------|
 | `###` sections, named or [unnamed](#rest-client-files), and a request before the first `###` | Request separators beyond `###` |
 | `@name = value` file and method variables, `-v name=value` overrides, [environment files](#rest-client-environments) (`-e`) and `{{$env.NAME}}` | `{{$dotenv}}`, `{{$processEnv}}` and other IDE-only system variables |
-| Request line `METHOD /path`, a full URL, an optional `HTTP/1.1` version, or a bare target (`GET`) | Full multi-step scripts |
+| Request line `METHOD /path`, a full URL, an optional `HTTP/1.1` version, or a bare target (`GET`); `mock` also accepts a method list (`GET,HEAD`) or `*` | Full multi-step scripts |
 | Response headers after the request line | Separate request vs response documents |
 | `@header.Name`, `@cookie.name`, `@query.name`, `@path.name`, `@body`, `@json.path`, `@xml.path`, `@form.name` request matchers (exact, `*`, `!`, `~regex`, `!text`, `!~regex`) | none |
 | `{{name}}`, `{{%name}}` and `{{$placeholder}}` in bodies, response headers and `< path` file paths, with [filters](placeholders.md#filters) and [`{{#repeat}}` blocks](placeholders.md#generated-lists) | Request variables (`{{login.response.body.token}}`; a load warning) |
@@ -277,6 +295,8 @@ in the file, or in a section, where it replaces the file value.
 | `@fixture` | JSON file path | none | Data file that `{{$fixture.path}}` placeholders read. See [Fixture data](placeholders.md#fixture-data). |
 | `@callback` | `METHOD URL` | none | Send a request after responding, with `@callback.delay`, `@callback.header.Name` and `@callback.body`. See [Webhook callbacks](responses.md#webhook-callbacks). |
 | `@proxy` | `http` or `https` URL | none | Forward the requests this section matches to the URL instead of answering. See [Per-route proxying](real-apis.md#per-route-proxying). |
+| `@fallback` | `true` or `false` | `false` | Try the section after every section without it, whatever the load order. See [Fallback routes](matching.md#fallback-routes). |
+| `@match.chance` | a percentage above `0%`, such as `20%` | `100%` | Let the section answer only that share of the requests it matches; the rest go on to later routes. Reproducible with `@seed`. See [Occasional responses](matching.md#occasional-responses). |
 | `@port` | port number | `-p` (`8080`) | Serve the section on this port. A port in the request URL takes precedence. See [Multiple ports](matching.md#multiple-ports). |
 | `@header.Name` | [matcher value](matching.md#matcher-values): `text`, `*`, `!`, `~regex`, `!text` or `!~regex` | none | Require the incoming request header to match. A section's header matcher replaces a file one of the same name. See [Header matching](matching.md#header-matching). |
 | `@cookie.name` | matcher value | none | Require the request cookie to match. See [Cookie matching](matching.md#cookie-matching). |

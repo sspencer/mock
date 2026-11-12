@@ -52,7 +52,11 @@ import (
 // VariableLines maps each of those names to the file line of its effective
 // definition. Use Variable to read a value with {{name}} references expanded.
 type Method struct {
-	Name          string
+	Name string
+	// Method is the request method the route answers, as written on the
+	// request line and upper-cased: one method such as "GET", a
+	// comma-separated list such as "GET,HEAD,OPTIONS", or "*" for any
+	// method. Use Accepts to test a request method against it.
 	Method        string
 	Target        string
 	Path          string
@@ -97,6 +101,83 @@ type Method struct {
 	// RateWindow, after which the route answers 429. 0 means no limit.
 	RateLimit  int
 	RateWindow time.Duration
+	// Fallback is set by @fallback = true: the route is tried after every
+	// route without it, whatever the load order.
+	Fallback bool
+	// Chance is the @match.chance share of otherwise matching requests the
+	// route accepts, between 0 (exclusive) and 1. 0 means no @match.chance,
+	// so the route accepts every matching request.
+	Chance float64
+}
+
+// AnyMethod is the request line method that accepts every request method.
+const AnyMethod = "*"
+
+// Accepts reports whether the route answers requests with requestMethod.
+func (m Method) Accepts(requestMethod string) bool {
+	if m.Method == AnyMethod {
+		return true
+	}
+	if !strings.Contains(m.Method, ",") {
+		return m.Method == requestMethod
+	}
+	return slices.Contains(strings.Split(m.Method, ","), requestMethod)
+}
+
+// Methods lists the request methods the route answers, or nil when it
+// answers any method ("*").
+func (m Method) Methods() []string {
+	if m.Method == AnyMethod {
+		return nil
+	}
+	return strings.Split(m.Method, ",")
+}
+
+// SampleMethod is the method to send when trying the route: its first
+// method, or GET for a route that accepts any method.
+func (m Method) SampleMethod() string {
+	if m.Method == AnyMethod {
+		return http.MethodGet
+	}
+	first, _, _ := strings.Cut(m.Method, ",")
+	return first
+}
+
+// parseRequestMethods parses the method token of a request line: one
+// method, a comma-separated list such as "GET,HEAD", or "*". Methods are
+// upper-cased and duplicates dropped.
+func parseRequestMethods(token string) (string, error) {
+	if token == AnyMethod {
+		return AnyMethod, nil
+	}
+	var methods []string
+	for _, part := range strings.Split(token, ",") {
+		method := strings.ToUpper(part)
+		if !isHTTPMethod(method) {
+			if part == "" || part == AnyMethod {
+				return "", fmt.Errorf("invalid method list %q (separate methods with commas and no spaces, example: \"GET,HEAD /health\", or use \"*\" alone for any method)", token)
+			}
+			return "", fmt.Errorf("unrecognized HTTP method %q (supported: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, CONNECT, TRACE, a comma-separated list such as GET,HEAD, or * for any method)", part)
+		}
+		if !slices.Contains(methods, method) {
+			methods = append(methods, method)
+		}
+	}
+	return strings.Join(methods, ","), nil
+}
+
+// isMethodToken reports whether a request line token reads as a method, a
+// method list or "*".
+func isMethodToken(token string) bool {
+	if token == AnyMethod {
+		return true
+	}
+	for _, part := range strings.Split(strings.ToUpper(token), ",") {
+		if !isHTTPMethod(part) {
+			return false
+		}
+	}
+	return true
 }
 
 // Callback is an outbound request a route sends after it responds, set by
@@ -197,7 +278,7 @@ func looksLikeRequestLine(line string) bool {
 	if len(fields) == 0 {
 		return false
 	}
-	if len(fields) >= 2 && isHTTPMethod(strings.ToUpper(fields[0])) {
+	if len(fields) >= 2 && isMethodToken(fields[0]) {
 		return true
 	}
 	return len(fields) <= 2 && isBareTarget(fields[0])
@@ -638,11 +719,10 @@ func parseSection(pending pendingSection, fileDefs []definition, opts Options, s
 			method.Name, quoteSnippet(rawRequest))
 	}
 
-	method.Method = strings.ToUpper(requestLine[0])
-	if !isHTTPMethod(method.Method) {
-		return method, parseErrorf(source, lineAt(i),
-			`section %q has an unrecognized HTTP method %q (supported: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, CONNECT, TRACE)`,
-			method.Name, requestLine[0])
+	var err error
+	method.Method, err = parseRequestMethods(requestLine[0])
+	if err != nil {
+		return method, parseErrorf(source, lineAt(i), "section %q has an %v", method.Name, err)
 	}
 
 	method.Target = requestLine[1]
@@ -725,7 +805,6 @@ func parseSection(pending pendingSection, fileDefs []definition, opts Options, s
 		method.Headers.Add(headerName, strings.TrimSpace(value))
 		i++
 	}
-
 	bodyStart := i
 	bodyLines := trimTrailingBlankLines(lines[i:])
 	if len(bodyLines) > 0 && strings.HasPrefix(bodyLines[0], "< ") {
@@ -1032,6 +1111,25 @@ func applyControlVariable(method *Method, def definition, source string) error {
 			return parseErrorf(source, def.line, "section %q: @port %v", method.Name, err)
 		}
 		method.Port = port
+	case "fallback":
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "true":
+			method.Fallback = true
+		case "false":
+			method.Fallback = false
+		default:
+			return parseErrorf(source, def.line, `section %q: @fallback must be true or false`, method.Name)
+		}
+	case "match.chance":
+		chance, err := ParseChance(value)
+		if err != nil {
+			return parseErrorf(source, def.line, "section %q: @match.chance %v", method.Name, err)
+		}
+		method.Chance = chance
+	default:
+		if strings.HasPrefix(def.name, "match.") {
+			return parseErrorf(source, def.line, `section %q: unknown directive @%s (did you mean @match.chance?)`, method.Name, def.name)
+		}
 	}
 	return nil
 }
@@ -1047,6 +1145,21 @@ func (m *Method) callback() *Callback {
 
 // applyCallbackDirective handles @callback.delay, @callback.header.Name and
 // @callback.body.
+// ParseChance parses a @match.chance value, a percentage above 0% and at
+// most 100% such as "20%", into a share between 0 and 1. 100% is returned
+// as 0, which means the route accepts every matching request.
+func ParseChance(raw string) (float64, error) {
+	text := strings.TrimSpace(raw)
+	percent, err := strconv.ParseFloat(strings.TrimSuffix(text, "%"), 64)
+	if err != nil || !strings.HasSuffix(text, "%") || percent <= 0 || percent > 100 {
+		return 0, fmt.Errorf(`must be a percentage above 0%% and at most 100%%, such as "20%%"`)
+	}
+	if percent == 100 {
+		return 0, nil
+	}
+	return percent / 100, nil
+}
+
 func applyCallbackDirective(method *Method, def definition, key, value, source string) error {
 	callback := method.callback()
 	switch {
@@ -1242,18 +1355,20 @@ func trimTrailingBlankLines(lines []string) []string {
 
 // controlVariables are consumed by the mock server itself (not only as {{name}} references).
 var controlVariables = map[string]struct{}{
-	"delay":      {},
-	"port":       {},
-	"stream":     {},
-	"fault":      {},
-	"seed":       {},
-	"template":   {},
-	"trim":       {},
-	"proxy":      {},
-	"fixture":    {},
-	"compress":   {},
-	"callback":   {},
-	"rate-limit": {},
+	"delay":        {},
+	"port":         {},
+	"stream":       {},
+	"fault":        {},
+	"seed":         {},
+	"template":     {},
+	"trim":         {},
+	"proxy":        {},
+	"fixture":      {},
+	"compress":     {},
+	"callback":     {},
+	"rate-limit":   {},
+	"fallback":     {},
+	"match.chance": {},
 }
 
 // PlaceholderPattern matches {{name}}, {{%name}} and {{$name args}} placeholders

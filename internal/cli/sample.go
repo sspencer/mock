@@ -55,7 +55,7 @@ func sampleValue(value, placeholder string) string {
 // and cookies are added; the body comes from @json, then @form, then an
 // exact @body. Absent ("!") matchers are left out.
 func buildSampleRequest(method restclient.Method) sampleRequest {
-	sample := sampleRequest{Method: method.Method, Headers: http.Header{}}
+	sample := sampleRequest{Method: method.SampleMethod(), Headers: http.Header{}}
 
 	segments := strings.Split(method.EscapedPath, "/")
 	for i, segment := range segments {

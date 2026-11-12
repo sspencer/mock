@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- A request line may list several methods, such as `GET,HEAD,OPTIONS /health`, or use `*` for any method, instead of one copy of the section per method.
+
+- `@fallback = true` tries a route after every route without it, whatever the load order, so a catch-all `404` or a wide `@proxy` route stays last when `-d` loads files alphabetically.
+
+- `@match.chance = 20%` lets a route answer only that share of the requests it matches; the rest go on to later routes. Under `@seed` the draws are reproducible from a fresh start. `/routes` and the route inspector show `fallback` and `chance`, and the near-miss list says when a route lost its draw.
+
 ## v0.5.1 - 2026-11-10
 
 A new look for the admin UI and a reorganized manual: the UI gets a bolder ink, violet and lime design with SVG icons, and the README is now a short introduction that links to reference pages under `docs/`.
