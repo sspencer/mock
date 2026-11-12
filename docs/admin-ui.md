@@ -93,10 +93,13 @@ The traffic log reads like a line map, newest request at the top. Each request
 is a stop on the line, lit by its status: green for `2xx`, blue for `3xx`,
 amber for `4xx` and red for `5xx` or a connection fault. A hollow stop is a
 request no route answered. Each HTTP method has its own color plate (`GET`
-blue, `POST` green, `PUT` orange, `PATCH` purple, `DELETE` red, others grey),
-in the traffic log and the route list alike. Selecting a route shows it as a
-sheet: its method and path, a table of its settings, then its requirements,
-sample request and response.
+blue, `POST` green, `PUT` orange, `PATCH` pink, `DELETE` red, others grey),
+in the traffic log and the route list alike. The selected request or route is
+highlighted in yellow. Request and response text is colored: header names and
+JSON keys violet, strings green, numbers orange, and the start line in its
+method or status color (bodies over 200,000 characters stay plain). Selecting
+a route shows it as a sheet: its method and path, a table of its settings,
+then its requirements, sample request and response.
 
 The UI's typeface, Overpass (SIL Open Font License), is built into the binary,
 so the page loads nothing from the network.

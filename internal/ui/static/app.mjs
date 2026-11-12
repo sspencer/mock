@@ -11,6 +11,7 @@ import { countNodes, editableFixture, formatFixture, losslessIssue, maxTreeNodes
 import { renderFixtureTree } from './fixturetree.mjs';
 import { switchBadge, switchFields, switchPayload } from './switches.mjs';
 import { parseRouteSheet, renderRouteSheet } from './routesheet.mjs';
+import { highlightMessage, tokenClass } from './highlight.mjs';
 
 const MAX_EVENTS = 1000;
 const MOCK_CONFIG = JSON.parse(document.getElementById("mock-config").textContent);
@@ -595,8 +596,22 @@ function selectPendingResend(visibleIDs) {
     if (row) selectRow(row, eventsById.get(id));
 }
 
+// setDetailText shows a request or response as colored spans. The text is
+// set first, so the element reads the same when there is nothing to color.
+function setDetailText(element, text) {
+    element.textContent = text;
+    const tokens = highlightMessage(text);
+    if (!tokens.some(token => token.kind)) return;
+    element.replaceChildren(...tokens.map(token => {
+        const span = document.createElement('span');
+        if (token.kind) span.className = tokenClass(token.kind);
+        span.textContent = token.text;
+        return span;
+    }));
+}
+
 function updateDetail(element, newContent) {
-    element.textContent = newContent;
+    setDetailText(element, newContent);
     if (!newContent && selection.kind === 'none') resetInspector();
 }
 
@@ -704,7 +719,7 @@ function renderInspector() {
     copyCurlButton.disabled = false;
     for (const kind of ['request', 'response']) {
         const message = event[kind];
-        document.getElementById(`${kind}Details`).textContent = formatMessage(message, pretty[kind], kind === 'request');
+        setDetailText(document.getElementById(`${kind}Details`), formatMessage(message, pretty[kind], kind === 'request'));
         document.getElementById(`${kind}BodyNotice`).textContent = bodyNotice(message.body);
         document.getElementById(`${kind}Pretty`).setAttribute('aria-pressed', String(pretty[kind]));
         document.getElementById(`${kind}Raw`).setAttribute('aria-pressed', String(!pretty[kind]));

@@ -1,14 +1,17 @@
-/* Mock request console: a transit wayfinding board.
+/* Mock request console: a highlighter on a violet desk.
  *
- * The product speaks in routes, traffic and switches, so the page borrows
- * from station signage. A black sign band tops one continuous white board,
- * divided by solid rules instead of floating cards. Each HTTP method is a
- * line with its own color, as on a transit map, and the traffic log is drawn
- * as a line map: a track runs down the status column and every request is a
- * stop on it, lit in its signal color. Selecting inverts a row to sign black.
+ * A vivid violet band tops two floating panels on a lilac desk: the traffic
+ * log and routes on the left, the inspector on the right. Every neutral is
+ * tinted violet, so nothing on the page is plain grey, black or white.
+ * Violet marks what you can act on. What is selected is run over with a
+ * yellow highlighter, the same yellow in both themes.
  *
- * Type is Overpass, descended from highway signage, with Overpass Mono for
- * wire data only (paths, headers, bodies). Labels are sentence case.
+ * The traffic log is a line map: a track runs down the status column and
+ * every request is a stop on it, a lamp lit in its status color that pops
+ * onto the line as it arrives. Each HTTP method has its own color plate.
+ *
+ * Type is Overpass, with Overpass Mono for wire data only (paths, headers,
+ * bodies). Labels are sentence case.
  *
  * Each theme supplies its colors through the custom properties below;
  * nothing else names a color. */
@@ -30,104 +33,119 @@
 }
 
 :root {
-    /* The board. */
-    --bg: #e8e8e4;
+    /* The desk and the panels on it. */
+    --bg: #e9e4fa;
     --surface: #ffffff;
-    --surface-2: #f3f3f0;
-    --surface-3: #e4e4df;
-    --ink: #1a1a1a;
-    --muted: #55554f;
-    --faint: #85857e;
-    --line: #e2e2dd;
-    --line-strong: #bdbdb6;
-    --edge: #000000;
-    /* What you can act on is the blue line; what is selected is sign black. */
-    --accent: #0039a6;
+    --surface-2: #f6f3fe;
+    --surface-3: #ebe6fa;
+    --ink: #1b1238;
+    --muted: #5a527d;
+    --faint: #8c85aa;
+    --line: #e8e3f5;
+    --line-strong: #cdc5e6;
+    --edge: #cdc5e6;
+    --track: #d3cbec;
+    /* What you can act on is violet; what is selected is highlighter yellow. */
+    --accent: #5226e0;
+    --accent-strong: #3f17bd;
     --accent-ink: #ffffff;
-    --accent-soft: rgba(0, 57, 166, 0.12);
-    --accent-softer: rgba(0, 57, 166, 0.06);
-    --hi: #000000;
-    --hi-ink: #ffffff;
-    --hi-muted: #c9c9c2;
-    /* The sign band. */
-    --bar: #000000;
+    --accent-soft: rgba(82, 38, 224, 0.12);
+    --accent-softer: rgba(82, 38, 224, 0.06);
+    --hi: #ffdc4d;
+    --hi-ink: #1b1238;
+    --hi-muted: #6a5a17;
+    --hi-edge: #5226e0;
+    /* The band. */
+    --bar: #4a1fd0;
+    --bar-2: #8a1fc4;
     --bar-ink: #ffffff;
-    --bar-muted: #c2c2ba;
-    --bar-hover: rgba(255, 255, 255, 0.16);
-    --bar-line: #000000;
-    /* One line per HTTP method, filled plates with white type. */
-    --line-get: #0039a6;
-    --line-post: #00853e;
-    --line-put: #e8590c;
-    --line-patch: #9b2fae;
-    --line-delete: #d5281b;
-    --line-other: #6d6e71;
+    --bar-muted: #ddd3ff;
+    --bar-hover: rgba(255, 255, 255, 0.18);
+    --bar-chip: rgba(18, 6, 70, 0.28);
+    /* One color per HTTP method, filled plates with white type. */
+    --line-get: #1968e0;
+    --line-post: #0b8f4c;
+    --line-put: #dc5a0a;
+    --line-patch: #c81e9a;
+    --line-delete: #d92c2c;
+    --line-other: #6c668a;
     --on-line: #ffffff;
-    /* Signal lamps for status. */
-    --sig-go: #00933c;
-    --sig-info: #0039a6;
-    --sig-caution: #f2a900;
-    --sig-stop: #e02b20;
+    /* Lamps for status. */
+    --sig-go: #10a856;
+    --sig-info: #2b7bf2;
+    --sig-caution: #f5a300;
+    --sig-stop: #e8362c;
     /* The same hues as text. */
-    --blue: #0039a6;
-    --green: #00703a;
+    --blue: #1557c4;
+    --green: #08733c;
     --amber: #8a5a00;
     --orange: #b84300;
-    --purple: #86259a;
+    --purple: #8b2bb8;
     --red: #c0211a;
     --on-tone: #ffffff;
     --danger: var(--red);
-    --danger-soft: rgba(213, 40, 27, 0.09);
+    --danger-soft: rgba(217, 44, 44, 0.1);
     --warn: var(--amber);
+    --warn-soft: #fff4d1;
     --ok: var(--sig-go);
-    --backdrop: rgba(0, 0, 0, 0.5);
-    --rule: 2px;
-    --radius: 0px;
-    --radius-sm: 3px;
-    --gutter: 0px;
+    --backdrop: rgba(27, 18, 56, 0.45);
+    --shadow: 0 1px 2px rgba(46, 22, 130, 0.06), 0 10px 28px -14px rgba(46, 22, 130, 0.28);
+    --shadow-pop: 0 18px 50px -12px rgba(27, 12, 90, 0.45);
+    --lamp-glow: 0.35;
+    --radius: 14px;
+    --radius-sm: 8px;
+    --gap: 10px;
     --mono: "Overpass Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     --sans: "Overpass", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
     color-scheme: light;
 }
 
 [data-theme="dark"] {
-    --bg: #0c0c0c;
-    --surface: #161616;
-    --surface-2: #1f1f1f;
-    --surface-3: #2c2c2c;
-    --ink: #f2f2ee;
-    --muted: #b0b0a8;
-    --faint: #7d7d76;
-    --line: #2a2a2a;
-    --line-strong: #444440;
-    --edge: #6b6b65;
-    --accent: #8fb4ff;
-    --accent-ink: #000000;
-    --accent-soft: rgba(143, 180, 255, 0.18);
-    --accent-softer: rgba(143, 180, 255, 0.09);
-    --hi: #f2f2ee;
-    --hi-ink: #000000;
-    --hi-muted: #4a4a45;
-    --bar-line: #6b6b65;
-    --line-get: #2f6bdf;
-    --line-post: #1d9a55;
-    --line-put: #f0701f;
-    --line-patch: #b454c8;
-    --line-delete: #e4483a;
-    --line-other: #808183;
-    --sig-go: #2fbf6b;
-    --sig-info: #6f9bff;
+    --bg: #0f0b1f;
+    --surface: #18132e;
+    --surface-2: #201a3c;
+    --surface-3: #2c2552;
+    --ink: #f1eeff;
+    --muted: #b4acd8;
+    --faint: #827aa8;
+    --line: #29234a;
+    --line-strong: #40386c;
+    --edge: #40386c;
+    --track: #3a3264;
+    --accent: #a98dff;
+    --accent-strong: #c2adff;
+    --accent-ink: #160a3d;
+    --accent-soft: rgba(169, 141, 255, 0.2);
+    --accent-softer: rgba(169, 141, 255, 0.1);
+    --hi: #ffdc4d;
+    --hi-ink: #1b1238;
+    --hi-muted: #6a5a17;
+    --hi-edge: #7c4dff;
+    --bar: #3d19b0;
+    --bar-2: #7417a8;
+    --line-get: #2f7df0;
+    --line-post: #18a35c;
+    --line-put: #ee6c1c;
+    --line-patch: #d93cae;
+    --line-delete: #e8483d;
+    --line-other: #7d769e;
+    --sig-go: #35d07f;
+    --sig-info: #6aa3ff;
     --sig-caution: #ffc233;
     --sig-stop: #ff5a4d;
-    --blue: #8fb4ff;
-    --green: #5fd28f;
-    --amber: #f0b840;
+    --blue: #8fb8ff;
+    --green: #5fd898;
+    --amber: #f3bd47;
     --orange: #ff9a5c;
-    --purple: #d39be0;
-    --red: #ff8076;
-    --on-tone: #0c0c0c;
-    --danger-soft: rgba(255, 128, 118, 0.14);
-    --backdrop: rgba(0, 0, 0, 0.72);
+    --purple: #dc9cf0;
+    --red: #ff8479;
+    --on-tone: #0f0b1f;
+    --danger-soft: rgba(255, 132, 121, 0.15);
+    --warn-soft: rgba(243, 189, 71, 0.12);
+    --backdrop: rgba(6, 3, 18, 0.72);
+    --shadow: 0 0 0 1px rgba(169, 141, 255, 0.04);
+    --shadow-pop: 0 18px 60px -10px rgba(0, 0, 0, 0.8);
+    --lamp-glow: 0.6;
     color-scheme: dark;
 }
 
@@ -170,7 +188,7 @@ h2 {
     line-height: 1.3;
 }
 
-/* Section titles are set like sign headings: heavy, tight, sentence case. */
+/* Section titles: heavy, tight, sentence case. */
 .panel-header h2 {
     font-size: 1.06rem;
     font-weight: 800;
@@ -180,8 +198,9 @@ h2 {
 
 code {
     padding: 1px 5px;
-    border-radius: 4px;
-    background: var(--surface-3);
+    border-radius: 5px;
+    background: var(--accent-soft);
+    color: var(--accent);
     font-family: var(--mono);
     font-size: 0.85em;
 }
@@ -214,76 +233,97 @@ code {
     grid-template-rows: auto auto minmax(0, 1fr);
 }
 
-/* The sign band is black in both themes and sets its own text colors. */
+/* The band is violet in both themes and sets its own text colors. */
 .topbar {
     --ink: var(--bar-ink);
     --muted: var(--bar-muted);
     --surface-3: var(--bar-hover);
     --accent: #ffffff;
-    --ok: #2fd16f;
-    --warn: #ffc233;
-    --danger: #ff5a4d;
+    --ok: #5df2ae;
+    --warn: #ffdc4d;
+    --danger: #ff8a80;
     --danger-soft: rgba(255, 90, 77, 0.3);
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    height: 52px;
-    padding: 0 12px 0 16px;
-    border-bottom: var(--rule) solid var(--bar-line);
-    background: var(--bar);
+    height: 54px;
+    padding: 0 12px 0 18px;
+    background: linear-gradient(100deg, var(--bar) 0%, var(--bar) 45%, var(--bar-2) 100%);
     color: var(--bar-ink);
 }
 
 .brand-lockup {
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 10px;
     min-width: 0;
 }
 
-/* The mark is a route bullet: two stops joined by a line, in a roundel. */
+/* The mark is a route: two stops joined by a line, on a highlighter dot. */
 .brand-mark {
-    width: 26px;
-    height: 26px;
+    width: 28px;
+    height: 28px;
     flex: 0 0 auto;
 }
-.brand-mark rect { fill: var(--bar-ink); }
-.brand-mark circle { fill: var(--bar); }
-.brand-mark path { stroke: var(--bar); stroke-width: 2; }
+.brand-mark rect { fill: var(--hi); }
+.brand-mark circle { fill: var(--hi-ink); }
+.brand-mark path { stroke: var(--hi-ink); stroke-width: 2; }
 
 h1 {
-    font-size: 1.5rem;
+    font-size: 1.55rem;
     font-weight: 800;
     letter-spacing: -0.035em;
     line-height: 1;
 }
 
+/* The stream state sits in a chip pressed into the band. */
 .status-line {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
+    gap: 8px;
     min-width: 0;
-    margin: 0 0 0 14px;
-    color: var(--muted);
-    font-size: 0.82rem;
-    font-weight: 500;
+    margin: 0 0 0 12px;
+    padding: 5px 12px 4px 10px;
+    border-radius: 999px;
+    background: var(--bar-chip);
+    color: var(--bar-ink);
+    font-size: 0.8rem;
+    font-weight: 600;
     line-height: 1.3;
 }
 
-#streamStatus { overflow-wrap: anywhere; }
+#streamStatus { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* A signal lamp: green while listening, amber paused, red offline. */
+/* A lamp: green and pulsing while listening, yellow paused, red offline. */
 .live-pip {
-    width: 10px;
-    height: 10px;
+    position: relative;
+    width: 9px;
+    height: 9px;
     flex: 0 0 auto;
+    margin-top: -1px;
     border-radius: 50%;
     background: var(--ok);
 }
 
+.live-pip::after {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: var(--ok);
+    animation: pip-pulse 2.4s ease-out infinite;
+    content: "";
+}
+
+@keyframes pip-pulse {
+    0% { opacity: 0.7; transform: scale(1); }
+    70%, 100% { opacity: 0; transform: scale(3.2); }
+}
+
 .stream-paused .live-pip { background: var(--warn); }
 .stream-offline .live-pip { background: var(--danger); }
+.stream-paused .live-pip::after,
+.stream-offline .live-pip::after { display: none; }
 
 .topbar-actions,
 .panel-actions,
@@ -304,8 +344,8 @@ h1 {
     justify-content: center;
     gap: 6px;
     height: 28px;
-    padding: 0 10px;
-    border: 1.5px solid var(--edge);
+    padding: 1px 11px 0;
+    border: 1px solid var(--line-strong);
     border-radius: var(--radius-sm);
     background: var(--surface);
     color: var(--ink);
@@ -313,11 +353,14 @@ h1 {
     font-weight: 600;
     white-space: nowrap;
     user-select: none;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
-/* Hovering a button inverts it, as selecting a row does. */
+/* Hovering a button washes it violet. */
 .theme-toggle:hover,
-.clear-button:hover:not(:disabled) { border-color: var(--hi); background: var(--hi); color: var(--hi-ink); }
+.clear-button:hover:not(:disabled) { border-color: transparent; background: var(--accent-soft); color: var(--accent); }
+
+.clear-button:active:not(:disabled) { transform: translateY(1px); }
 
 .clear-button:disabled {
     opacity: 0.45;
@@ -336,13 +379,13 @@ h1 {
 }
 
 .topbar-actions .theme-toggle,
-.topbar-actions .clear-button { height: 32px; color: var(--bar-ink); font-size: 0.84rem; }
+.topbar-actions .clear-button { height: 34px; border-radius: 999px; color: var(--bar-ink); font-size: 0.84rem; }
 
 .topbar-actions .theme-toggle:hover,
 .topbar-actions .clear-button:hover:not(:disabled) {
-    border-color: var(--bar-ink);
-    background: var(--bar-ink);
-    color: var(--bar);
+    border-color: transparent;
+    background: var(--bar-hover);
+    color: var(--bar-ink);
 }
 
 .routes-panel-actions .clear-button:hover:not(:disabled),
@@ -355,16 +398,17 @@ h1 {
 .clear-button.active,
 .detail-actions > [aria-pressed="true"],
 .detail-actions > [aria-expanded="true"] {
+    border-color: transparent;
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+/* Paused is highlighted, like anything else that is switched on. */
+#pauseButton.active,
+#pauseButton.active:hover {
     border-color: var(--hi);
     background: var(--hi);
     color: var(--hi-ink);
-}
-
-#pauseButton.active,
-#pauseButton.active:hover {
-    border-color: var(--warn);
-    background: var(--warn);
-    color: #000000;
 }
 
 .danger-button:hover:not(:disabled) {
@@ -373,20 +417,21 @@ h1 {
     color: var(--on-line);
 }
 
-/* The one action a form exists for is filled; hovering moves it to blue. */
+/* The one action a form exists for is filled violet. */
 .primary-button {
-    border-color: var(--hi);
-    background: var(--hi);
-    color: var(--hi-ink);
-}
-.primary-button:hover:not(:disabled) {
     border-color: var(--accent);
     background: var(--accent);
     color: var(--accent-ink);
 }
+.primary-button:hover:not(:disabled) {
+    border-color: var(--accent-strong);
+    background: var(--accent-strong);
+    color: var(--accent-ink);
+}
 
-.icon-button {
-    width: 30px;
+.icon-button,
+.topbar-actions .icon-button {
+    width: 34px;
     padding: 0;
 }
 
@@ -402,41 +447,43 @@ h1 {
 .routes-collapsed .icon-collapse { transform: rotate(180deg); }
 
 /* Two or more choices, one of them pressed. */
+/* A recessed track; the pressed choice is a raised violet-lettered key. */
 .segmented {
     display: inline-flex;
-    overflow: hidden;
-    border: 1.5px solid var(--edge);
+    gap: 2px;
+    padding: 2px;
     border-radius: var(--radius-sm);
-    background: var(--surface);
+    background: var(--surface-3);
 }
 
 .segmented .clear-button,
 .segmented .clear-button:hover:not(:disabled) {
-    height: 23px;
-    padding: 0 10px;
+    height: 24px;
+    padding: 1px 11px 0;
     border: 0;
-    border-radius: 0;
+    border-radius: 6px;
     background: transparent;
     color: var(--muted);
     transform: none;
 }
 
-.segmented .clear-button:hover:not(:disabled) { background: var(--surface-3); color: var(--ink); }
+.segmented .clear-button:hover:not(:disabled) { color: var(--ink); }
 
 .segmented .clear-button[aria-pressed="true"],
 .segmented .clear-button[aria-pressed="true"]:hover {
-    background: var(--hi);
-    color: var(--hi-ink);
+    background: var(--surface);
+    color: var(--accent);
+    box-shadow: 0 1px 2px rgba(27, 12, 90, 0.18);
 }
 
 /* ---------- Workspace ---------- */
 
-/* One board: panels sit flush and solid rules divide them. */
+/* Two panels float on the desk; the gap between them is the divider. */
 .workspace {
     display: grid;
-    grid-template-columns: minmax(0, var(--left-width, 45%)) 8px minmax(0, 1fr);
+    grid-template-columns: minmax(0, var(--left-width, 45%)) var(--gap) minmax(0, 1fr);
     min-height: 0;
-    background: var(--surface);
+    padding: var(--gap);
 }
 
 .request-panel,
@@ -450,7 +497,9 @@ h1 {
 .request-panel,
 .side-panel {
     overflow: hidden;
+    border-radius: var(--radius);
     background: var(--surface);
+    box-shadow: var(--shadow);
 }
 
 .request-panel {
@@ -470,9 +519,9 @@ h1 {
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 8px 12px;
-    min-height: 48px;
-    padding: 8px 12px 8px 16px;
-    border-bottom: var(--rule) solid var(--edge);
+    min-height: 50px;
+    padding: 9px 12px 8px 18px;
+    border-bottom: 1px solid var(--line);
     background: var(--surface);
 }
 
@@ -483,15 +532,20 @@ h1 {
 
 .panel-title-line {
     display: flex;
-    align-items: baseline;
-    gap: 8px;
+    align-items: center;
+    gap: 9px;
     min-width: 0;
 }
 
+/* Counts ride beside a title as a violet chip. */
 .count-display {
-    color: var(--muted);
-    font-size: 0.82rem;
-    font-weight: 500;
+    padding: 2px 9px 0;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 0.76rem;
+    font-weight: 700;
+    white-space: nowrap;
 }
 
 /* Filter: a full row under the Traffic heading. */
@@ -500,20 +554,25 @@ h1 {
     display: flex;
     flex: 1 0 100%;
     align-items: center;
-    height: 32px;
-    margin: 0 4px 4px 0;
-    border: 1.5px solid var(--edge);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
-    color: var(--muted);
+    height: 34px;
+    margin: 0 6px 4px 0;
+    border: 1.5px solid transparent;
+    border-radius: 10px;
+    background: var(--surface-2);
+    color: var(--faint);
+    transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
 }
+
+.filter-control:hover { background: var(--surface-3); }
 
 .filter-control:focus-within {
     border-color: var(--accent);
-    box-shadow: 0 0 0 1.5px var(--accent);
+    background: var(--surface);
+    color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-.filter-control .icon { margin-left: 9px; }
+.filter-control .icon { margin-left: 11px; }
 
 .filter-input {
     width: 100%;
@@ -531,13 +590,14 @@ h1 {
 
 .key-hint {
     position: absolute;
-    right: 6px;
+    right: 8px;
     display: grid;
     place-items: center;
-    width: 18px;
-    height: 18px;
+    width: 19px;
+    height: 19px;
     border: 1px solid var(--line-strong);
-    border-radius: 4px;
+    border-bottom-width: 2px;
+    border-radius: 5px;
     background: var(--surface);
     color: var(--muted);
     font-size: 0.72rem;
@@ -579,18 +639,18 @@ thead th {
     position: sticky;
     top: 0;
     z-index: 2;
-    padding: 7px 16px 5px;
-    border-bottom: 1px solid var(--line-strong);
+    padding: 7px 18px 5px;
+    border-bottom: 1px solid var(--line);
     background: var(--surface);
-    color: var(--muted);
-    font-size: 0.78rem;
+    color: var(--faint);
+    font-size: 0.76rem;
     font-weight: 600;
     text-align: left;
 }
 
 td {
-    height: 36px;
-    padding: 0 16px;
+    height: 38px;
+    padding: 0 18px;
     border-bottom: 1px solid var(--line);
     vertical-align: middle;
 }
@@ -617,10 +677,10 @@ td.request-cell {
 /* Proxied, callback, resent and retry requests carry a small plate. */
 .proxied-badge {
     margin-left: 8px;
-    padding: 1px 6px 0;
-    border: 1.5px solid currentColor;
-    border-radius: 2px;
-    color: var(--muted);
+    padding: 2px 8px 0;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
     font-family: var(--sans);
     font-size: 0.72rem;
     font-weight: 600;
@@ -636,7 +696,7 @@ tbody tr[data-id] {
 tbody tr[data-id]:hover,
 .routes-list li:has(.route-button:hover) { --row-bg: var(--surface-2); background: var(--surface-2); }
 
-/* Selecting inverts the row to sign black (white at night). */
+/* Selecting runs a highlighter over the row, with a violet edge. */
 tbody tr.selected,
 tbody tr.selected[data-id]:hover,
 .routes-list li:has(.route-button[aria-pressed="true"]) {
@@ -653,10 +713,14 @@ tbody tr.selected .status-code,
 
 tbody tr.selected .request-host,
 tbody tr.selected .time-cell,
-tbody tr.selected .proxied-badge,
 .routes-list li:has(.route-button[aria-pressed="true"]) .route-name {
     color: var(--hi-muted);
 }
+
+tbody tr.selected .proxied-badge { background: var(--hi-ink); color: var(--hi); }
+
+tbody tr.selected td:first-child,
+.routes-list li:has(.route-button[aria-pressed="true"]) { box-shadow: inset 4px 0 0 var(--hi-edge); }
 
 tbody tr[data-id]:focus-visible {
     outline: 2px solid var(--accent);
@@ -672,20 +736,20 @@ tbody tr[data-id]:focus-visible {
 
 #requestTableBody .empty-state { border-bottom: 0; }
 
-/* Each method is a line with its own color: a filled plate, white type. */
+/* Each method has its own color: a filled plate, white type. */
 [class^="method-"] {
     --line-color: var(--line-other);
     display: inline-block;
     min-width: 62px;
     margin-right: 10px;
-    padding: 2px 6px 0;
-    border-radius: 2px;
+    padding: 3px 6px 1px;
+    border-radius: 6px;
     background: var(--line-color);
     color: var(--on-line);
     font-family: var(--sans);
-    font-size: 0.74rem;
-    font-weight: 700;
-    letter-spacing: 0.02em;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
     line-height: 1.45;
     text-align: center;
     text-transform: uppercase;
@@ -698,8 +762,8 @@ tbody tr[data-id]:focus-visible {
 .method-delete { --line-color: var(--line-delete); }
 
 /* The traffic log is a line map. A track runs down the status column and
- * each request is a stop on it, lit in its signal color, newest at the top.
- * A request no route answered is a hollow stop. */
+ * each request is a stop on it, a lamp lit in its status color, newest at
+ * the top. A request no route answered is a hollow stop. */
 tbody tr[data-id] td:nth-child(2) { position: relative; }
 
 tbody tr[data-id] td:nth-child(2)::before {
@@ -708,7 +772,7 @@ tbody tr[data-id] td:nth-child(2)::before {
     bottom: -1px;
     left: 6px;
     width: 2px;
-    background: var(--edge);
+    background: var(--track);
     content: "";
 }
 
@@ -734,14 +798,24 @@ tbody tr.selected td:nth-child(2)::before { background: var(--hi-ink); }
     border-radius: 50%;
     background: var(--tone);
     margin-top: -3px;
-    box-shadow: 0 0 0 2px var(--row-bg);
+    box-shadow: 0 0 0 3px var(--row-bg), 0 0 12px 2px color-mix(in srgb, var(--tone) calc(var(--lamp-glow) * 100%), transparent);
+    animation: stop-in 380ms cubic-bezier(0.3, 1.7, 0.5, 1) backwards;
     content: "";
+}
+
+/* A new stop pops onto the line. */
+@keyframes stop-in {
+    from { transform: scale(0); }
 }
 
 .no-route .status-code::before {
     border: 3px solid var(--tone);
     background: var(--row-bg);
 }
+
+/* On the highlighter the lamps are ringed in ink so amber stays visible. */
+tbody tr.selected .status-code::before { box-shadow: 0 0 0 2px var(--hi-ink); }
+tbody tr.selected.no-route .status-code::before { background: var(--hi-ink); }
 
 .status-2xx { --tone: var(--sig-go); }
 .status-3xx { --tone: var(--sig-info); }
@@ -779,8 +853,8 @@ tbody tr.selected td:nth-child(2)::before { background: var(--hi-ink); }
     gap: 6px;
     width: 100%;
     min-width: 0;
-    height: 34px;
-    padding: 0 12px 0 16px;
+    height: 36px;
+    padding: 0 12px 0 18px;
     border: 0;
     background: transparent;
     text-align: left;
@@ -811,23 +885,24 @@ tbody tr.selected td:nth-child(2)::before { background: var(--hi-ink); }
 
 .routes-list .route-hits {
     flex: 0 0 auto;
-    min-width: 30px;
+    min-width: 32px;
     height: 22px;
-    margin-right: 12px;
-    padding: 1px 6px 0;
-    border: 1.5px solid currentColor;
-    border-radius: 2px;
-    background: transparent;
-    color: var(--ink);
-    font-size: 0.78rem;
+    margin-right: 14px;
+    padding: 1px 8px 0;
+    border: 0;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 0.76rem;
     font-weight: 700;
     text-align: center;
+    transition: background-color 120ms ease, color 120ms ease;
 }
 /* A route switched at run time (off, forced status, delay or fault). */
 .routes-list .route-switch {
     flex: 0 0 auto;
-    padding: 2px 6px 0;
-    border-radius: 2px;
+    padding: 2px 8px 0;
+    border-radius: 999px;
     background: var(--line-delete);
     color: var(--on-line);
     font-size: 0.72rem;
@@ -835,9 +910,10 @@ tbody tr.selected td:nth-child(2)::before { background: var(--hi-ink); }
     line-height: 1.45;
 }
 
-.routes-list .route-hits.unused { border-color: var(--line-strong); color: var(--faint); font-weight: 500; }
-.routes-list li:has(.route-button[aria-pressed="true"]) .route-hits.unused { border-color: var(--hi-muted); color: var(--hi-muted); }
-.routes-list .route-hits:hover { border-color: var(--accent); background: var(--accent); color: var(--accent-ink) !important; }
+.routes-list .route-hits.unused { background: var(--surface-3); color: var(--faint); font-weight: 500; }
+.routes-list li:has(.route-button[aria-pressed="true"]) .route-hits { background: var(--hi-ink); color: var(--hi); }
+.routes-list li:has(.route-button[aria-pressed="true"]) .route-hits.unused { background: transparent; color: var(--hi-muted); box-shadow: inset 0 0 0 1.5px var(--hi-muted); }
+.routes-list .route-hits:hover { background: var(--accent); color: var(--accent-ink) !important; box-shadow: none !important; }
 .routes-list .route-hits:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 .routes-list .empty-state {
@@ -854,37 +930,38 @@ tbody tr.selected td:nth-child(2)::before { background: var(--hi-ink); }
     user-select: none;
 }
 
+/* Every divider carries a grip that turns violet under the pointer. */
 .splitter::after {
     position: absolute;
-    border-radius: 2px;
+    border-radius: 999px;
     background: var(--line-strong);
-    opacity: 0;
-    transition: opacity 120ms ease;
+    transition: background-color 120ms ease, transform 120ms ease;
     content: "";
 }
 
-.splitter.vertical {
-    cursor: col-resize;
-    background: linear-gradient(to right, transparent 3px, var(--edge) 3px, var(--edge) 5px, transparent 5px);
-}
-.splitter.vertical::after { left: 2.5px; top: calc(50% - 18px); width: 3px; height: 36px; }
+/* The vertical divider is the gap between the two panels. */
+.splitter.vertical { cursor: col-resize; }
+.splitter.vertical::after { left: 3px; top: calc(50% - 22px); width: 4px; height: 44px; }
 
 .splitter.horizontal {
     cursor: row-resize;
-    border-top: var(--rule) solid var(--edge);
+    border-top: 1px solid var(--line);
     background: var(--surface);
 }
-.splitter.horizontal::after { top: 1.5px; left: calc(50% - 18px); width: 36px; height: 3px; }
+.splitter.horizontal::after { top: 1px; left: calc(50% - 22px); width: 44px; height: 4px; }
 
 .splitter:hover::after,
 .splitter:focus-visible::after,
-.splitter.dragging::after { opacity: 1; background: var(--accent); }
+.splitter.dragging::after { background: var(--accent); }
+.splitter.vertical:hover::after,
+.splitter.vertical.dragging::after { transform: scaleY(1.5); }
+.splitter.horizontal:hover::after,
+.splitter.horizontal.dragging::after { transform: scaleX(1.5); }
 
-.splitter:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.splitter:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
 
 @media (pointer: coarse) {
     .splitter.horizontal::before { position: absolute; inset: -6px 0; content: ""; }
-    .splitter::after { opacity: 1; }
 }
 
 /* ---------- Inspector ---------- */
@@ -919,8 +996,9 @@ tbody tr.selected td:nth-child(2)::before { background: var(--hi-ink); }
  * Routes, optional notes, then the content pane. */
 .detail-section {
     display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, max-content) minmax(0, 1fr);
     min-height: 0;
+    overflow: hidden;
 }
 
 .detail-section > .panel-header h2 {
@@ -948,18 +1026,19 @@ tbody tr.selected td:nth-child(2)::before { background: var(--hi-ink); }
 }
 
 .detail-actions > .clear-button:hover:not(:disabled),
-.panel-actions > .clear-button:hover:not(:disabled) { border-color: var(--hi); background: var(--hi); }
+.panel-actions > .clear-button:hover:not(:disabled) { border-color: transparent; background: var(--accent-soft); }
 .panel-actions > .danger-button:hover:not(:disabled) { border-color: var(--line-delete); background: var(--line-delete); }
 
-.detail-meta { padding: 0 16px; }
+/* Notes and forms above the content scroll when they outgrow the section. */
+.detail-meta { min-height: 0; padding: 0 18px 2px; overflow: auto; }
 .detail-meta > * { margin: 10px 0 0; }
 
 .resend-form {
     display: grid;
     gap: 6px;
-    padding: 10px;
+    padding: 12px;
     border: 1px solid var(--line);
-    border-radius: var(--radius-sm);
+    border-radius: 12px;
     background: var(--surface-2);
 }
 
@@ -973,7 +1052,7 @@ tbody tr.selected td:nth-child(2)::before { background: var(--hi-ink); }
 .resend-input {
     width: 100%;
     min-width: 0;
-    padding: 6px 8px;
+    padding: 6px 9px;
     border: 1px solid var(--line-strong);
     border-radius: var(--radius-sm);
     background: var(--surface);
@@ -985,9 +1064,12 @@ tbody tr.selected td:nth-child(2)::before { background: var(--hi-ink); }
 textarea.resend-input { resize: vertical; }
 
 .resend-input:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
+    border-color: var(--accent);
+    outline: 0;
+    box-shadow: 0 0 0 3px var(--accent-soft);
 }
+
+.switch-check input { accent-color: var(--accent); }
 
 .resend-input:disabled { color: var(--faint); }
 
@@ -1050,13 +1132,14 @@ textarea.resend-input { resize: vertical; }
 }
 
 #mismatchPanel {
-    padding: 8px 12px;
-    border: 1.5px solid var(--warn);
-    border-left-width: 5px;
-    border-radius: var(--radius-sm);
-    background: color-mix(in srgb, var(--warn) 9%, transparent);
+    padding: 9px 14px 8px;
+    border-radius: 10px;
+    background: var(--warn-soft);
+    box-shadow: inset 4px 0 0 var(--sig-caution);
     font-size: 0.8rem;
 }
+
+#mismatchPanel summary { color: var(--warn); }
 
 #mismatchPanel summary,
 .config-banner summary {
@@ -1074,7 +1157,7 @@ textarea.resend-input { resize: vertical; }
     grid-row: 3;
     min-height: 0;
     margin: 0;
-    padding: 12px 16px 16px;
+    padding: 12px 18px 18px;
     overflow: auto;
     color: var(--ink);
     font-family: var(--mono);
@@ -1086,10 +1169,30 @@ textarea.resend-input { resize: vertical; }
 
 .detail-content:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
+/* Request and response text is colored by highlight.mjs: names (headers and
+ * JSON keys) are violet, and the start line takes its method or status hue. */
+.hl-name { color: var(--accent); }
+.hl-string { color: var(--green); }
+.hl-number { color: var(--orange); }
+.hl-literal { color: var(--purple); }
+.hl-version { color: var(--faint); }
+.hl-target { font-weight: 700; }
+.hl-verb, .hl-status { font-weight: 700; }
+.hl-verb-get { color: var(--blue); }
+.hl-verb-post { color: var(--green); }
+.hl-verb-put { color: var(--orange); }
+.hl-verb-patch { color: var(--purple); }
+.hl-verb-delete { color: var(--red); }
+.hl-verb-other { color: var(--muted); }
+.hl-status-2xx { color: var(--green); }
+.hl-status-3xx { color: var(--blue); }
+.hl-status-4xx { color: var(--amber); }
+.hl-status-5xx { color: var(--red); }
+
 /* ---------- Route sheet ---------- */
 
-/* A route is shown as a sheet: a sign with its line and path, its facts,
- * then its requirements and response. */
+/* A route is shown as a sheet: its method and path, its facts, then its
+ * requirements and response. */
 .route-sheet {
     padding-top: 16px;
     font-family: var(--sans);
@@ -1108,7 +1211,8 @@ textarea.resend-input { resize: vertical; }
 
 .sheet-sign [class^="method-"] {
     min-width: 0;
-    padding: 4px 10px 1px;
+    padding: 5px 11px 2px;
+    border-radius: 8px;
     font-size: 0.95rem;
 }
 
@@ -1124,13 +1228,13 @@ textarea.resend-input { resize: vertical; }
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);
     margin: 0 0 4px;
-    border-top: var(--rule) solid var(--edge);
+    border-top: 1px solid var(--line);
 }
 
 .sheet-facts dt,
 .sheet-facts dd {
     margin: 0;
-    padding: 6px 0 4px;
+    padding: 7px 0 5px;
     border-bottom: 1px solid var(--line);
 }
 
@@ -1145,9 +1249,10 @@ textarea.resend-input { resize: vertical; }
 
 .sheet-code {
     margin: 0;
-    padding: 9px 12px;
-    border-left: 3px solid var(--edge);
+    padding: 10px 14px;
+    border-radius: 10px;
     background: var(--surface-2);
+    box-shadow: inset 3px 0 0 var(--accent);
     font-family: var(--mono);
     font-size: 0.82rem;
     line-height: 1.6;
@@ -1178,7 +1283,7 @@ textarea.resend-input { resize: vertical; }
     grid-template-rows: auto auto minmax(0, 1fr);
     min-height: 0;
     margin-top: 10px;
-    border-top: var(--rule) solid var(--edge);
+    border-top: 1px solid var(--line);
 }
 
 .fixture-editor[hidden] { display: none; }
@@ -1188,8 +1293,9 @@ textarea.resend-input { resize: vertical; }
     flex-wrap: wrap;
     align-items: center;
     gap: 8px;
-    padding: 8px 10px 8px 16px;
+    padding: 8px 10px 8px 18px;
     border-bottom: 1px solid var(--line);
+    background: var(--surface-2);
 }
 
 .fixture-title {
@@ -1297,15 +1403,15 @@ textarea.resend-input { resize: vertical; }
     height: 24px;
     padding: 0 6px;
     border: 1px solid var(--line-strong);
-    border-radius: 3px;
+    border-radius: 6px;
     background: var(--surface);
     color: var(--ink);
     font: inherit;
 }
 
-.fx-key { flex: 0 1 10em; font-weight: 600; }
+.fx-key { flex: 0 1 10em; color: var(--accent); font-weight: 600; }
 .fx-value { flex: 1 1 8em; }
-.fx-number { color: var(--purple); }
+.fx-number { color: var(--orange); }
 .fx-type { flex: 0 0 auto; color: var(--muted); }
 .fx-key:focus-visible, .fx-value:focus-visible, .fx-type:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
 .fx-value[aria-invalid="true"] { border-color: var(--danger); background: var(--danger-soft); }
@@ -1313,21 +1419,27 @@ textarea.resend-input { resize: vertical; }
 .fx-summary { flex: 1 1 auto; color: var(--faint); }
 .fx-empty { margin: 4px 0 4px 30px; color: var(--faint); font-family: var(--sans); }
 
-/* Notices appear briefly over the bottom of the inspector. */
+/* Notices rise briefly over the bottom of the inspector. */
 .copy-notice {
     position: absolute;
-    right: 14px;
-    bottom: 14px;
+    right: 16px;
+    bottom: 16px;
     z-index: 4;
-    max-width: calc(100% - 28px);
+    max-width: calc(100% - 32px);
     margin: 0;
-    padding: 7px 12px;
-    border-radius: var(--radius-sm);
+    padding: 8px 14px 6px;
+    border-radius: 10px;
     background: var(--hi);
     color: var(--hi-ink);
+    box-shadow: var(--shadow-pop);
     font-size: 0.84rem;
-    font-weight: 600;
+    font-weight: 700;
     overflow-wrap: anywhere;
+    animation: notice-in 180ms ease-out;
+}
+
+@keyframes notice-in {
+    from { opacity: 0; transform: translateY(8px); }
 }
 
 .copy-notice:empty { display: none; }
@@ -1338,10 +1450,11 @@ textarea.resend-input { resize: vertical; }
 
 .config-banner {
     min-width: 0;
-    padding: 8px 16px;
-    border-bottom: var(--rule) solid var(--edge);
-    border-left: 6px solid var(--danger);
+    margin: var(--gap) var(--gap) 0;
+    padding: 9px 16px 8px;
+    border-radius: 10px;
     background: var(--danger-soft);
+    box-shadow: inset 4px 0 0 var(--sig-stop);
     color: var(--danger);
     font-size: 0.8rem;
 }
@@ -1365,10 +1478,17 @@ textarea.resend-input { resize: vertical; }
     margin: auto;
     padding: 0;
     overflow: hidden;
-    border: var(--rule) solid var(--edge);
-    border-radius: var(--radius);
+    border: 0;
+    border-radius: 18px;
     background: var(--surface);
     color: var(--ink);
+    box-shadow: var(--shadow-pop);
+}
+
+.help-dialog[open] { animation: dialog-in 180ms ease-out; }
+
+@keyframes dialog-in {
+    from { opacity: 0; transform: translateY(10px) scale(0.98); }
 }
 
 .help-dialog[open] { display: flex; flex-direction: column; }
@@ -1376,6 +1496,7 @@ textarea.resend-input { resize: vertical; }
 
 .help-dialog::backdrop {
     background: var(--backdrop);
+    backdrop-filter: blur(3px);
 }
 
 .help-dialog-header,
@@ -1388,9 +1509,9 @@ textarea.resend-input { resize: vertical; }
     padding: 12px 14px 12px 20px;
 }
 
-.help-dialog-header { border-bottom: var(--rule) solid var(--edge); }
+.help-dialog-header { border-bottom: 1px solid var(--line); }
 .help-dialog-header h2 { font-size: 1.06rem; font-weight: 800; letter-spacing: -0.01em; }
-.help-dialog-footer { border-top: 1px solid var(--line); }
+.help-dialog-footer { border-top: 1px solid var(--line); background: var(--surface-2); }
 
 .help-dialog-x {
     display: grid;
@@ -1424,7 +1545,7 @@ textarea.resend-input { resize: vertical; }
 }
 .help-dialog-list > div:last-child { border-bottom: 0; }
 
-.help-dialog-list dt { margin: 0; font-size: 0.82rem; font-weight: 700; }
+.help-dialog-list dt { margin: 0; color: var(--accent); font-size: 0.82rem; font-weight: 700; }
 .help-dialog-list dd { margin: 0; color: var(--muted); font-size: 0.84rem; }
 
 .help-dialog-hint { margin: 0; color: var(--faint); font-size: 0.76rem; }
@@ -1435,7 +1556,7 @@ textarea.resend-input { resize: vertical; }
     flex: 1;
     min-height: 0;
     overflow: auto;
-    padding: 4px 16px 16px;
+    padding: 4px 18px 18px;
 }
 
 .compare-section h3 {
@@ -1483,9 +1604,9 @@ textarea.resend-input { resize: vertical; }
 .compare-table tr > :first-child { width: 22%; }
 .compare-table tr > :not(:first-child) { width: 39%; }
 .compare-table th[scope="row"] { color: var(--muted); font-weight: 500; }
-.compare-table tr.changed td { background: var(--accent-softer); }
+.compare-table tr.changed td { background: color-mix(in srgb, var(--hi) 22%, transparent); }
 .compare-table tr.added td:last-child,
-.compare-table tr.removed td:nth-child(2) { background: var(--accent-soft); }
+.compare-table tr.removed td:nth-child(2) { background: color-mix(in srgb, var(--hi) 40%, transparent); }
 .compare-table tr.added td:nth-child(2),
 .compare-table tr.removed td:last-child { color: var(--faint); }
 
@@ -1493,7 +1614,7 @@ textarea.resend-input { resize: vertical; }
     margin: 0;
     padding: 10px 12px;
     border: 1px solid var(--line);
-    border-radius: var(--radius-sm);
+    border-radius: 10px;
 }
 
 .compare-diff span { display: block; white-space: pre-wrap; }
@@ -1520,10 +1641,11 @@ textarea.resend-input { resize: vertical; }
     .route-toggle-label { display: none; }
     .topbar-actions .theme-toggle,
     .topbar-actions .clear-button,
-    .route-toggle-button { width: 30px; padding: 0; }
+    .route-toggle-button { width: 34px; padding: 0; }
 }
 
 @media (max-width: 900px) {
+    :root { --gap: 6px; --radius: 12px; }
     .app-shell { height: 100dvh; }
     .workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
     #workspaceSplitter { display: none; }
@@ -1536,6 +1658,7 @@ textarea.resend-input { resize: vertical; }
 
 @media (max-width: 640px) {
     .panel-header { padding-left: 12px; }
+    .status-line { margin-left: 4px; }
     .detail-meta, .detail-content { padding-inline: 12px; }
     td, thead th { padding-inline: 12px; }
     th:nth-child(1), td:nth-child(1) { width: 78px; }
@@ -1552,5 +1675,6 @@ textarea.resend-input { resize: vertical; }
     *, *::before, *::after {
         scroll-behavior: auto !important;
         transition-duration: 0.01ms !important;
+        animation: none !important;
     }
 }
