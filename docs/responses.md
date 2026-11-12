@@ -180,7 +180,10 @@ curl -X DELETE localhost:8081/faults -H 'X-Requested-With: curl'
   `/routes`, or `*` for every route. A route's own override wins over `*`.
 - `delay`, `fault` and `throttle` take the same values as the directives, plus
   `none` to switch a fault or throttle off for the route (`"delay": "0s"` for
-  no delay). Each field you set wins over the route's own directive and the
+  no delay). `"off": true` turns the route off, so later routes answer as if
+  it did not match, and `"status": 503` forces its response status. The admin
+  UI's [route switches](admin-ui.md#inspecting-requests-and-routes) set these
+  too. Each field you set wins over the route's own directive and the
   `-w`/`-f`/`-T` defaults; fields you leave out keep them. Posting again for
   the same route replaces its override.
 - `GET /faults` lists the active overrides. `DELETE /faults?route=NAME`

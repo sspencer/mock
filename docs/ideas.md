@@ -43,7 +43,6 @@ The ideas with the best value for their effort, in suggested order:
 | ID | Idea | Effort | Why |
 |----|------|--------|-----|
 | [`TE-1`](#testing-and-ci) | `mock run -- command` | M | Start, test, stop and report coverage in one CI step |
-| [`UI-1`](#admin-ui) | Route switches in the UI | M | Turn a route off or add a fault while demonstrating or exploring |
 | [`AP-1`](#working-with-real-apis) | Deeper drift check | M | `mock check` compares only top-level JSON keys today |
 
 ## Stateful behavior
@@ -125,7 +124,6 @@ state only decides whether a route is eligible.
 
 | ID | Idea | Effort | Description |
 |----|------|--------|-------------|
-| `UI-1` | Route switches | **M** | In the route inspector: turn a route off, or set a delay, fault or forced status for it, until reset. Shown as a badge in the route list and in `/state`. The delay and fault part can drive the existing `/faults` admin endpoint (`Server.SetFault`); turning a route off and forcing a status would extend it. |
 | `UI-2` | Save a draft to the file | **M** | **Copy as route** copies text for the user to paste. Add **Add to file**, which appends the draft to a chosen request file through an admin endpoint guarded like `PUT /fixture` (current files only, version check, atomic write). |
 | `UI-3` | Edit routes in the browser | **L** | Edit a section's `.http` text in the inspector with validation before saving. Larger than `UI-2` because of comments, variables and files the editor must not reformat. |
 | `UI-4` | Route search and grouping | **S** | A filter box for the route list, and grouping by file, port or tag (`MA-10`). Long route lists are hard to scan today. |

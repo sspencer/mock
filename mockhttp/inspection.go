@@ -62,6 +62,9 @@ type RouteInfo struct {
 	// Override describes the run-time fault override (POST /faults) that
 	// applies to the route, such as "delay 2s · fault reset 50%", when set.
 	Override string `json:"override,omitempty"`
+	// Switch is the route's own run-time switch (not one for all routes),
+	// as POST /faults set it, when there is one.
+	Switch *FaultOverride `json:"switch,omitempty"`
 	// StatusTemplate is the placeholder the status is rendered from, when set.
 	StatusTemplate string `json:"statusTemplate,omitempty"`
 	// Require is the @require reference, such as
@@ -117,6 +120,9 @@ type ConfigState struct {
 	LastSuccess string `json:"lastSuccess"`
 	Loading     bool   `json:"loading"`
 	Error       string `json:"error,omitempty"`
+	// Switches counts the run-time route switches and fault overrides in
+	// effect (see /faults).
+	Switches int `json:"switches"`
 }
 
 func describeRoute(method restclient.Method, index int, revision uint64) RouteInfo {
@@ -209,6 +215,7 @@ func (s *Server) ServeState(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	state := s.config
 	s.mu.Unlock()
+	state.Switches = int(s.faultCount.Load())
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(state)

@@ -9,6 +9,7 @@ import { noSelection, selectRequest, selectRoute, selectCompare, selectedRequest
 import { compareEvents, differenceCount } from './compare.mjs';
 import { countNodes, editableFixture, formatFixture, losslessIssue, maxTreeNodes, parseFixture } from './fixture.mjs';
 import { renderFixtureTree } from './fixturetree.mjs';
+import { switchBadge, switchFields, switchPayload } from './switches.mjs';
 
 const MAX_EVENTS = 1000;
 const MOCK_CONFIG = JSON.parse(document.getElementById("mock-config").textContent);
@@ -48,6 +49,16 @@ const requestTitle = document.getElementById('requestTitle');
 const routeTitle = document.getElementById('routeTitle');
 const routeSummary = document.getElementById('routeSummary');
 const copyRouteCurlButton = document.getElementById('copyRouteCurlButton');
+const switchButton = document.getElementById('switchButton');
+const switchForm = document.getElementById('switchForm');
+const switchOff = document.getElementById('switchOff');
+const switchStatus = document.getElementById('switchStatus');
+const switchDelay = document.getElementById('switchDelay');
+const switchFault = document.getElementById('switchFault');
+const switchShare = document.getElementById('switchShare');
+const switchClear = document.getElementById('switchClear');
+const switchCancel = document.getElementById('switchCancel');
+const switchStatusText = document.getElementById('switchStatusText');
 const matchSummary = document.getElementById('matchSummary');
 const exchangeView = document.getElementById('exchangeView');
 const routeView = document.getElementById('routeView');
@@ -642,6 +653,10 @@ function renderInspector() {
         routeDetails.textContent = formatRoute(route, routeCurl(route));
         copyRouteCurlButton.disabled = !routePort(route);
         const editing = isEditingFixture(route);
+        const switching = isSwitchOpen(route) && !stale;
+        switchButton.disabled = stale;
+        switchButton.setAttribute('aria-expanded', String(switching));
+        switchForm.hidden = !switching;
         editFixtureButton.hidden = !route.fixture || !editableFixture(route.fixture);
         editFixtureButton.disabled = stale && !editing;
         editFixtureButton.setAttribute('aria-pressed', String(editing));
@@ -949,6 +964,77 @@ copyUnmatchedButton.addEventListener('click', async () => {
         clearError.hidden = false;
     }
 });
+// ---------- Route switches ----------
+//
+// switchOpenFor names the route whose switches form is open (by place, since
+// a reload changes route ids); the form follows it while it stays selected.
+let switchOpenFor = null;
+const routePlace = (route) => `${route.source}\n${route.line}\n${route.name}`;
+const isSwitchOpen = (route) => switchOpenFor === routePlace(route);
+
+function fillSwitchForm(route) {
+    const fields = switchFields(route);
+    switchOff.checked = fields.off;
+    switchStatus.value = fields.status;
+    switchDelay.value = fields.delay;
+    switchFault.value = fields.fault;
+    switchShare.value = fields.share;
+    switchStatusText.textContent = route.override && !route.switch ? `A switch for all routes applies: ${route.override}.` : '';
+}
+
+async function sendSwitch(method, url, payload) {
+    const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: payload ? JSON.stringify(payload) : undefined,
+        signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) throw new Error((await res.text()).trim() || `HTTP ${res.status}`);
+    lastRoutesJSON = null;
+    await loadRoutes();
+    loadState();
+}
+
+switchButton.addEventListener('click', () => {
+    const route = selectedRoute(selection);
+    if (!route) return;
+    if (isSwitchOpen(route)) {
+        switchOpenFor = null;
+    } else {
+        switchOpenFor = routePlace(route);
+        fillSwitchForm(route);
+    }
+    renderInspector();
+    if (switchOpenFor) switchOff.focus();
+});
+switchCancel.addEventListener('click', () => { switchOpenFor = null; renderInspector(); switchButton.focus(); });
+switchForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const route = selectedRoute(selection);
+    if (!route) return;
+    const { payload, error } = switchPayload(route, {
+        off: switchOff.checked, status: switchStatus.value, delay: switchDelay.value, fault: switchFault.value, share: switchShare.value,
+    });
+    if (error) { switchStatusText.textContent = error; return; }
+    try {
+        await sendSwitch('POST', 'faults', payload);
+        switchStatusText.textContent = 'Switched. It lasts until you switch it back on or POST /reset.';
+    } catch (err) {
+        switchStatusText.textContent = `Not switched: ${err.message}`;
+    }
+});
+switchClear.addEventListener('click', async () => {
+    const route = selectedRoute(selection);
+    if (!route) return;
+    try {
+        await sendSwitch('DELETE', `faults?route=${encodeURIComponent(route.id)}`);
+        fillSwitchForm(selectedRoute(selection) || route);
+        switchStatusText.textContent = 'Switched back on: the route answers as its file says.';
+    } catch (err) {
+        switchStatusText.textContent = `Not changed: ${err.message}`;
+    }
+});
+
 copyRouteCurlButton.addEventListener('click', () => {
     const route = selectedRoute(selection);
     const command = route && routeCurl(route);
@@ -1213,6 +1299,13 @@ async function loadRoutes() {
             if (route.name) {
                 name.title = route.name;
             }
+            const badge = switchBadge(route);
+            const switched = document.createElement('span');
+            if (badge) {
+                switched.className = 'route-switch';
+                switched.textContent = badge.text;
+                switched.title = badge.title;
+            }
             // The hit count is its own button: it filters the traffic to the
             // requests this route answered (again to clear the filter).
             const hits = document.createElement('button');
@@ -1230,9 +1323,9 @@ async function loadRoutes() {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'route-button';
-            button.setAttribute('aria-label', `${route.method} ${routePath}: ${route.name}, matched ${hitsLabel(route.hits)}`);
+            button.setAttribute('aria-label', `${route.method} ${routePath}: ${route.name}${badge ? `, switched ${badge.text}` : ''}, matched ${hitsLabel(route.hits)}`);
             button.setAttribute('aria-pressed', String(selectedRoute(selection)?.id === route.id));
-            button.append(method, path, name);
+            button.append(method, path, ...(badge ? [switched] : []), name);
             button.addEventListener('click', () => {
                 selection = selectRoute(route);
                 returnFocus = button;

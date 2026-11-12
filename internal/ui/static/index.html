@@ -176,11 +176,41 @@
                 <div class="panel-header">
                     <h2 id="routeTitle" tabindex="-1">Route</h2>
                     <div class="detail-actions">
+                        <button id="switchButton" class="clear-button" type="button" title="Turn this route off, force its status, or add a delay or fault while mock runs" aria-controls="switchForm" aria-expanded="false">Switches</button>
                         <button id="editFixtureButton" class="clear-button" type="button" hidden>Edit fixture</button>
                         <button id="copyRouteCurlButton" class="clear-button" type="button" disabled>Copy cURL</button>
                     </div>
                 </div>
                 <div class="detail-meta">
+                    <form id="switchForm" class="resend-form switch-form" aria-label="Route switches" hidden>
+                        <label class="switch-check"><input id="switchOff" type="checkbox" /> Off: let later routes answer</label>
+                        <div class="switch-grid">
+                            <label class="resend-label" for="switchStatus">Status</label>
+                            <input id="switchStatus" class="resend-input" inputmode="numeric" autocomplete="off" placeholder="route's own" />
+                            <label class="resend-label" for="switchDelay">Delay</label>
+                            <input id="switchDelay" class="resend-input" autocomplete="off" spellcheck="false" placeholder="2s, 100ms..800ms, p50 80ms p99 1s" />
+                            <label class="resend-label" for="switchFault">Fault</label>
+                            <div class="resend-line">
+                                <select id="switchFault" class="resend-input">
+                                    <option value="">route's own</option>
+                                    <option value="none">none</option>
+                                    <option value="reset">reset</option>
+                                    <option value="truncate">truncate</option>
+                                    <option value="hang">hang</option>
+                                    <option value="empty">empty</option>
+                                    <option value="garbage">garbage</option>
+                                </select>
+                                <input id="switchShare" class="resend-input switch-share" inputmode="decimal" autocomplete="off" aria-label="Share of requests, percent" placeholder="100" />
+                                <span class="switch-unit">%</span>
+                            </div>
+                        </div>
+                        <div class="resend-actions">
+                            <button id="switchApply" class="clear-button primary-button" type="submit">Apply</button>
+                            <button id="switchClear" class="clear-button" type="button">Switch back on</button>
+                            <button id="switchCancel" class="clear-button" type="button">Close</button>
+                            <p id="switchStatusText" class="match-summary" role="status"></p>
+                        </div>
+                    </form>
                     <p id="routeSummary" class="match-summary"></p>
                 </div>
                 <pre id="routeDetails" class="detail-content" tabindex="0" aria-label="Route configuration content"></pre>
