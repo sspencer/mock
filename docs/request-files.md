@@ -363,11 +363,12 @@ in the file, or in a section, where it replaces the file value.
 
 | Directive | Values | Default | Effect |
 |-----------|--------|---------|--------|
-| `@delay` | Go duration such as `250ms` or `2s`, or a range `100ms..800ms` (both ends inclusive, picked afresh per request) | none | Wait before responding. Negative or invalid durations are load errors. See [Delays, streaming and faults](responses.md#delays-streaming-and-faults). |
+| `@delay` | Go duration such as `250ms` or `2s`, a range `100ms..800ms` (both ends inclusive, picked afresh per request), or a long tail `p50 80ms p99 900ms` or `lognormal 90ms 0.4` | none | Wait before responding. Negative or invalid durations are load errors. See [Delays, streaming and faults](responses.md#delays-streaming-and-faults). |
 | `@compress` | `gzip`, `deflate`, `auto` or `off` | `off` | Compress the response body; `auto` follows the request's `Accept-Encoding`. See [Compressed responses](responses.md#compressed-responses). |
 | `@stream` | non-negative duration such as `50ms` | off | Send the body in pieces (one event or line at a time) with this pause between them. See [Delays, streaming and faults](responses.md#delays-streaming-and-faults). |
-| `@fault` | `reset` or `truncate`, optionally followed by a share such as `reset 25%` | off | Break the response on purpose. See [Delays, streaming and faults](responses.md#delays-streaming-and-faults). |
-| `@rate-limit` | A count and a window, such as `5/1s`, `100/1m` or `10/s` | none | Answer `429` with `Retry-After` once the route is over its budget. See [Rate limits](responses.md#rate-limits). |
+| `@fault` | `reset`, `truncate`, `hang`, `empty` or `garbage`, optionally followed by a share such as `reset 25%` | off |
+| `@throttle` | a rate such as `32kb/s`, `1mb/s` or `512b/s` | off | Send the body at that rate. See [Bandwidth throttling](responses.md#bandwidth-throttling). | Break the response on purpose. See [Delays, streaming and faults](responses.md#delays-streaming-and-faults). |
+| `@rate-limit` | A count and a window, such as `5/1s`, `100/1m` or `10/s` | none | Answer `429` with `Retry-After` once the route is over its budget, and send `X-RateLimit-*` headers. `@rate-limit.key = {{$header.Authorization}}` gives each client its own budget. See [Rate limits](responses.md#rate-limits). |
 | `@seed` | any non-empty text | random | Make generated values reproducible per request. See [Reproducible data](placeholders.md#reproducible-data). |
 | `@template` | `auto`, `on` or `off` | `auto` | Whether placeholders are expanded in the body. See [External response bodies](#external-response-bodies). |
 | `@trim` | `on` or `off` | `on` | With `off` the inline body keeps its exact text and line endings. See [Supported dialect](#supported-dialect). |

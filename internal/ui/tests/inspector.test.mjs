@@ -230,3 +230,8 @@ test('formatRoute shows status templates, @require, @missing and @etag', () => {
     assert.ok(formatRoute({ method: 'GET', path: '/x', missing: '410' }).includes('Missing body file: answers 410'));
 });
 
+test('formatRoute shows @throttle and a run-time fault override', () => {
+    const text = formatRoute({ method: 'GET', path: '/x', status: 200, delay: 'p50 80ms p99 900ms', throttle: '32kb/s', override: 'fault reset 50% (all routes)' });
+    assert.ok(text.includes('Response: 200 · delay p50 80ms p99 900ms · throttle 32kb/s'));
+    assert.ok(text.includes('Fault override: fault reset 50% (all routes)'));
+});

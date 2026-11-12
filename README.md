@@ -98,8 +98,9 @@ export a HAR file. See [Admin UI and API](docs/admin-ui.md).
   [Placeholders](docs/placeholders.md)
 - **Serve files.** Send a response body from a file, with range and
   conditional requests. [Request files](docs/request-files.md#external-response-bodies)
-- **Misbehave on purpose.** Delays, chunked streams, connection resets,
-  truncated bodies, rate limits and compression.
+- **Misbehave on purpose.** Long-tail delays, throttled downloads, chunked
+  streams, resets, hangs and garbage replies, rate limits per client, and
+  faults you switch on at run time.
   [Delays, faults and callbacks](docs/responses.md)
 - **Call back.** Send a webhook after a response.
   [Webhook callbacks](docs/responses.md#webhook-callbacks)

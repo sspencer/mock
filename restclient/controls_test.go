@@ -23,9 +23,9 @@ func TestParseDelay(t *testing.T) {
 		{"soon", 0, 0, false},
 	}
 	for _, tt := range tests {
-		low, high, err := ParseDelay(tt.raw)
-		if (err == nil) != tt.ok || low != tt.low || high != tt.high {
-			t.Errorf("ParseDelay(%q) = %v, %v, %v", tt.raw, low, high, err)
+		delay, err := ParseDelay(tt.raw)
+		if (err == nil) != tt.ok || delay.Min != tt.low || delay.Max != tt.high || delay.Sigma != 0 {
+			t.Errorf("ParseDelay(%q) = %+v, %v", tt.raw, delay, err)
 		}
 	}
 }

@@ -197,7 +197,7 @@ func safeMethod(method string) bool {
 // route, without its delay, faults, streaming, rate limit or callback.
 func mockResponse(method restclient.Method, sample sampleRequest) (*checkResponse, error) {
 	method.Port, method.Fault, method.Stream, method.RateLimit, method.Callbacks = 0, "", 0, 0, nil
-	method.Delay, method.DelayMax = 0, 0
+	method.Delay, method.DelayMax, method.DelaySigma, method.Throttle = 0, 0, 0, 0
 	method.Variables = maps.Clone(method.Variables)
 	delete(method.Variables, "delay")
 	server := mockhttp.New([]restclient.Method{method}, slog.New(slog.DiscardHandler))

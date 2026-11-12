@@ -387,3 +387,30 @@ func TestParseConfigHeaders(t *testing.T) {
 		t.Errorf("bad -H error = %v", err)
 	}
 }
+
+func TestParseConfigProfilesAndThrottle(t *testing.T) {
+	cfg, err := parseConfig([]string{"-P", "flaky", "-f", "truncate 1%", "api.http"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Defaults.Delay != 100*time.Millisecond || cfg.Defaults.DelaySigma == 0 || cfg.Defaults.Fault != "truncate" || cfg.Defaults.FaultRate != 0.01 || cfg.Defaults.Throttle != 0 {
+		t.Errorf("flaky with -f = %+v", cfg.Defaults)
+	}
+	cfg, err = parseConfig([]string{"--profile", "3G", "--throttle", "8kb/s", "api.http"})
+	if err != nil || cfg.Defaults.Throttle != 8*1024 || cfg.Defaults.Delay != 300*time.Millisecond {
+		t.Errorf("3g with -T = %+v, %v", cfg.Defaults, err)
+	}
+	for _, args := range [][]string{{"-P", "dialup", "api.http"}, {"-T", "fast", "api.http"}, {"-w", "lognormal 1s 9", "api.http"}} {
+		if _, err := parseConfig(args); ExitCode(err) != 2 {
+			t.Errorf("parseConfig(%v) error = %v", args, err)
+		}
+	}
+	if !strings.Contains(usageText, "flaky  delay p50 100ms p99 1s, fault reset 5%") {
+		t.Error("usage text does not list the flaky profile as defined")
+	}
+	for name, p := range networkProfiles {
+		if !strings.Contains(usageText, name+" ") || (p.throttle != "" && !strings.Contains(usageText, "throttle "+p.throttle)) {
+			t.Errorf("usage text is out of step with profile %q", name)
+		}
+	}
+}

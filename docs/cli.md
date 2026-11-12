@@ -36,8 +36,10 @@ Flags:
 | `-E`, `--env-file` | `http-client.env.json`, else `.vscode/settings.json` | With `-e`, read the environments from this file |
 | `-d`, `--dir` | | Load every `.http` file under this directory, after any file arguments, and pick up added or removed files on reload. Repeat for more directories (see [A directory of request files](#a-directory-of-request-files)) |
 | `-i`, `--poll` | (off) | Also check the request files for changes this often, such as `1s` (at least `100ms`), for filesystems that do not deliver change events (see [Reloading](#reloading)) |
-| `-w`, `--delay` | (off) | Delay every route that has no `@delay` of its own, such as `250ms` or `50ms..300ms` (see [Latency and faults for every route](responses.md#latency-and-faults-for-every-route)) |
-| `-f`, `--fault` | (off) | Inject a fault into every route that has no `@fault` of its own: `reset` or `truncate`, optionally with a share such as `"reset 5%"` |
+| `-w`, `--delay` | (off) | Delay every route that has no `@delay` of its own, such as `250ms`, `50ms..300ms` or `"p50 80ms p99 900ms"` (see [Latency and faults for every route](responses.md#latency-and-faults-for-every-route)) |
+| `-f`, `--fault` | (off) | Inject a fault into every route that has no `@fault` of its own: `reset`, `truncate`, `hang`, `empty` or `garbage`, optionally with a share such as `"reset 5%"` |
+| `-T`, `--throttle` | (off) | Send the body of every route that has no `@throttle` of its own at this rate, such as `32kb/s` |
+| `-P`, `--profile` | (off) | A bad network in one word: `slow`, `flaky` or `3g`, a preset `-w`/`-f`/`-T` combination (see [Latency and faults for every route](responses.md#latency-and-faults-for-every-route)) |
 | `-l`, `--log-format` | `text` | `text` or `json`. With `json`, stdout carries only JSON lines (see [JSON logs](#json-logs)) |
 | `--version` | | Print version and exit |
 | `-h`, `--help` | | Print usage and exit |

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -105,6 +106,13 @@ type Method struct {
 	// RateWindow, after which the route answers 429. 0 means no limit.
 	RateLimit  int
 	RateWindow time.Duration
+	// RateLimitKey, from @rate-limit.key, is a template rendered per request
+	// that splits the budget: each distinct value gets its own.
+	RateLimitKey string
+	// DelaySigma, when set, makes the delay lognormal with median Delay.
+	DelaySigma float64
+	// Throttle is the @throttle rate in bytes per second; 0 is unlimited.
+	Throttle int64
 	// DefaultContentType is the Content-Type from @default.header or
 	// Options.Headers for a route that sets none. It may hold placeholders.
 	// The server sends it only when neither a "< path" file's extension nor
@@ -1191,11 +1199,22 @@ func applyControlVariable(method *Method, def definition, source string) error {
 	case "file":
 		return parseErrorf(source, def.line, "section %q: %s", method.Name, fileVariableRemoved)
 	case "delay":
-		low, high, err := ParseDelay(value)
+		delay, err := ParseDelay(value)
 		if err != nil {
 			return parseErrorf(source, def.line, "section %q: @delay %v", method.Name, err)
 		}
-		method.Delay, method.DelayMax = low, high
+		method.Delay, method.DelayMax, method.DelaySigma = delay.Min, delay.Max, delay.Sigma
+	case "throttle":
+		rate, err := ParseThrottle(value)
+		if err != nil {
+			return parseErrorf(source, def.line, "section %q: @throttle %v", method.Name, err)
+		}
+		method.Throttle = rate
+	case "rate-limit.key":
+		if strings.TrimSpace(def.value) == "" {
+			return parseErrorf(source, def.line, `section %q: @rate-limit.key needs a value, such as "@rate-limit.key = {{$header.Authorization}}"`, method.Name)
+		}
+		method.RateLimitKey = strings.TrimSpace(def.value)
 	case "rate-limit":
 		limit, window, err := ParseRateLimit(value)
 		if err != nil {
@@ -1483,24 +1502,101 @@ func ValidateProxy(raw string) error {
 	return nil
 }
 
-// ParseDelay parses an @delay value: a duration such as "250ms", or a range
-// "100ms..800ms" from which each response picks a random delay. high is 0 for
-// a fixed delay.
-func ParseDelay(raw string) (low, high time.Duration, err error) {
-	first, second, isRange := strings.Cut(strings.TrimSpace(raw), "..")
-	low, err = time.ParseDuration(strings.TrimSpace(first))
+// Delay is a parsed @delay: a fixed Min, a uniform range from Min to Max, or,
+// when Sigma is set, a lognormal distribution with median Min and shape
+// Sigma (the standard deviation of the delay's logarithm).
+type Delay struct {
+	Min, Max time.Duration
+	Sigma    float64
+}
+
+// z99 is the standard normal quantile of the 99th percentile, which turns a
+// p50/p99 pair into a lognormal shape.
+const z99 = 2.3263478740408408
+
+// maxDelaySigma bounds a lognormal shape; beyond it the tail is so long that
+// the p99 is over 1000 times the median.
+const maxDelaySigma = 3
+
+// ParseDelay parses an @delay value: a duration such as "250ms"; a range
+// "100ms..800ms" from which each response picks a uniformly random delay;
+// "lognormal 90ms 0.4" (a median and a shape); or "p50 80ms p99 900ms" (a
+// median and a 99th percentile, which give the same lognormal curve).
+func ParseDelay(raw string) (Delay, error) {
+	text := strings.TrimSpace(raw)
+	fields := strings.Fields(text)
+	switch {
+	case len(fields) == 3 && strings.EqualFold(fields[0], "lognormal"):
+		median, err := time.ParseDuration(fields[1])
+		sigma, sigmaErr := strconv.ParseFloat(fields[2], 64)
+		if err != nil || median <= 0 || sigmaErr != nil || sigma <= 0 || sigma > maxDelaySigma {
+			return Delay{}, fmt.Errorf(`"lognormal median shape" needs a positive median and a shape above 0 and at most %d, such as "lognormal 90ms 0.4"`, maxDelaySigma)
+		}
+		return Delay{Min: median, Sigma: sigma}, nil
+	case len(fields) == 4 && strings.EqualFold(fields[0], "p50") && strings.EqualFold(fields[2], "p99"):
+		p50, err50 := time.ParseDuration(fields[1])
+		p99, err99 := time.ParseDuration(fields[3])
+		if err50 != nil || err99 != nil || p50 <= 0 || p99 <= p50 {
+			return Delay{}, fmt.Errorf(`"p50 median p99 tail" needs a positive median below the 99th percentile, such as "p50 80ms p99 900ms"`)
+		}
+		sigma := math.Log(float64(p99)/float64(p50)) / z99
+		if sigma > maxDelaySigma {
+			return Delay{}, fmt.Errorf("p99 %s is too far above p50 %s (keep it under about 1000 times)", p99, p50)
+		}
+		return Delay{Min: p50, Sigma: sigma}, nil
+	}
+	first, second, isRange := strings.Cut(text, "..")
+	low, err := time.ParseDuration(strings.TrimSpace(first))
 	if err != nil || low < 0 {
-		return 0, 0, fmt.Errorf(`must be a non-negative duration such as "250ms", or a range such as "100ms..800ms"`)
+		return Delay{}, fmt.Errorf(`must be a non-negative duration such as "250ms", a range such as "100ms..800ms", "lognormal 90ms 0.4" or "p50 80ms p99 900ms"`)
 	}
 	if !isRange {
-		return low, 0, nil
+		return Delay{Min: low}, nil
 	}
-	high, err = time.ParseDuration(strings.TrimSpace(second))
+	high, err := time.ParseDuration(strings.TrimSpace(second))
 	if err != nil || high < low {
-		return 0, 0, fmt.Errorf(`range must be "min..max" with max at least min, such as "100ms..800ms"`)
+		return Delay{}, fmt.Errorf(`range must be "min..max" with max at least min, such as "100ms..800ms"`)
 	}
-	return low, high, nil
+	return Delay{Min: low, Max: high}, nil
 }
+
+// P99 is the 99th percentile of a lognormal delay, or 0 for other delays.
+func (d Delay) P99() time.Duration {
+	if d.Sigma <= 0 {
+		return 0
+	}
+	return time.Duration(float64(d.Min) * math.Exp(z99*d.Sigma))
+}
+
+// ParseThrottle parses a @throttle value, a transfer rate such as "32kb/s",
+// "1.5mb/s" or "512b/s", into bytes per second. kb is 1024 bytes and mb is
+// 1024 kb; the unit is case-insensitive.
+func ParseThrottle(raw string) (int64, error) {
+	const usage = `must be a rate such as "32kb/s", "1mb/s" or "512b/s"`
+	text := strings.ToLower(strings.TrimSpace(raw))
+	amount, ok := strings.CutSuffix(text, "/s")
+	if !ok {
+		return 0, errors.New(usage)
+	}
+	scale := 0.0
+	for _, unit := range []struct {
+		suffix string
+		scale  float64
+	}{{"kb", 1024}, {"mb", 1024 * 1024}, {"b", 1}} {
+		if number, found := strings.CutSuffix(amount, unit.suffix); found {
+			amount, scale = number, unit.scale
+			break
+		}
+	}
+	value, err := strconv.ParseFloat(strings.TrimSpace(amount), 64)
+	if err != nil || scale == 0 || value <= 0 || value > 1e12 || int64(value*scale) < 1 {
+		return 0, errors.New(usage)
+	}
+	return int64(value * scale), nil
+}
+
+// faultKinds are the @fault values.
+var faultKinds = []string{"reset", "truncate", "hang", "empty", "garbage"}
 
 // ParseRateLimit parses a @rate-limit value: a request count, a slash and a
 // window, such as "5/1s", "100/1m" or "5/s" (a bare unit means one of it).
@@ -1518,13 +1614,13 @@ func ParseRateLimit(raw string) (limit int, window time.Duration, err error) {
 	return limit, window, nil
 }
 
-// ParseFault parses an @fault value: "reset" or "truncate", optionally
-// followed by the share of responses it applies to, such as "reset 25%".
-// rate is between 0 and 1.
+// ParseFault parses an @fault value: reset, truncate, hang, empty or
+// garbage, optionally followed by the share of responses it applies to, such
+// as "reset 25%". rate is between 0 and 1.
 func ParseFault(raw string) (fault string, rate float64, err error) {
 	fields := strings.Fields(strings.ToLower(raw))
-	if len(fields) == 0 || len(fields) > 2 || fields[0] != "reset" && fields[0] != "truncate" {
-		return "", 0, fmt.Errorf(`must be "reset" or "truncate", optionally followed by a percentage such as "reset 25%%"`)
+	if len(fields) == 0 || len(fields) > 2 || !slices.Contains(faultKinds, fields[0]) {
+		return "", 0, fmt.Errorf(`must be reset, truncate, hang, empty or garbage, optionally followed by a percentage such as "reset 25%%"`)
 	}
 	if len(fields) == 1 {
 		return fields[0], 1, nil
@@ -1593,25 +1689,27 @@ func trimTrailingBlankLines(lines []string) []string {
 
 // controlVariables are consumed by the mock server itself (not only as {{name}} references).
 var controlVariables = map[string]struct{}{
-	"delay":        {},
-	"port":         {},
-	"stream":       {},
-	"fault":        {},
-	"seed":         {},
-	"template":     {},
-	"trim":         {},
-	"proxy":        {},
-	"fixture":      {},
-	"compress":     {},
-	"callback":     {},
-	"rate-limit":   {},
-	"fallback":     {},
-	"match.chance": {},
-	"status":       {},
-	"require":      {},
-	"missing":      {},
-	"etag":         {},
-	"jwt.secret":   {},
+	"delay":          {},
+	"port":           {},
+	"stream":         {},
+	"fault":          {},
+	"seed":           {},
+	"template":       {},
+	"trim":           {},
+	"proxy":          {},
+	"fixture":        {},
+	"compress":       {},
+	"callback":       {},
+	"rate-limit":     {},
+	"fallback":       {},
+	"match.chance":   {},
+	"status":         {},
+	"require":        {},
+	"missing":        {},
+	"etag":           {},
+	"jwt.secret":     {},
+	"throttle":       {},
+	"rate-limit.key": {},
 }
 
 // PlaceholderPattern matches {{name}}, {{%name}} and {{$name args}} placeholders

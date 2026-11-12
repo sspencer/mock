@@ -4,8 +4,21 @@
 
 ## Delays, streaming and faults
 
-`@delay` waits before responding: `@delay = 250ms`, or `@delay = 100ms..800ms`
-for a random wait in that range on each request.
+`@delay` waits before responding:
+
+- `@delay = 250ms` waits that long every time.
+- `@delay = 100ms..800ms` picks a wait in that range, evenly spread, for each
+  request.
+- `@delay = p50 80ms p99 900ms` gives a realistic long tail: half the requests
+  wait less than 80ms and one in a hundred more than 900ms. Real latency looks
+  like this far more than an even range does.
+- `@delay = lognormal 90ms 0.4` is the same curve set by its median and its
+  shape (the spread of the delay's logarithm). `p50 80ms p99 900ms` is
+  `lognormal 80ms 1.04`. The route inspector shows either form as p50 and
+  p99.
+
+A long-tail delay is capped at its 99.99th percentile, so one unlucky request
+can't stall a test for minutes.
 
 `@stream` sends the body in pieces with a pause between them, which is useful
 for testing progress indicators and server-sent events:
@@ -35,11 +48,41 @@ any other body one line at a time. Streamed responses have no
 - `@fault = truncate` sends the headers with the full `Content-Length` and
   then only half the body before closing the connection. It does nothing for
   responses without a body.
+- `@fault = hang` reads the request and never answers, for testing client
+  timeouts. The connection stays open until the client gives up or `mock`
+  shuts down.
+- `@fault = empty` closes the connection cleanly without sending a byte
+  (curl reports "Empty reply from server").
+- `@fault = garbage` sends random bytes that are not HTTP, then closes the
+  connection, for testing how a client copes with a broken proxy or the wrong
+  port.
 - A percentage, such as `@fault = reset 10%`, applies the fault to that share
   of requests at random; the rest are answered normally.
 
 Faulted requests appear in the admin UI with the fault noted (`RST` in the
-status column for a reset).
+status column for a reset). A request that will hang is logged when it starts
+hanging.
+
+### Bandwidth throttling
+
+`@throttle = 32kb/s` sends the body at that rate, for download progress bars
+and slow-network tests that need a large body to arrive slowly, not just late:
+
+```http
+### Firmware download
+@throttle = 64kb/s
+GET /firmware.bin
+
+< firmware.bin
+```
+
+- The rate is a number and `b/s`, `kb/s` or `mb/s` (case-insensitive), where
+  `kb` is 1024 bytes and `mb` 1024 kb.
+- The body goes out in slices ten times a second, each flushed to the client.
+  Headers, including `Content-Length`, go first, as usual.
+- It applies after `@delay`, works with file bodies (including range
+  requests) and compressed bodies, and is ignored with `@stream`, which paces
+  the body its own way (a load warning says so).
 
 ### Rate limits
 
@@ -63,20 +106,92 @@ has its own budget, even when `@rate-limit` is defined at file scope. A reload
 that keeps the route keeps its count. Rejected requests appear in the admin UI
 as matched by the route, before any `@delay`.
 
-### Latency and faults for every route
+Every response of a rate-limited route carries the headers real APIs send and
+clients read:
 
-`-w` (`--delay`) and `-f` (`--fault`) apply a delay or fault to every route
-without editing the files, for a resilience run against the same fixtures your
-normal tests use:
+| Header | Value |
+|--------|-------|
+| `X-RateLimit-Limit` | the count in `@rate-limit` |
+| `X-RateLimit-Remaining` | requests left in the window after this one |
+| `X-RateLimit-Reset` | whole seconds until the oldest counted request leaves the window |
 
-```sh
-mock --delay 50ms..300ms --fault "reset 5%" api.http
+A header the section sets itself wins. `@rate-limit.key` splits the budget,
+so each client gets its own instead of sharing the route's:
+
+```http
+### Search
+@rate-limit = 100/1m
+@rate-limit.key = {{$header.Authorization}}
+GET /search
+
+{"results": []}
 ```
 
-They take the same values as `@delay` and `@fault`. A route's own `@delay` or
-`@fault` takes precedence, so `@delay = 0` or `@fault = reset 0%` keeps one
+The key is a template rendered for each request; every distinct value counts
+separately, and requests where it renders empty share one budget. `mock`
+keeps up to 10,000 budgets and then forgets idle ones.
+
+### Latency and faults for every route
+
+`-w` (`--delay`), `-f` (`--fault`) and `-T` (`--throttle`) apply a delay, fault
+or throttle to every route without editing the files, for a resilience run
+against the same fixtures your normal tests use:
+
+```sh
+mock --delay "p50 80ms p99 900ms" --fault "reset 5%" api.http
+```
+
+They take the same values as `@delay`, `@fault` and `@throttle`. A route's own
+directive takes precedence, so `@delay = 0` or `@fault = reset 0%` keeps one
 route fast and reliable. Unmatched requests (404s and `--upstream`
 forwarding) are not affected.
+
+`-P` (`--profile`) names a bad network in one word:
+
+| Profile | Delay | Fault | Throttle |
+|---------|-------|-------|----------|
+| `slow` | `p50 800ms p99 3s` | | |
+| `flaky` | `p50 100ms p99 1s` | `reset 5%` | |
+| `3g` | `p50 300ms p99 1s` | | `96kb/s` |
+
+`-w`, `-f` and `-T` replace the matching part of a profile, so
+`-P flaky -f "truncate 2%"` keeps the profile's delay with a different fault.
+
+### Changing faults at run time
+
+The admin API's `/faults` endpoint switches a delay, fault or throttle on for
+a route while `mock` runs, so a test can break a dependency halfway through
+and check that the client recovers:
+
+```sh
+# Make every "Charge card" route fail half the time.
+curl -X POST localhost:8081/faults -H 'Content-Type: application/json' \
+  -d '{"route": "Charge card", "fault": "reset 50%"}'
+
+# Slow down everything else.
+curl -X POST localhost:8081/faults -H 'Content-Type: application/json' \
+  -d '{"route": "*", "delay": "2s"}'
+
+# Back to normal.
+curl -X DELETE localhost:8081/faults -H 'X-Requested-With: curl'
+```
+
+- `route` is a route name (every route with that name), a route `id` from
+  `/routes`, or `*` for every route. A route's own override wins over `*`.
+- `delay`, `fault` and `throttle` take the same values as the directives, plus
+  `none` to switch a fault or throttle off for the route (`"delay": "0s"` for
+  no delay). Each field you set wins over the route's own directive and the
+  `-w`/`-f`/`-T` defaults; fields you leave out keep them. Posting again for
+  the same route replaces its override.
+- `GET /faults` lists the active overrides. `DELETE /faults?route=NAME`
+  removes one, and `DELETE /faults` removes them all.
+- Overrides last until removed, across reloads that keep the route. `/routes`
+  shows each route's active override as `override`, and so does the route
+  inspector.
+- `POST` and `DELETE` need a JSON `Content-Type` or an `X-Requested-With`
+  header and are refused from other origins, like the other admin `POST`s.
+  Go tests can call `Server.SetFault` and `Server.ClearFaults` directly.
+
 ### ETags
 
 `@etag = auto` adds an `ETag` response header, a hash of the body as sent, and

@@ -56,6 +56,11 @@ type RouteInfo struct {
 	Variables     map[string]string `json:"variables"`
 	Body          string            `json:"body"`
 	BodyTruncated bool              `json:"bodyTruncated"`
+	// Throttle is the @throttle rate, such as "32kb/s", when set.
+	Throttle string `json:"throttle,omitempty"`
+	// Override describes the run-time fault override (POST /faults) that
+	// applies to the route, such as "delay 2s · fault reset 50%", when set.
+	Override string `json:"override,omitempty"`
 	// StatusTemplate is the placeholder the status is rendered from, when set.
 	StatusTemplate string `json:"statusTemplate,omitempty"`
 	// Require is the @require reference, such as
@@ -114,13 +119,17 @@ func describeRoute(method restclient.Method, index int, revision uint64) RouteIn
 	}
 	return RouteInfo{ID: fmt.Sprintf("%d:%d", revision, index), Revision: revision, Name: method.Name, Method: method.Method,
 		Path: (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath(), Query: method.Query.Encode(), Port: method.Port, Source: method.Source, Line: method.Line, Status: method.Status,
-		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), Proxy: method.Proxy, Fixture: method.Fixture, Compress: method.Compress, Callback: describeCallback(method), RateLimit: describeRateLimit(method), DefaultContentType: method.DefaultContentType, StatusTemplate: method.StatusTemplate, Require: describeRequire(method), Missing: describeMissing(method), ETag: method.ETag, Fallback: method.Fallback, Chance: describeChance(method), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
+		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), Proxy: method.Proxy, Fixture: method.Fixture, Compress: method.Compress, Callback: describeCallback(method), RateLimit: describeRateLimit(method), DefaultContentType: method.DefaultContentType, Throttle: describeThrottle(method.Throttle), StatusTemplate: method.StatusTemplate, Require: describeRequire(method), Missing: describeMissing(method), ETag: method.ETag, Fallback: method.Fallback, Chance: describeChance(method), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
 		MatchQuery: cloneValues(method.MatchQuery), MatchPath: cloneOptional(method.MatchPath),
 		MatchBody: method.MatchBody, MatchJSON: cloneOptional(method.MatchJSON), MatchXML: cloneOptional(method.MatchXML), MatchForm: cloneValues(method.MatchForm), MatchCookies: cloneValues(method.MatchCookies),
 		Variables: cloneVariables(method.Variables), Body: body, BodyTruncated: truncated}
 }
 
 func describeDelay(method restclient.Method) string {
+	if method.DelaySigma > 0 {
+		p99 := restclient.Delay{Min: method.Delay, Sigma: method.DelaySigma}.P99()
+		return "p50 " + roundDuration(method.Delay).String() + " p99 " + roundDuration(p99).String()
+	}
 	if method.DelayMax > method.Delay {
 		return method.Delay.String() + ".." + method.DelayMax.String()
 	}
@@ -415,4 +424,13 @@ func closestRoutes(methods []restclient.Method, facts *requestFacts) []RouteMism
 		}
 	}
 	return candidates
+}
+
+// roundDuration rounds a computed duration to a readable precision: whole
+// milliseconds from 10ms, else microseconds.
+func roundDuration(d time.Duration) time.Duration {
+	if d >= 10*time.Millisecond {
+		return d.Round(time.Millisecond)
+	}
+	return d.Round(time.Microsecond)
 }

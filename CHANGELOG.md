@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Breaking (Go API):** `restclient.ParseDelay` returns a `restclient.Delay` (with the new lognormal `Sigma`) instead of two durations.
+
+- New faults: `@fault = hang` (read the request and never answer, for timeout tests), `empty` (close without a byte) and `garbage` (send bytes that are not HTTP). They take a share like the others and work with `-f`.
+
+- `@throttle = 32kb/s` sends the body at a fixed rate, including file bodies and range requests, and `-T` (`--throttle`) sets one for every route.
+
+- Long-tail delays: `@delay = p50 80ms p99 900ms` or `@delay = lognormal 90ms 0.4`, also for `-w`. Draws are capped at the 99.99th percentile.
+
+- `-P` (`--profile`) `slow`, `flaky` or `3g` presets a delay, fault and throttle; `-w`, `-f` and `-T` override its parts.
+
+- Rate-limited routes send `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset`, and `@rate-limit.key = {{$header.Authorization}}` gives each client its own budget.
+
+- The admin API's `/faults` endpoint switches a delay, fault or throttle on for a route (by name or id) or for every route at run time, until cleared, across reloads; `GET` lists them and `DELETE` clears them. `/routes` and the route inspector show the active override. Go code can call `Server.SetFault`, `Server.ClearFaults` and `Server.Faults`.
+
 - The response status can come from the request: `### [{{$query.status | default 200}}] Echo` or `@status = {{$json.code}}`. `@status = 202` sets a fixed status for sections whose name has none.
 
 - `{{#if $ref}} ... {{else}} ... {{/if}}` blocks, with presence tests and `==` / `!=` comparisons, keep optional fields and variants in one route.
