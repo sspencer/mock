@@ -10,6 +10,7 @@ cat file.http | mock
 mock validate [-strict] [-json] [-var name=value] [-env NAME [-env-file FILE]] <file.http|dir> [file.http|dir...]
 mock init [-force] [dir]
 mock import [-host HOST] [-path PREFIX] <file.har|->
+mock match [-H 'Name: value'] [-d body|@file] [-port N] [-response] [-json] [-var name=value] [-env NAME] <file.http|dir> [file.http|dir...] METHOD URL
 mock check -upstream URL [-all] [-json] [-header 'Name: value'] [-var name=value] [-env NAME [-env-file FILE]] [-timeout 10s] <file.http|dir> [file.http|dir...]
 mock -version
 mock -h
@@ -184,6 +185,46 @@ supplied only by a request query (`?delay=`), so it reports two warnings and
 fails under `-strict`.
 
 A file literally named `validate` must be passed as `./validate`.
+
+## Which route answers a request
+
+`mock match` answers "which route gets this request?" without starting a
+server, from the same files and with the same matching as `mock` serving them:
+
+```sh
+mock match api.http GET '/users?role=admin' -H 'X-Tenant: acme'
+```
+
+```text
+GET /users?role=admin
+  answered by "Admin users" (api.http:12)
+  GET /users  status 200
+```
+
+When nothing matches, it lists the closest routes with the reasons each one
+turned the request away, as the admin UI's near-miss list does, and exits `1`:
+
+```text
+GET /users?role=guest
+  no route matches
+
+closest routes:
+  "Admin users" (api.http:12)  GET /users
+    - Query role: expected "admin"; received ["guest"]
+```
+
+| Flag | Description |
+|------|-------------|
+| `-H 'Name: value'` | A request header. Repeat for more |
+| `-d body` | The request body, or `@file` to read it from a file. Without a `Content-Type` header it is sent as JSON when it starts with `{` or `[`, else as a URL-encoded form (as `curl -d`) |
+| `-port N` | The mock port the request arrives on, for routes with a port. A full URL's port works too. Without either, routes on every port can match |
+| `-response` | Also render the response: status, headers and body, without delays, faults, streaming, throttling, rate limits or callbacks |
+| `-json` | Print the result, the route as `/routes` describes it, and the candidates as JSON |
+| `-var`, `-env`, `-env-file` | Set variables as `mock -v` and `-e` do |
+
+Flags may come before or after the files, method and URL. Nothing is
+counted: a `@times` route is shown as answering, with a note, and so is a
+`@match.chance` route, which answers only its share.
 
 ## Other commands
 

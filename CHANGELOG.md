@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `mock match api.http GET '/users?role=admin' -H 'X-Tenant: a'` prints the route that would answer a request, or the closest routes and why each turned it away (exit 1), without starting a server. `-response` renders the response too, and `-json` prints it all as JSON. Go code can call `Server.Explain`.
+
 - Releases publish a multi-arch image, `ghcr.io/sspencer/mock` (linux/amd64 and linux/arm64, tagged with the version and `latest`), and a Homebrew cask in `sspencer/homebrew-tap` (`brew install --cask sspencer/tap/mock`).
 
 - `@times = n` lets a route answer `n` requests, then steps aside for later routes, for retry tests such as "fail twice, then succeed". `POST /reset` on the admin API (and `Reset()` in `mocktest`) starts counts, rate limits and chance draws over and removes run-time overrides, without a reload.

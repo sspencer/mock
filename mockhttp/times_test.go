@@ -142,3 +142,19 @@ func TestTimesNearMissAndShadows(t *testing.T) {
 		t.Errorf("a @times route shadowed the route after it:\n%s", logText)
 	}
 }
+
+func TestExplainHasNoSideEffects(t *testing.T) {
+	s := newTestServer(t, retryRoutes)
+	for range 3 {
+		info := s.Explain(httptest.NewRequest("GET", "/orders", nil))
+		if info.Route == nil || info.Route.Name != "Fail twice" || info.Route.Hits != 0 || *info.Route.TimesLeft != 2 {
+			t.Fatalf("Explain = %+v", info.Route)
+		}
+	}
+	if code, _ := serveRequest(t, s, "GET", "/orders", "", ""); code != 503 {
+		t.Errorf("first real request = %d, want 503 (Explain used up an answer)", code)
+	}
+	if info := s.Explain(httptest.NewRequest("GET", "/nothing", nil)); info.Route != nil || len(info.Candidates) == 0 {
+		t.Errorf("unmatched Explain = %+v", info)
+	}
+}
