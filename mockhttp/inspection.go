@@ -71,6 +71,9 @@ type RouteInfo struct {
 	Missing string `json:"missing,omitempty"`
 	// ETag is set for @etag = auto.
 	ETag bool `json:"etag,omitempty"`
+	// Temporary is the group id of a route added with POST /routes, such as
+	// "t1", when it is one.
+	Temporary string `json:"temporary,omitempty"`
 	// Times is the @times limit, and TimesLeft how many more requests the
 	// route answers before later routes take over, when set.
 	Times     int  `json:"times,omitempty"`
@@ -124,7 +127,7 @@ func describeRoute(method restclient.Method, index int, revision uint64) RouteIn
 	}
 	return RouteInfo{ID: fmt.Sprintf("%d:%d", revision, index), Revision: revision, Name: method.Name, Method: method.Method,
 		Path: (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath(), Query: method.Query.Encode(), Port: method.Port, Source: method.Source, Line: method.Line, Status: method.Status,
-		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), Proxy: method.Proxy, Fixture: method.Fixture, Compress: method.Compress, Callback: describeCallback(method), RateLimit: describeRateLimit(method), DefaultContentType: method.DefaultContentType, Throttle: describeThrottle(method.Throttle), StatusTemplate: method.StatusTemplate, Require: describeRequire(method), Missing: describeMissing(method), ETag: method.ETag, Times: method.Times, Fallback: method.Fallback, Chance: describeChance(method), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
+		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), Proxy: method.Proxy, Fixture: method.Fixture, Compress: method.Compress, Callback: describeCallback(method), RateLimit: describeRateLimit(method), DefaultContentType: method.DefaultContentType, Throttle: describeThrottle(method.Throttle), StatusTemplate: method.StatusTemplate, Require: describeRequire(method), Missing: describeMissing(method), ETag: method.ETag, Times: method.Times, Temporary: temporaryID(method), Fallback: method.Fallback, Chance: describeChance(method), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
 		MatchQuery: cloneValues(method.MatchQuery), MatchPath: cloneOptional(method.MatchPath),
 		MatchBody: method.MatchBody, MatchJSON: cloneOptional(method.MatchJSON), MatchXML: cloneOptional(method.MatchXML), MatchForm: cloneValues(method.MatchForm), MatchCookies: cloneValues(method.MatchCookies),
 		Variables: cloneVariables(method.Variables), Body: body, BodyTruncated: truncated}

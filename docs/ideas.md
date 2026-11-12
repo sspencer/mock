@@ -44,7 +44,6 @@ The ideas with the best value for their effort, in suggested order:
 |----|------|--------|-----|
 | [`TE-1`](#testing-and-ci) | `mock run -- command` | M | Start, test, stop and report coverage in one CI step |
 | [`UI-1`](#admin-ui) | Route switches in the UI | M | Turn a route off or add a fault while demonstrating or exploring |
-| [`TE-4`](#testing-and-ci) | Temporary routes through the admin API | M | Opens per-test stubbing to every language, not only Go |
 | [`AP-1`](#working-with-real-apis) | Deeper drift check | M | `mock check` compares only top-level JSON keys today |
 
 ## Stateful behavior
@@ -114,8 +113,7 @@ state only decides whether a route is eligible.
 |----|------|--------|-------------|
 | `TE-1` | `mock run -- command` | **M** | Start the server on free ports, export `MOCK_URL` (and `MOCK_ADMIN_URL`), run the command, stop, print the strict report and exit with the command's status (or `1` on unmatched requests). One line in CI instead of background jobs and traps. |
 | `TE-2` | Richer `mocktest` assertions | **S** | `AssertCalledWith` (JSON body, header or query expectations), `LastCall`, `WaitFor(call, timeout)` for asynchronous clients, and `AssertAllRoutesCalled` using the existing hit counts. |
-| `TE-3` | Routes from Go code | **M** | `srv.Add(mocktest.Route{...})` or `srv.AddSource(".http text")` for one test, removed on cleanup, in front of the file's routes. Lets a test override a single route without a second file. |
-| `TE-4` | Temporary routes through the admin API | **M** | `POST /routes` with `.http` text adds routes that sit in front of the file's routes until `DELETE /routes/{id}`, a reset or a restart. The same idea as `TE-3` for tests in any language. WireMock, MockServer and Smocker are driven this way. |
+| `TE-3` | Typed routes from Go code | **S** | `srv.Add(t, mocktest.Route{Method: "GET", Path: "/users", Status: 503, JSON: ...})` builds a route from Go values, for tests that compute the response. `Stub(t, ".http text")` covers the text form already. |
 | `TE-5` | Verification endpoint | **S** | `POST /verify` with expectations (`{"call": "POST /orders", "times": 1}`) answers `200` or `422` with a readable failure, so shell and non-Go tests need not parse `/requests`. |
 | `TE-6` | Strict report formats | **S** | `--strict-report junit.xml` (or JSON) so CI systems show unmatched requests and unused routes as test results. Add `--strict=unused` to also fail on routes that never matched. |
 | `TE-7` | Sessions for parallel tests | **L** | A header such as `X-Mock-Session: abc` separates the request log, counts and state per test, so parallel tests can share one server. Smocker has sessions. Only worth doing after the stateful ideas. |

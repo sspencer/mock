@@ -219,6 +219,7 @@ export function formatRoute(route, sampleCurl = '') {
         route.fixture ? `Fixture: ${route.fixture}` : '',
         route.callback ? `Callback: ${route.callback}` : '',
         route.rateLimit ? `Rate limit: ${route.rateLimit} (then 429 with Retry-After)` : '',
+        route.temporary ? `Temporary: added with POST /routes as ${route.temporary}; DELETE /routes/${route.temporary} removes it` : '',
         route.override ? `Fault override: ${route.override} (POST /faults; DELETE /faults clears it)` : '',
         route.chance ? `Chance: answers ${route.chance} of matching requests` : '',
         route.require ? `Requires: ${route.require} (else later routes answer)` : '',

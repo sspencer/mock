@@ -221,3 +221,18 @@ func pluralRequests(n int) string {
 func (s *Server) Reset() {
 	s.Mock.Reset()
 }
+
+// Stub serves the routes in .http source text in front of the server's
+// routes until t ends, so one test can change an answer without its own
+// files. Stubs added later win over earlier ones.
+func (s *Server) Stub(t testing.TB, source string) {
+	t.Helper()
+	added, err := s.Mock.AddRoutes(source)
+	if err != nil {
+		t.Fatalf("mocktest: %v", err)
+	}
+	for _, warning := range added.Warnings {
+		t.Logf("mocktest: %s", warning)
+	}
+	t.Cleanup(func() { s.Mock.RemoveRoutes(added.ID) })
+}

@@ -26,7 +26,14 @@ import (
 )
 
 type Server struct {
+	// methods are the routes in matching order: temporary routes (newest
+	// group first), then files, the routes loaded from request files.
 	methods []restclient.Method
+	files   []restclient.Method
+	// temps are the groups of routes added with AddRoutes; tempSeq numbers
+	// them.
+	temps   []tempGroup
+	tempSeq int
 	// hits counts the requests each route in methods answered.
 	hits []*atomic.Uint64
 	// rolls counts each route's @match.chance draws, which seed the draws
@@ -73,8 +80,10 @@ type Server struct {
 }
 
 func New(methods []restclient.Method, logger *slog.Logger) *Server {
+	files := cloneMethods(methods)
 	s := &Server{
-		methods:     cloneMethods(methods),
+		methods:     files,
+		files:       files,
 		hits:        carryHits(methods, nil, nil),
 		rolls:       carryHits(methods, nil, nil),
 		uses:        carryHits(methods, nil, nil),
@@ -94,23 +103,37 @@ func (s *Server) SetMethods(methods []restclient.Method) {
 	warnMethodConfig(s.logger, compiled)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.hits = carryHits(compiled, s.methods, s.hits)
-	s.rolls = carryHits(compiled, s.methods, s.rolls)
-	s.uses = carryHits(compiled, s.methods, s.uses)
-	s.pruneLimiters(compiled)
-	s.methods = compiled
-	s.config.Revision++
-	s.config.RouteCount = len(compiled)
+	s.files = compiled
+	s.installLocked()
 	s.config.LastSuccess = time.Now().UTC().Format(time.RFC3339Nano)
 	s.config.Loading = false
 	s.config.Error = ""
 }
 
-// Methods returns a snapshot of the currently configured mock routes.
+// Methods returns a snapshot of the routes loaded from request files (see
+// SetMethods); temporary routes added with AddRoutes are not included.
 func (s *Server) Methods() []restclient.Method {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return cloneMethods(s.methods)
+	return cloneMethods(s.files)
+}
+
+// installLocked rebuilds the routes in matching order from the temporary
+// groups and the file routes, carrying hit and other counters over for
+// routes that stay, and starts a new revision.
+func (s *Server) installLocked() {
+	var combined []restclient.Method
+	for i := len(s.temps) - 1; i >= 0; i-- {
+		combined = append(combined, s.temps[i].methods...)
+	}
+	combined = append(combined, s.files...)
+	s.hits = carryHits(combined, s.methods, s.hits)
+	s.rolls = carryHits(combined, s.methods, s.rolls)
+	s.uses = carryHits(combined, s.methods, s.uses)
+	s.pruneLimiters(combined)
+	s.methods = combined
+	s.config.Revision++
+	s.config.RouteCount = len(combined)
 }
 
 // ClearEvents drops stored request-log events. Live SSE clients keep their
