@@ -10,8 +10,13 @@ import (
 // does not set its own (the --delay and --fault flags). A route's @delay or
 // @fault, even "@delay = 0" or "@fault = reset 0%", takes precedence.
 type RouteDefaults struct {
-	// Delay is the fixed delay, or the low end of a range up to DelayMax.
+	// Delay is the fixed delay, the low end of a range up to DelayMax, or
+	// the median of a lognormal delay with shape DelaySigma.
 	Delay, DelayMax time.Duration
+	DelaySigma      float64
+	// Throttle is the transfer rate in bytes per second for routes without
+	// a @throttle of their own; 0 is unlimited.
+	Throttle int64
 	// Fault is "reset" or "truncate"; FaultRate is the share of responses
 	// it applies to, between 0 and 1.
 	Fault     string
@@ -38,12 +43,17 @@ func (s *Server) withDefaults(method *restclient.Method) *restclient.Method {
 	_, ownDelay := method.Variables["delay"]
 	useDelay := !ownDelay && d.Delay+d.DelayMax > 0
 	useFault := method.Fault == "" && d.Fault != ""
-	if !useDelay && !useFault {
+	_, ownThrottle := method.Variables["throttle"]
+	useThrottle := !ownThrottle && d.Throttle > 0
+	if !useDelay && !useFault && !useThrottle {
 		return method
 	}
 	copied := *method
 	if useDelay {
-		copied.Delay, copied.DelayMax = d.Delay, d.DelayMax
+		copied.Delay, copied.DelayMax, copied.DelaySigma = d.Delay, d.DelayMax, d.DelaySigma
+	}
+	if useThrottle {
+		copied.Throttle = d.Throttle
 	}
 	if useFault {
 		copied.Fault, copied.FaultRate = d.Fault, d.FaultRate
@@ -57,7 +67,12 @@ func (d RouteDefaults) DelayString() string {
 	if d.Delay+d.DelayMax == 0 {
 		return ""
 	}
-	return describeDelay(restclient.Method{Delay: d.Delay, DelayMax: d.DelayMax})
+	return describeDelay(restclient.Method{Delay: d.Delay, DelayMax: d.DelayMax, DelaySigma: d.DelaySigma})
+}
+
+// ThrottleString describes the default throttle, such as "32kb/s", or "".
+func (d RouteDefaults) ThrottleString() string {
+	return describeThrottle(d.Throttle)
 }
 
 // FaultString describes the default fault, such as "reset 5%", or "".

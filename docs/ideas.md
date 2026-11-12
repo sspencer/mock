@@ -28,7 +28,6 @@ Areas:
 | [`ST`](#stateful-behavior) | Stateful behavior |
 | [`MA`](#matching-and-routing) | Matching and routing |
 | [`RE`](#responses-and-templating) | Responses and templating |
-| [`FA`](#latency-and-faults) | Latency and faults |
 | [`AP`](#working-with-real-apis) | Working with real APIs |
 | [`CL`](#command-line-and-configuration) | Command line and configuration |
 | [`TE`](#testing-and-ci) | Testing and CI |
@@ -87,20 +86,6 @@ decides whether a route is eligible.
 |----|------|--------|-------------|
 | `RE-8` | YAML fixtures | **M** | `@fixture` reads JSON, CSV and NDJSON. YAML needs a third-party parser (the first new dependency besides `fsnotify` and `faker`), or a small subset reader for maps, lists and scalars. The fixture editor would stay JSON-only. |
 
-## Latency and faults
-
-`@delay`, `@stream`, `@fault = reset` / `truncate` and `@rate-limit` cover the
-basics. Comparable tools go further in simulating bad networks.
-
-| ID | Idea | Effort | Description |
-|----|------|--------|-------------|
-| `FA-1` | More fault kinds | **M** | `@fault = hang` (accept and never answer, for timeout tests), `empty` (close after the request with no bytes), and `garbage` (send bytes that are not HTTP). WireMock has all three. |
-| `FA-2` | Bandwidth throttling | **M** | `@throttle = 32kb/s` sends the body at a fixed rate, for download progress and slow-network tests. `@stream` pauses between lines but cannot model a slow large file. |
-| `FA-3` | Latency distributions | **S** | `@delay = lognormal 90ms 0.4` or `@delay = p50 80ms p99 900ms` for a realistic long tail; a uniform range is all `@delay` offers now. |
-| `FA-4` | Named fault profiles | **S** | `--profile flaky` (or `3g`, `slow`) as shorthand for a `--delay` and `--fault` pair, with the profiles listed in `mock -h`. |
-| `FA-5` | Rate limit headers and keys | **S** | `@rate-limit.key = {{$header.Authorization}}` counts per client instead of per route, and the response carries `X-RateLimit-Limit`, `-Remaining` and `-Reset`, which real APIs send and clients read. |
-| `FA-6` | Faults from the admin API | **M** | `POST /faults` sets or clears a delay or fault for a route (or all routes) at run time, so a test can break a dependency mid-run. Shares its switch with `UI-1`. |
-
 ## Working with real APIs
 
 | ID | Idea | Effort | Description |
@@ -151,7 +136,7 @@ basics. Comparable tools go further in simulating bad networks.
 
 | ID | Idea | Effort | Description |
 |----|------|--------|-------------|
-| `UI-1` | Route switches | **M** | In the route inspector: turn a route off, or set a delay, fault or forced status for it, until reset. Shown as a badge in the route list and in `/state`. Shares its mechanism with `FA-6`. |
+| `UI-1` | Route switches | **M** | In the route inspector: turn a route off, or set a delay, fault or forced status for it, until reset. Shown as a badge in the route list and in `/state`. The delay and fault part can drive the existing `/faults` admin endpoint (`Server.SetFault`); turning a route off and forcing a status would extend it. |
 | `UI-2` | Save a draft to the file | **M** | **Copy as route** copies text for the user to paste. Add **Add to file**, which appends the draft to a chosen request file through an admin endpoint guarded like `PUT /fixture` (current files only, version check, atomic write). |
 | `UI-3` | Edit routes in the browser | **L** | Edit a section's `.http` text in the inspector with validation before saving. Larger than `UI-2` because of comments, variables and files the editor must not reformat. |
 | `UI-4` | Route search and grouping | **S** | A filter box for the route list, and grouping by file, port or tag (`MA-10`). Long route lists are hard to scan today. |

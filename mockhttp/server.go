@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"math"
 	mathrand "math/rand/v2"
 	"net"
 	"net/http"
@@ -49,6 +50,11 @@ type Server struct {
 	redact atomic.Bool
 	// fixtureMu serializes PUT /fixture version checks and writes.
 	fixtureMu sync.Mutex
+	// faults holds the run-time overrides (SetFault), by routeKey or "*";
+	// faultCount mirrors its size so requests skip the lock when empty.
+	faults     map[string]faultEntry
+	faultMu    sync.Mutex
+	faultCount atomic.Int64
 	// limiters holds the @rate-limit state of each route, by routeKey.
 	limiters map[string]*rateLimiter
 	limitMu  sync.Mutex
@@ -134,8 +140,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.logRequest(r, requestBody, capture, status, "", arrivedAt, time.Since(arrivedAt))
 		return
 	}
-	method = s.withDefaults(method)
-	if s.overRateLimit(capture, method) {
+	method = s.withOverride(s.withDefaults(method))
+	rateHeaders, over := s.rateLimit(capture, method, values)
+	if over {
 		s.logRequest(r, requestBody, capture, capture.statusCode(), method.Name, arrivedAt, time.Since(arrivedAt))
 		return
 	}
@@ -206,6 +213,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			capture.Header().Add(name, value)
 		}
 	}
+	for name, value := range rateHeaders {
+		if capture.Header().Get(name) == "" {
+			capture.Header()[name] = value
+		}
+	}
 	// Set authoritative metadata before committing headers; net/http may otherwise
 	// infer headers which the request journal cannot observe.
 	if capture.Header().Get("Date") == "" {
@@ -232,20 +244,20 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if render.verbatim && status == http.StatusOK && method.Stream == 0 && method.Fault == "" &&
 		(r.Method == http.MethodGet || r.Method == http.MethodHead) {
-		s.serveFileContent(capture, r, file.path, body)
+		s.serveFileContent(s.bodyWriter(capture, r, controller, method), r, file.path, body)
 		id := s.logRequest(r, requestBody, capture, capture.statusCode(), method.Name, arrivedAt, time.Since(arrivedAt))
 		s.scheduleCallback(r, method, render, id, capture.match)
 		return
 	}
 	sendsBody := r.Method != http.MethodHead && len(body) > 0 && statusAllowsBody(status)
 	fault := chooseFault(method, sendsBody)
-	if fault == "reset" {
-		// Log first: the handler does not return normally after a reset.
+	if abortsConnection(fault) {
+		// Log first: the handler does not return normally after these.
 		capture.fault = fault
 		capture.headers = http.Header{}
 		id := s.logRequest(r, requestBody, capture, 0, method.Name, arrivedAt, time.Since(arrivedAt))
 		s.scheduleCallback(r, method, render, id, capture.match)
-		resetConnection(capture)
+		s.injectConnectionFault(capture, r, fault)
 		return
 	}
 	streaming := method.Stream > 0 && sendsBody
@@ -274,7 +286,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case streaming:
 		s.stream(r.Context(), controller, capture, body, method)
 	case sendsBody:
-		_, _ = capture.Write(body)
+		_, _ = s.bodyWriter(capture, r, controller, method).Write(body)
 	}
 
 	id := s.logRequest(r, requestBody, capture, status, method.Name, arrivedAt, time.Since(arrivedAt))
@@ -283,6 +295,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = controller.Flush()
 		panic(http.ErrAbortHandler)
 	}
+}
+
+// bodyWriter is where a response body goes: the capture, paced by a
+// throttledWriter when the route has a @throttle.
+func (s *Server) bodyWriter(capture *responseCapture, r *http.Request, controller *http.ResponseController, method *restclient.Method) http.ResponseWriter {
+	if method.Throttle <= 0 {
+		return capture
+	}
+	return &throttledWriter{ResponseWriter: capture, controller: controller, ctx: r.Context(), rate: method.Throttle}
 }
 
 // chooseFault picks the @fault to inject for this response, if any. A
@@ -351,11 +372,24 @@ func streamChunks(body []byte, sse bool) [][]byte {
 }
 
 func (s *Server) delay(ctx context.Context, method *restclient.Method) bool {
-	delay := method.Delay
-	if method.DelayMax > delay {
-		delay += time.Duration(mathrand.Int64N(int64(method.DelayMax-delay) + 1))
+	return sleep(ctx, sampleDelay(method.Delay, method.DelayMax, method.DelaySigma))
+}
+
+// z9999 is the standard normal quantile of the 99.99th percentile, where a
+// lognormal delay is capped so one draw cannot stall a test for minutes.
+const z9999 = 3.719016485455709
+
+// sampleDelay draws a delay: fixed, uniform between low and high, or
+// lognormal with median low and shape sigma.
+func sampleDelay(low, high time.Duration, sigma float64) time.Duration {
+	switch {
+	case sigma > 0:
+		z := min(mathrand.NormFloat64(), z9999)
+		return time.Duration(float64(low) * math.Exp(sigma*z))
+	case high > low:
+		return low + time.Duration(mathrand.Int64N(int64(high-low)+1))
 	}
-	return sleep(ctx, delay)
+	return low
 }
 
 // sleep waits for d, returning false if ctx ends first.
@@ -381,7 +415,7 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 	checkedMethods := make([]restclient.Method, 0, len(methods))
 	for _, method := range methods {
 		if raw, ok := method.Variable("delay"); ok {
-			if _, _, err := restclient.ParseDelay(raw); err != nil {
+			if _, err := restclient.ParseDelay(raw); err != nil {
 				logger.Warn("invalid @delay will be ignored", "delay", raw, "method", method.Name, "source", method.Source, "error", err)
 			}
 		}
@@ -398,8 +432,11 @@ func warnMethodConfig(logger *slog.Logger, methods []restclient.Method) {
 		if method.Proxy != "" && len(method.Callbacks) > 0 {
 			logger.Warn("@callback is ignored for a section with @proxy", "method", method.Name, "source", method.Source, "line", method.Line)
 		}
-		if method.Proxy != "" && (method.Body != "" || method.File != "" || len(method.Headers) > 0 || method.Stream > 0 || method.Fault != "") {
-			logger.Warn("@proxy forwards the request, so this section's response body, file, headers, @stream and @fault are ignored", "method", method.Name, "source", method.Source, "line", method.Line)
+		if method.Proxy != "" && (method.Body != "" || method.File != "" || len(method.Headers) > 0 || method.Stream > 0 || method.Fault != "" || method.Throttle > 0) {
+			logger.Warn("@proxy forwards the request, so this section's response body, file, headers, @stream, @fault and @throttle are ignored", "method", method.Name, "source", method.Source, "line", method.Line)
+		}
+		if method.Throttle > 0 && method.Stream > 0 && method.Proxy == "" {
+			logger.Warn("@throttle is ignored for a section with @stream, which paces its body by @stream instead", "method", method.Name, "source", method.Source, "line", method.Line)
 		}
 		checked := method
 		if method.File != "" && method.Body == "" && !restclient.FileIsTemplate(method.File) {
@@ -668,7 +705,8 @@ func cloneMethods(methods []restclient.Method) []restclient.Method {
 			out[i].Status = methods[i].Status
 		}
 		if raw, ok := methods[i].Variable("delay"); ok {
-			out[i].Delay, out[i].DelayMax, _ = restclient.ParseDelay(raw)
+			delay, _ := restclient.ParseDelay(raw)
+			out[i].Delay, out[i].DelayMax, out[i].DelaySigma = delay.Min, delay.Max, delay.Sigma
 		}
 		out[i].Headers = methods[i].Headers.Clone()
 		out[i].MatchHeaders = methods[i].MatchHeaders.Clone()

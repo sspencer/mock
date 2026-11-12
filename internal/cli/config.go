@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"cmp"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -75,6 +78,16 @@ type config struct {
 
 const defaultBind = "127.0.0.1"
 
+// networkProfile is a named --delay, --fault and --throttle combination
+// (-P). Keep usageText's list in step.
+type networkProfile struct{ delay, fault, throttle string }
+
+var networkProfiles = map[string]networkProfile{
+	"slow":  {delay: "p50 800ms p99 3s"},
+	"flaky": {delay: "p50 100ms p99 1s", fault: "reset 5%"},
+	"3g":    {delay: "p50 300ms p99 1s", throttle: "96kb/s"},
+}
+
 // minPollInterval keeps -i from turning into a busy loop.
 const minPollInterval = 100 * time.Millisecond
 
@@ -130,10 +143,17 @@ flags:
                        as 1s, where file events do not arrive (Docker bind
                        mounts, network filesystems)
   -w, --delay DELAY    delay every route without its own @delay, such as
-                       250ms or 50ms..300ms
+                       250ms, 50ms..300ms or "p50 80ms p99 900ms"
   -f, --fault FAULT    inject a fault into every route without its own
-                       @fault: reset or truncate, with an optional share
-                       such as "reset 5%"
+                       @fault: reset, truncate, hang, empty or garbage, with
+                       an optional share such as "reset 5%"
+  -T, --throttle RATE  send every route's body without its own @throttle at
+                       RATE, such as 32kb/s
+  -P, --profile NAME   a bad network in one word; -w, -f and -T override
+                       its parts:
+                         slow   delay p50 800ms p99 3s
+                         flaky  delay p50 100ms p99 1s, fault reset 5%
+                         3g     delay p50 300ms p99 1s, throttle 96kb/s
   -l, --log-format FMT text (default) or json: one JSON object per line on
                        stdout for startup, routes and each request
       --version        print version and exit
@@ -204,12 +224,18 @@ func parseConfig(args []string) (config, error) {
 	for _, name := range []string{"i", "poll"} {
 		flagSet.DurationVar(&cfg.Poll, name, 0, "")
 	}
-	var delay, fault string
+	var delay, fault, throttle, profile string
 	for _, name := range []string{"w", "delay"} {
 		flagSet.StringVar(&delay, name, "", "")
 	}
 	for _, name := range []string{"f", "fault"} {
 		flagSet.StringVar(&fault, name, "", "")
+	}
+	for _, name := range []string{"T", "throttle"} {
+		flagSet.StringVar(&throttle, name, "", "")
+	}
+	for _, name := range []string{"P", "profile"} {
+		flagSet.StringVar(&profile, name, "", "")
 	}
 	for _, name := range []string{"l", "log-format"} {
 		flagSet.StringVar(&cfg.LogFormat, name, "text", "")
@@ -233,10 +259,24 @@ func parseConfig(args []string) (config, error) {
 	if err := cfg.Env.check("-E (--env-file)", "-e (--env)"); err != nil {
 		return config{}, err
 	}
+	if profile != "" {
+		p, ok := networkProfiles[strings.ToLower(profile)]
+		if !ok {
+			return config{}, usageError("-P (--profile) must be one of %s, not %q", strings.Join(slices.Sorted(maps.Keys(networkProfiles)), ", "), profile)
+		}
+		delay, fault, throttle = cmp.Or(delay, p.delay), cmp.Or(fault, p.fault), cmp.Or(throttle, p.throttle)
+	}
+	if throttle != "" {
+		if cfg.Defaults.Throttle, err = restclient.ParseThrottle(throttle); err != nil {
+			return config{}, usageError("-T (--throttle) %v", err)
+		}
+	}
 	if delay != "" {
-		if cfg.Defaults.Delay, cfg.Defaults.DelayMax, err = restclient.ParseDelay(delay); err != nil {
+		parsed, err := restclient.ParseDelay(delay)
+		if err != nil {
 			return config{}, usageError("-w (--delay) %v", err)
 		}
+		cfg.Defaults.Delay, cfg.Defaults.DelayMax, cfg.Defaults.DelaySigma = parsed.Min, parsed.Max, parsed.Sigma
 	}
 	if fault != "" {
 		if cfg.Defaults.Fault, cfg.Defaults.FaultRate, err = restclient.ParseFault(fault); err != nil {

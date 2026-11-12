@@ -1,1 +1,1 @@
-testdata/baddelay.http:2: section "Bad status": @delay must be a non-negative duration such as "250ms", or a range such as "100ms..800ms"
+testdata/baddelay.http:2: section "Bad status": @delay must be a non-negative duration such as "250ms", a range such as "100ms..800ms", "lognormal 90ms 0.4" or "p50 80ms p99 900ms"

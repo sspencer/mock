@@ -16,20 +16,20 @@ func TestRateLimiterSlidingWindow(t *testing.T) {
 	var l rateLimiter
 	start := time.Unix(1000, 0)
 	for i := range 3 {
-		if ok, _ := l.allow(start.Add(time.Duration(i)*100*time.Millisecond), 3, time.Second); !ok {
-			t.Fatalf("request %d rejected", i)
+		if d := l.allow(start.Add(time.Duration(i)*100*time.Millisecond), 3, time.Second); !d.ok || d.remaining != 2-i {
+			t.Fatalf("request %d = %+v", i, d)
 		}
 	}
-	ok, wait := l.allow(start.Add(500*time.Millisecond), 3, time.Second)
-	if ok || wait != 500*time.Millisecond {
-		t.Fatalf("4th request = %v, wait %s; want rejected, 500ms", ok, wait)
+	d := l.allow(start.Add(500*time.Millisecond), 3, time.Second)
+	if d.ok || d.reset != 500*time.Millisecond || d.remaining != 0 {
+		t.Fatalf("4th request = %+v; want rejected, reset 500ms", d)
 	}
 	// Rejected requests do not use the budget: the first slot frees at 1s.
-	if ok, _ := l.allow(start.Add(time.Second), 3, time.Second); !ok {
+	if d := l.allow(start.Add(time.Second), 3, time.Second); !d.ok {
 		t.Fatal("request after the first expired was rejected")
 	}
 	// Lowering the limit keeps only the newest timestamps.
-	if ok, _ := l.allow(start.Add(time.Second), 1, time.Second); ok {
+	if d := l.allow(start.Add(time.Second), 1, time.Second); d.ok {
 		t.Fatal("request over a lowered limit was accepted")
 	}
 }

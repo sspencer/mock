@@ -57,7 +57,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	if len(cfg.Args) == 0 && len(cfg.Dirs) == 0 {
 		if f, ok := stdin.(*os.File); ok && stdinIsTerminal(f) {
-			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-u url] [-s] [-v name=value] [-e env] [-d dir] [-i 1s] [-w delay] [-f fault] [-l json] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
+			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-u url] [-s] [-v name=value] [-H 'name: value'] [-e env] [-d dir] [-i 1s] [-w delay] [-f fault] [-T rate] [-P profile] [-l json] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
 		}
 	}
 	opts, err := cfg.Env.options(cfg.Vars)
@@ -210,6 +210,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			if fault := cfg.Defaults.FaultString(); fault != "" {
 				fmt.Fprintf(stdout, "injecting fault %s into routes without @fault\n", fault)
 			}
+			if throttle := cfg.Defaults.ThrottleString(); throttle != "" {
+				fmt.Fprintf(stdout, "throttling routes without @throttle to %s\n", throttle)
+			}
 			if watchCloser != nil && cfg.Poll > 0 {
 				fmt.Fprintf(stdout, "watching request files for changes (and polling every %s)\n", cfg.Poll)
 			} else if watchCloser != nil {
@@ -298,6 +301,9 @@ func announceJSON(logger *slog.Logger, cfg config, mockListeners []net.Listener,
 	}
 	if fault := cfg.Defaults.FaultString(); fault != "" {
 		logger.Info("injecting fault into routes without @fault", "fault", fault)
+	}
+	if throttle := cfg.Defaults.ThrottleString(); throttle != "" {
+		logger.Info("throttling routes without @throttle", "throttle", throttle)
 	}
 	if watching && cfg.Poll > 0 {
 		logger.Info("watching request files for changes", "poll", cfg.Poll.String())
