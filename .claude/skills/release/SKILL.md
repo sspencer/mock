@@ -67,6 +67,6 @@ gh run watch <id> --exit-status
 gh release view vX.Y.Z
 ```
 
-Confirm the release has archives for linux, darwin and windows on amd64 and arm64, plus `checksums.txt`.
+Confirm the release has archives for linux, darwin and windows on amd64 and arm64, plus `checksums.txt`, that `ghcr.io/sspencer/mock:X.Y.Z` (and `latest`) was pushed for linux/amd64 and linux/arm64 (`docker buildx imagetools inspect ghcr.io/sspencer/mock:X.Y.Z`), and that `sspencer/homebrew-tap` got a `Casks/mock.rb` commit. The cask upload is skipped, with a log line, when the `HOMEBREW_TAP_GITHUB_TOKEN` secret is not set.
 
 If the workflow fails, report the failing step's log (`gh run view <id> --log-failed`). Don't delete or move the tag without the user's say-so.

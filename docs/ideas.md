@@ -42,7 +42,6 @@ The ideas with the best value for their effort, in suggested order:
 
 | ID | Idea | Effort | Why |
 |----|------|--------|-----|
-| [`DI-1`](#distribution-and-editor-support) | Published Docker image and Homebrew formula | S | Removes the Go toolchain from the install path |
 | [`TE-1`](#testing-and-ci) | `mock run -- command` | M | Start, test, stop and report coverage in one CI step |
 | [`MA-1`](#matching-and-routing) | `mock match` | S | Answers "which route gets this request?" without serving |
 | [`CL-1`](#command-line-and-configuration) | `@import` | M | Shared variables across files; the only "not supported" dialect item users ask for |
@@ -125,7 +124,7 @@ state only decides whether a route is eligible.
 | `TE-6` | Strict report formats | **S** | `--strict-report junit.xml` (or JSON) so CI systems show unmatched requests and unused routes as test results. Add `--strict=unused` to also fail on routes that never matched. |
 | `TE-7` | Sessions for parallel tests | **L** | A header such as `X-Mock-Session: abc` separates the request log, counts and state per test, so parallel tests can share one server. Smocker has sessions. Only worth doing after the stateful ideas. |
 | `TE-8` | Thin clients for other languages | **M** | Small packages for JavaScript and Python that start the binary, wait for it (`CL-7`) and wrap `/requests`, `/verify` and `/clear`: the `mocktest` experience outside Go. |
-| `TE-9` | Testcontainers module | **S** | A documented container definition (image from `DI-1`, wait strategy on `/state`, mounted request files) for Java, .NET and Node test suites. |
+| `TE-9` | Testcontainers module | **S** | A documented container definition (the `ghcr.io/sspencer/mock` image, wait strategy on `/state`, mounted request files) for Java, .NET and Node test suites. |
 | `TE-10` | Contract snapshot | **M** | `mock snapshot api.http > api.snap` renders every route with a fixed seed; `-check` fails when the output changes. Review of a request-file change then shows what clients will receive. |
 
 ## Admin UI
@@ -162,7 +161,6 @@ state only decides whether a route is eligible.
 
 | ID | Idea | Effort | Description |
 |----|------|--------|-------------|
-| `DI-1` | Published Docker image and Homebrew formula | **S** | GoReleaser can push `ghcr.io/sspencer/mock:<version>` (multi-arch) and update a Homebrew tap from the existing release workflow. The image is only built locally today. |
 | `DI-2` | More package formats | **S** | Scoop and WinGet manifests, `.deb`/`.rpm` through GoReleaser's `nfpms`, and an install script for CI. |
 | `DI-3` | Signed releases | **S** | Sign `checksums.txt` with cosign and attach an SBOM and build provenance, for users whose policy requires them. |
 | `DI-4` | GitHub Action | **S** | `uses: sspencer/setup-mock@v1` downloads the right binary, optionally starts it in the background and prints the strict report when the job ends. |

@@ -10,8 +10,21 @@ mock -version
 ```
 
 Binaries for Linux, macOS, and Windows are on the
-[Releases](https://github.com/sspencer/mock/releases) page. Docker instructions
-are [below](#docker). To build from a clone, see [Building From Source](#building-from-source).
+[Releases](https://github.com/sspencer/mock/releases) page. To build from a
+clone, see [Building From Source](#building-from-source).
+
+With [Homebrew](https://brew.sh) on macOS or Linux, from the project's tap:
+
+```sh
+brew install --cask sspencer/tap/mock
+```
+
+Or run the published image, for Linux on `amd64` and `arm64` (more under
+[Docker](#docker)):
+
+```sh
+docker run --rm -p 8080:8080 -p 8081:8081 ghcr.io/sspencer/mock
+```
 
 This binary is named `mock`. If you already have another `mock` on your `PATH`,
 the new one will shadow it or be shadowed, depending on install order.
@@ -51,11 +64,15 @@ Only `make build` reports the `git describe` form, such as `v0.2.0-4-g57bd198`.
 
 ## Docker
 
-Build the image:
+Each release publishes `ghcr.io/sspencer/mock`, tagged with the version (such
+as `0.6.0`) and `latest`. To build the image from a clone instead:
 
 ```sh
 docker build -t mock .
 ```
+
+The examples below use the local `mock` tag; replace it with
+`ghcr.io/sspencer/mock` to use the published image.
 
 The image exposes `8080` (mock API) and `8081` (admin UI). With no arguments
 it serves the bundled `examples/user.http` on `0.0.0.0`:
