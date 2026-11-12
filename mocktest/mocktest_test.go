@@ -149,3 +149,26 @@ func TestReset(t *testing.T) {
 		t.Errorf("after Reset = %d, want 503", code)
 	}
 }
+
+func TestStub(t *testing.T) {
+	api := StartSource(t, "### Up\nGET /x\n\nup\n")
+	t.Run("stubbed", func(t *testing.T) {
+		api.Stub(t, "### [503] Down\nGET /x\n\ndown\n")
+		resp, err := http.Get(api.URL + "/x")
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != 503 {
+			t.Errorf("stubbed status = %d", resp.StatusCode)
+		}
+	})
+	resp, err := http.Get(api.URL + "/x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Errorf("after the subtest = %d, want the stub removed", resp.StatusCode)
+	}
+}

@@ -13,7 +13,7 @@ The UI is served at the root of the admin port (`-a`, default `8081`):
 | `/clear` | `POST` clears stored events |
 | `/reload` | `POST` reloads the request files now and returns the new state (see [Reloading](cli.md#reloading)) |
 | `/state` | `GET` active revision, route count, last successful reload, and reload error |
-| `/routes` | `GET` route configuration, including source location, port, matchers, status, delay, `throttle`, `override` (an active `/faults` override), `fallback`, `chance`, `defaultContentType`, `statusTemplate`, `require`, `missing`, `etag`, `times` and `timesLeft` when set, body preview, and `hits` (requests answered) |
+| `/routes` | `POST` adds temporary routes and `DELETE /routes/{id}` removes them (see [Temporary routes](#temporary-routes)); `GET` route configuration, including source location, port, matchers, status, delay, `throttle`, `override` (an active `/faults` override), `fallback`, `chance`, `defaultContentType`, `statusTemplate`, `require`, `missing`, `etag`, `times`, `timesLeft` and `temporary` when set, body preview, and `hits` (requests answered) |
 | `/requests` | `GET` the request log as JSON, optionally filtered (see below) |
 | `/resend` | `POST` answers a request as if a client sent it to the mock port (see [Resending a request](#resending-a-request)) |
 | `/fixture` | `GET ?route=ID` reads a route's `@fixture` file; `PUT` writes it (see [Editing fixtures](#editing-fixtures)) |
@@ -147,6 +147,33 @@ curl -s -X POST -H 'Content-Type: application/json' http://127.0.0.1:8081/resend
 Invalid input returns `400`. With [`-R`](#credential-redaction), logged
 credentials are `[redacted]`, so a resent copy carries that text unless you
 edit it.
+
+### Temporary routes
+
+`POST /routes` with `.http` text adds routes in front of every route so far,
+so a test written in any language can change one answer without its own
+request file:
+
+```sh
+curl -s localhost:8081/routes -H 'X-Requested-With: curl' --data-binary $'### [500] Users are down\nGET /users\n\n{"error": "down"}\n'
+```
+
+```json
+{"id":"t1","routes":["Users are down"]}
+```
+
+- The body is `.http` text (send `X-Requested-With`, as for other admin
+  `POST`s), or JSON `{"source": "..."}`. The answer is `201` with the group's
+  `id`, the route names and any load warnings; text that does not parse is a
+  `400` with the error.
+- The newest group is tried first, then older ones, then the file's routes.
+  Routes stay until `DELETE /routes/{id}` (or `DELETE /routes` for all of
+  them), a [`POST /reset`](#admin-ui-and-api), or a restart. Reloads keep them.
+- They are parsed on their own: `-v`, `-e` and `-H` don't apply. Relative
+  `< path` bodies and fixtures are found from the directory `mock` runs in.
+- `/routes` lists them first, with `temporary` set to their group id, and the
+  route inspector says how to remove them.
+- Go tests use [`Stub`](testing.md#using-mock-in-go-tests) instead.
 
 ### Editing fixtures
 

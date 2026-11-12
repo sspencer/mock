@@ -83,8 +83,18 @@ func TestSignup(t *testing.T) {
   received. `Calls(call)` and `Requests(filter)` return the request events to
   check bodies and headers yourself, `Clear()` forgets requests received so
   far, and `Mock` is the underlying `mockhttp.Server`.
+- `Stub(t, text)` serves the routes in `.http` text in front of the server's
+  routes until the test (or subtest) ends, so one test can change an answer:
+
+  ```go
+  api.Stub(t, "### [503] Down\nGET /users\n\n{\"error\": \"down\"}\n")
+  ```
+
+  Later stubs win over earlier ones. Other languages use
+  [`POST /routes`](admin-ui.md#temporary-routes) on the admin port.
 - `Reset()` starts [`@times`](matching.md#routes-that-answer-a-few-times)
-  counts, rate limits and chance draws over, and removes run-time overrides,
+  counts, rate limits and chance draws over, and removes run-time overrides
+  and temporary routes,
   so a test can reuse one server; other languages `POST /reset` to the admin
   port.
 

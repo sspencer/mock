@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Temporary routes: `POST /routes` with `.http` text adds routes in front of the file's routes until `DELETE /routes/{id}`, `POST /reset` or a restart, so tests in any language can stub one answer. Go tests call `mocktest`'s `Stub(t, text)`, removed when the test ends, or `Server.AddRoutes`.
+
 - `@import = shared/common.http` brings in another file's file-level definitions (variables and directives such as `@delay` or `@default.header.*`), so request files can share hosts, tokens and defaults. Imports nest, cycles are load errors, imported variables a file doesn't use aren't reported as unused, and editing an imported file reloads the files that import it.
 
 - `mock match api.http GET '/users?role=admin' -H 'X-Tenant: a'` prints the route that would answer a request, or the closest routes and why each turned it away (exit 1), without starting a server. `-response` renders the response too, and `-json` prints it all as JSON. Go code can call `Server.Explain`.
