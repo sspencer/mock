@@ -179,10 +179,8 @@ decides whether a route is eligible.
 
 | ID | Idea | Effort | Description |
 |----|------|--------|-------------|
-| `DO-1` | Example gallery | **M** | Realistic request files for common needs: OAuth token endpoint, paginated list, file upload, webhook sender, a payment API with failures. Each validated in CI like the existing examples. |
 | `DO-2` | Migration guides | **S** | Short pages mapping WireMock stubs, json-server `db.json` and Mockoon environments to `.http` sections, with what does not carry over. Pairs with `AP-5`. |
 | `DO-3` | Comparison page | **S** | When to choose `mock` and when another tool fits better (OpenAPI-first: Prism; in-browser: MSW; GUI: Mockoon). Sets expectations and explains the scope decisions below. |
-| `DO-4` | Documentation site | **M** | Publish `docs/` with search (GitHub Pages and a static generator). The pages already have a breadcrumb and an index. |
 | `DO-5` | Front-end recipes | **S** | Using `mock` behind the dev-server proxy of Vite, Next.js and webpack, which is also the answer to "why is there no CORS support". |
 | `DO-6` | Troubleshooting page | **S** | "Why did my request not match", "why did reload fail", "port already in use", reading near-miss reasons. Much of the text exists across pages. |
 

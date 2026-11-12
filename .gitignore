@@ -14,3 +14,5 @@ lint.txt
 /.codegraph
 .claude/settings.local.json
 /.cursor
+/build/
+__pycache__/

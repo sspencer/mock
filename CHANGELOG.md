@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- An example gallery in `examples/gallery/`: an OAuth 2.0 token endpoint, a paginated catalog from a fixture, file uploads, a webhook sender with signed, retried callbacks, and a card payment API with test cards, idempotency keys, per-key rate limits and random failures. `docs/examples.md` walks through each, and CI sends every route its documented requests.
+
+- The documentation in `docs/` builds into a searchable site with MkDocs Material (`make docs`, `make docs-serve`), checked in strict mode on pull requests and published to GitHub Pages from master by the new Docs workflow.
+
+- In JSON bodies, `{{#each}}` and `{{#repeat}}` copies that render nothing (an `{{#if}}` that did not hold) no longer leave stray commas.
+
+- `mock validate` warns about a placeholder that could not be read, such as one nested inside another (`{{$jwt iss={{host}}}}`), instead of serving it literally without a word.
+
 - **Breaking (Go API):** `restclient.ParseDelay` returns a `restclient.Delay` (with the new lognormal `Sigma`) instead of two durations.
 
 - New faults: `@fault = hang` (read the request and never answer, for timeout tests), `empty` (close without a byte) and `garbage` (send bytes that are not HTTP). They take a share like the others and work with `-f`.

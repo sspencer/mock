@@ -70,7 +70,8 @@ nothing to restart.
 
 `mock init` writes a longer, commented starter file if you would rather begin
 from that. [Getting started](docs/getting-started.md) walks through it and the
-examples in `examples/`.
+examples in `examples/`, and the [example gallery](docs/examples.md) has
+ready-made mocks for OAuth, pagination, uploads, webhooks and payments.
 
 ## The admin UI
 

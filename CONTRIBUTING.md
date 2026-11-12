@@ -44,6 +44,8 @@ that warns on purpose goes in `knownExampleWarnings` in
 - `internal/ui/` contains the request log UI (`static/`, embedded at build time), its admin handler, and its Node tests.
 - `examples/` contains request files you can run locally; `examples/matching/` shows off request matching.
 - `README.md` is the short introduction. `docs/` holds the user documentation (indexed by `docs/README.md`), which is the spec for user-facing behavior; keep it in sync when behavior changes.
+- `docs/` is also published as a site with MkDocs (`mkdocs.yml`, `docs-site/`). Run `make docs` (Python 3; it makes a virtualenv under `build/`) to build it in strict mode, which fails on a broken link or anchor and on a page missing from the `nav` in `mkdocs.yml`. `make docs-serve` previews it. Write pages for GitHub first: the build drops the breadcrumb line, points `../` links at GitHub, and unescapes `\|` in table code spans.
+- `examples/gallery/` files are tested request by request in `mockhttp/gallery_test.go`, besides `mock validate -strict`; update the test and `docs/examples.md` with them.
 
 ## Pull requests
 

@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-`mock` is a single Go binary. It turns REST Client-style `.http` files into a local HTTP mock server with hot reload and an admin request-log UI. The pages in `docs/` (indexed by `docs/README.md`) document the user-facing behavior (file dialect, placeholders, matching, ports, admin API) and are the spec. Keep them in sync when behavior changes. `README.md` is a short introduction (install, a first mock, the admin UI screenshot, a feature list) that links to those pages; keep it short, and add a line there only for a headline feature. `docs/ideas.md` is a list of ideas, not spec.
+`mock` is a single Go binary. It turns REST Client-style `.http` files into a local HTTP mock server with hot reload and an admin request-log UI. The pages in `docs/` (indexed by `docs/README.md`) document the user-facing behavior (file dialect, placeholders, matching, ports, admin API) and are the spec. Keep them in sync when behavior changes. `README.md` is a short introduction (install, a first mock, the admin UI screenshot, a feature list) that links to those pages; keep it short, and add a line there only for a headline feature. `docs/ideas.md` is a list of ideas, not spec; delete an idea's row once it is implemented. `docs/` is also published as a site by MkDocs (`mkdocs.yml`, hooks in `docs-site/hooks.py`, the Docs workflow); a new page must be added to the `nav` in `mkdocs.yml` and to `docs/README.md`. `docs/examples.md` describes `examples/gallery/`, whose files `mockhttp/gallery_test.go` drives request by request.
 
 ## Commands
 
@@ -12,6 +12,7 @@ make fmt           # format Go files (verify never rewrites)
 make test          # Go tests only
 make test-ui       # node --test internal/ui/tests/*.test.mjs (Node 22+, no deps)
 make test-browser  # headless Chrome UI tests in internal/ui/browser/ (skipped without Chrome; CHROME_BIN)
+make docs          # build the docs site (MkDocs, strict: broken links/anchors fail); make docs-serve previews it
 go test -race ./...                         # also run before pushing
 go test ./mockhttp -run TestName            # single Go test
 node --test internal/ui/tests/app.test.mjs  # single UI test file
