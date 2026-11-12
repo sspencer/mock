@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Route switches in the admin UI: **Switches** in the route inspector turns a route off (later routes answer), forces its status, or adds a delay or fault while `mock` runs, until switched back on or reset. Switched routes get a badge in the route list, and `/state` counts them. `/faults` takes the same `off` and `status` fields, and `/routes` reports each route's own `switch`.
+
 - Temporary routes: `POST /routes` with `.http` text adds routes in front of the file's routes until `DELETE /routes/{id}`, `POST /reset` or a restart, so tests in any language can stub one answer. Go tests call `mocktest`'s `Stub(t, text)`, removed when the test ends, or `Server.AddRoutes`.
 
 - `@import = shared/common.http` brings in another file's file-level definitions (variables and directives such as `@delay` or `@default.header.*`), so request files can share hosts, tokens and defaults. Imports nest, cycles are load errors, imported variables a file doesn't use aren't reported as unused, and editing an imported file reloads the files that import it.

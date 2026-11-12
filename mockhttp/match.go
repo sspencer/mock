@@ -107,7 +107,7 @@ func (s *Server) selectRoute(r *http.Request, body requestBody, dry bool) (*rest
 					}
 					path, _ := matchPath(routePattern(*method), r.URL.EscapedPath())
 					tv := templateValues{values: values, path: path, facts: facts}
-					if unavailable(method, tv) != "" || usedUp(method, uses[i]) {
+					if unavailable(method, tv) != "" || usedUp(method, uses[i]) || s.switchedOff(*method) {
 						continue
 					}
 					if !dry && (!rollChance(method, rolls[i]) || !takeUse(method, uses[i])) {
@@ -125,7 +125,13 @@ func (s *Server) selectRoute(r *http.Request, body requestBody, dry bool) (*rest
 			}
 		}
 	}
-	return nil, templateValues{}, MatchInfo{Revision: revision, Candidates: closestRoutes(methods, uses, facts)}, false
+	candidates := closestRoutes(methods, uses, facts)
+	for i := range candidates {
+		if candidates[i].Reasons[0] == "No matching response available" && s.switchedOffAt(methods, candidates[i]) {
+			candidates[i].Reasons = []string{"Switched off at run time (the admin UI's route switches, or DELETE /faults to switch it back on)"}
+		}
+	}
+	return nil, templateValues{}, MatchInfo{Revision: revision, Candidates: candidates}, false
 }
 
 // methodAnswers reports whether route can answer a request with

@@ -346,3 +346,31 @@ uiTest('the fixture editor saves a route fixture that the next response uses', {
     const text = await page.evaluate(() => document.getElementById('fixtureText').value);
     assert.equal(text, '{\n  "lead": "Linus",\n  "size": "3"\n}\n');
 });
+
+uiTest('route switches turn a route off and back on', { width: 1280, height: 900 }, async (page) => {
+    await page.waitFor(() => [...document.querySelectorAll('#routesList button')].some(button => /List users/.test(button.textContent)), { message: 'the List users route is listed' });
+    await page.evaluate(() => [...document.querySelectorAll('#routesList button')].find(button => /List users/.test(button.textContent)).id ||= 'listRoute');
+    await page.click('#listRoute');
+    await page.click('#switchButton');
+    await page.waitFor(() => !document.getElementById('switchForm').hidden, { message: 'the switches form opens' });
+    const layout = await page.evaluate(() => {
+        const form = document.getElementById('switchForm').getBoundingClientRect();
+        const panel = document.getElementById('routeView').getBoundingClientRect();
+        return { fits: form.right <= panel.right + 1 && form.width > 200, focused: document.activeElement.id };
+    });
+    assert.deepEqual(layout, { fits: true, focused: 'switchOff' });
+
+    await page.click('#switchOff');
+    await page.click('#switchApply');
+    await page.waitFor(() => /^Switched/.test(document.getElementById('switchStatusText').textContent), { message: 'the switch applies' });
+    await page.waitFor(() => [...document.querySelectorAll('#routesList button')].find(button => /List users/.test(button.textContent))?.querySelector('.route-switch')?.textContent === 'off', { message: 'the route list shows the switch' });
+    assert.equal((await fetch(mockURL + '/users')).status, 404, 'the switched-off route steps aside');
+    const state = await (await fetch(adminURL + 'state')).json();
+    assert.equal(state.switches, 1);
+
+    await page.click('#switchClear');
+    await page.waitFor(() => /^Switched back on/.test(document.getElementById('switchStatusText').textContent), { message: 'the switch clears' });
+    await page.waitFor(() => !document.querySelector('#routesList .route-switch'), { message: 'the badge goes' });
+    assert.equal((await fetch(mockURL + '/users')).status, 200);
+    assert.equal(await page.evaluate(() => document.getElementById('switchOff').checked), false);
+});

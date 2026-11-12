@@ -253,3 +253,46 @@ func TestFaultOverrides(t *testing.T) {
 		t.Errorf("SetFault by id = %v, %v", names, err)
 	}
 }
+
+func TestRouteSwitchesOffAndStatus(t *testing.T) {
+	s := newTestServer(t, "### Orders\nGET /orders\n\nok\n\n### [404] Fallback\nGET /orders\n\nnone\n")
+	if _, err := s.SetFault("Orders", FaultOverride{Off: true}); err != nil {
+		t.Fatal(err)
+	}
+	if code, body := serveRequest(t, s, "GET", "/orders", "", ""); code != 404 || body != "none" {
+		t.Errorf("switched off = %d %q, want the next route", code, body)
+	}
+	if info := s.Explain(httptest.NewRequest("GET", "/orders", nil)); info.Route == nil || info.Route.Name != "Fallback" {
+		t.Errorf("Explain = %+v", info.Route)
+	}
+	if _, err := s.SetFault("Fallback", FaultOverride{Off: true}); err != nil {
+		t.Fatal(err)
+	}
+	var event RequestEvent
+	s.SetRequestHook(func(e RequestEvent) { event = e })
+	serveRequest(t, s, "GET", "/orders", "", "")
+	if len(event.Match.Candidates) == 0 || !strings.Contains(event.Match.Candidates[0].Reasons[0], "Switched off") {
+		t.Errorf("candidates = %+v", event.Match.Candidates)
+	}
+	if _, err := s.SetFault("Orders", FaultOverride{Status: 503}); err != nil {
+		t.Fatal(err)
+	}
+	if code, body := serveRequest(t, s, "GET", "/orders", "", ""); code != 503 || body != "ok" {
+		t.Errorf("forced status = %d %q", code, body)
+	}
+	rec := httptest.NewRecorder()
+	s.ServeRoutes(rec, httptest.NewRequest("GET", "/routes", nil))
+	var routes []RouteInfo
+	_ = json.Unmarshal(rec.Body.Bytes(), &routes)
+	if routes[0].Switch == nil || routes[0].Switch.Status != 503 || routes[0].Override != "status 503" || routes[1].Switch == nil || !routes[1].Switch.Off {
+		t.Errorf("routes = %+v / %+v", routes[0].Switch, routes[1].Switch)
+	}
+	rec = httptest.NewRecorder()
+	s.ServeState(rec, httptest.NewRequest("GET", "/state", nil))
+	if !strings.Contains(rec.Body.String(), `"switches":2`) {
+		t.Errorf("/state = %s", rec.Body.String())
+	}
+	if _, err := s.SetFault("Orders", FaultOverride{Status: 99}); err == nil {
+		t.Error("status 99 accepted")
+	}
+}

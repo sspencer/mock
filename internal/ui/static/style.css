@@ -754,6 +754,21 @@ tbody tr[data-id]:focus-visible {
     font-variant-numeric: tabular-nums;
     text-align: center;
 }
+/* A route switched at run time (off, forced status, delay or fault). */
+.routes-list .route-switch {
+    flex: 0 0 auto;
+    padding: 0 5px;
+    border-radius: 3px;
+    background: var(--danger-soft);
+    color: var(--danger);
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1.5;
+    text-transform: uppercase;
+}
+
 .routes-list .route-hits.unused { border-color: var(--line-strong); border-style: dashed; background: transparent; color: var(--faint); font-weight: 400; }
 .routes-list .route-hits:hover { border-color: var(--edge); border-style: solid; background: var(--accent); color: var(--accent-ink) !important; }
 .routes-list .route-hits:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -917,6 +932,29 @@ textarea.resend-input { resize: vertical; }
 }
 
 .resend-actions .match-summary { margin: 0; }
+
+/* Route switches reuse the resend form's look. */
+.switch-grid {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 6px 10px;
+}
+
+.switch-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+}
+
+.switch-share { flex: 0 0 4.5em; }
+
+.switch-unit {
+    align-self: center;
+    color: var(--muted);
+    font-size: 0.78rem;
+}
 
 .match-summary {
     color: var(--muted);

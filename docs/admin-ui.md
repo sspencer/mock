@@ -12,13 +12,13 @@ The UI is served at the root of the admin port (`-a`, default `8081`):
 | `/events` | Server-sent events stream (with event `id` / `Last-Event-ID`) |
 | `/clear` | `POST` clears stored events |
 | `/reload` | `POST` reloads the request files now and returns the new state (see [Reloading](cli.md#reloading)) |
-| `/state` | `GET` active revision, route count, last successful reload, and reload error |
-| `/routes` | `POST` adds temporary routes and `DELETE /routes/{id}` removes them (see [Temporary routes](#temporary-routes)); `GET` route configuration, including source location, port, matchers, status, delay, `throttle`, `override` (an active `/faults` override), `fallback`, `chance`, `defaultContentType`, `statusTemplate`, `require`, `missing`, `etag`, `times`, `timesLeft` and `temporary` when set, body preview, and `hits` (requests answered) |
+| `/state` | `GET` active revision, route count, last successful reload, reload error, and the number of route `switches` in effect |
+| `/routes` | `POST` adds temporary routes and `DELETE /routes/{id}` removes them (see [Temporary routes](#temporary-routes)); `GET` route configuration, including source location, port, matchers, status, delay, `throttle`, `override` (a description of the `/faults` override in effect), `switch` (the route's own override, as set), `fallback`, `chance`, `defaultContentType`, `statusTemplate`, `require`, `missing`, `etag`, `times`, `timesLeft` and `temporary` when set, body preview, and `hits` (requests answered) |
 | `/requests` | `GET` the request log as JSON, optionally filtered (see below) |
 | `/resend` | `POST` answers a request as if a client sent it to the mock port (see [Resending a request](#resending-a-request)) |
 | `/fixture` | `GET ?route=ID` reads a route's `@fixture` file; `PUT` writes it (see [Editing fixtures](#editing-fixtures)) |
 | `/reset` | `POST` starts `@times` counts, `@rate-limit` budgets and `@match.chance` draws over, and removes `/faults` overrides and temporary routes, without a reload; answers like `/state` |
-| `/faults` | `GET` lists run-time fault overrides; `POST` sets one for a route or `*`; `DELETE` clears them (see [Changing faults at run time](responses.md#changing-faults-at-run-time)) |
+| `/faults` | `GET` lists run-time route switches and fault overrides; `POST` sets one for a route or `*` (delay, fault, throttle, `off`, `status`); `DELETE` clears them (see [Changing faults at run time](responses.md#changing-faults-at-run-time)) |
 
 ### Admin access token
 
@@ -280,6 +280,16 @@ On narrow screens, selecting traffic or a route opens the inspector; use
   a proxied request) and begins with a `# Variant of "Name" (file:line)`
   comment. Place it above that route, since the first matching route wins,
   and tighten its matchers, such as `@query.page = 2` instead of `*`.
+- **Switches**, on a selected route, changes how it answers while `mock`
+  runs, without editing files: **Off** lets later routes answer as if this
+  one did not match, **Status** forces the response status, **Delay** takes any
+  `@delay` value, and **Fault** injects a fault into a share of responses.
+  Empty fields keep the route's own settings. **Apply** switches the route,
+  which gets a red badge (`off`, or `switched`) in the route list; **Switch back
+  on** removes the switch. Switches last until removed or a `POST /reset`, and
+  survive reloads. They are the same overrides as the
+  [`/faults`](responses.md#changing-faults-at-run-time) admin endpoint, and
+  `/state` counts them as `switches`.
 - **Resend** opens an editor with the request's method, path and query,
   headers and body; **Send** replays it (see
   [Resending a request](#resending-a-request)) and selects the new request,

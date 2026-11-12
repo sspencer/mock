@@ -15,15 +15,19 @@ import (
 // route.
 const AllRoutes = "*"
 
-// FaultOverride is a delay, fault or throttle switched on at run time for a
-// route or for all routes (POST /faults, Server.SetFault). Each field that is
-// set wins over the route's own @delay, @fault or @throttle and over the
-// --delay, --fault and --throttle defaults; an empty field leaves them. Use
-// "0s" for no delay and "none" for no fault or no throttle.
+// FaultOverride is a route switch set at run time for a route or for all
+// routes (POST /faults, Server.SetFault, the admin UI's route switches).
+// Delay, Fault and Throttle win over the route's own @delay, @fault or
+// @throttle and over the --delay, --fault and --throttle defaults; an empty
+// field leaves them. Use "0s" for no delay and "none" for no fault or no
+// throttle. Off turns the route off, so later routes answer as if it did not
+// match, and Status forces the response status.
 type FaultOverride struct {
 	Delay    string `json:"delay,omitempty"`
 	Fault    string `json:"fault,omitempty"`
 	Throttle string `json:"throttle,omitempty"`
+	Off      bool   `json:"off,omitempty"`
+	Status   int    `json:"status,omitempty"`
 }
 
 // FaultInfo is one active override, as GET /faults lists it.
@@ -45,6 +49,8 @@ type faultEntry struct {
 	faultRate   float64
 	hasThrottle bool
 	throttle    int64
+	off         bool
+	status      int
 }
 
 // parseOverride checks an override and parses its fields.
@@ -72,11 +78,15 @@ func parseOverride(o FaultOverride) (faultEntry, error) {
 			entry.throttle = rate
 		}
 	}
+	if o.Status != 0 && (o.Status < 200 || o.Status > 999) {
+		errs = append(errs, fmt.Errorf("status %d must be between 200 and 999", o.Status))
+	}
+	entry.off, entry.status = o.Off, o.Status
 	if err := errors.Join(errs...); err != nil {
 		return faultEntry{}, err
 	}
-	if !entry.hasDelay && !entry.hasFault && !entry.hasThrottle {
-		return faultEntry{}, errors.New(`set at least one of delay, fault or throttle (use "0s" or "none" to switch one off)`)
+	if !entry.hasDelay && !entry.hasFault && !entry.hasThrottle && !entry.off && entry.status == 0 {
+		return faultEntry{}, errors.New(`set at least one of delay, fault, throttle, off or status (use "0s" or "none" to switch a delay, fault or throttle off)`)
 	}
 	return entry, nil
 }
@@ -230,7 +240,16 @@ func (s *Server) withOverride(method *restclient.Method) *restclient.Method {
 	if entry.hasThrottle {
 		copied.Throttle = entry.throttle
 	}
+	if entry.status != 0 {
+		copied.Status, copied.StatusTemplate = entry.status, ""
+	}
 	return &copied
+}
+
+// switchedOff reports whether a route is turned off by a run-time switch.
+func (s *Server) switchedOff(method restclient.Method) bool {
+	entry, ok := s.faultFor(method)
+	return ok && entry.off
 }
 
 // describeOverride summarizes a route's active override, such as
@@ -241,6 +260,12 @@ func (s *Server) describeOverride(method restclient.Method) string {
 		return ""
 	}
 	var parts []string
+	if entry.off {
+		parts = append(parts, "off")
+	}
+	if entry.status != 0 {
+		parts = append(parts, fmt.Sprintf("status %d", entry.status))
+	}
 	for _, field := range [][2]string{{"delay", entry.info.Delay}, {"fault", entry.info.Fault}, {"throttle", entry.info.Throttle}} {
 		if field[1] != "" {
 			parts = append(parts, field[0]+" "+strings.TrimSpace(field[1]))
@@ -298,4 +323,33 @@ func (s *Server) ServeFaults(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Allow", "GET, POST, DELETE")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// switchedOffAt reports whether the route a near-miss candidate describes is
+// switched off.
+func (s *Server) switchedOffAt(methods []restclient.Method, candidate RouteMismatch) bool {
+	if s.faultCount.Load() == 0 {
+		return false
+	}
+	for _, method := range methods {
+		if method.Source == candidate.Source && method.Line == candidate.Line && method.Name == candidate.Name {
+			return s.switchedOff(method)
+		}
+	}
+	return false
+}
+
+// ownSwitch returns the run-time switch set for this route itself, or nil.
+func (s *Server) ownSwitch(method restclient.Method) *FaultOverride {
+	if s.faultCount.Load() == 0 {
+		return nil
+	}
+	s.faultMu.Lock()
+	defer s.faultMu.Unlock()
+	entry, ok := s.faults[routeKey(method)]
+	if !ok {
+		return nil
+	}
+	o := entry.info.FaultOverride
+	return &o
 }
