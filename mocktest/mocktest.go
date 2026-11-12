@@ -213,3 +213,11 @@ func pluralRequests(n int) string {
 	}
 	return "requests"
 }
+
+// Reset returns the server to its starting state between tests: @times
+// counts, @rate-limit budgets and @match.chance draws start over, and
+// run-time fault overrides and temporary routes are removed. The request
+// log is kept; it is per test server anyway.
+func (s *Server) Reset() {
+	s.Mock.Reset()
+}

@@ -134,6 +134,9 @@ type Method struct {
 	// ETag is set by @etag = auto: responses carry a hash ETag and answer
 	// a matching If-None-Match with 304.
 	ETag bool
+	// Times is the @times limit: the route answers that many requests, then
+	// lets later routes answer (until a reset). 0 means no limit.
+	Times int
 	// Fallback is set by @fallback = true: the route is tried after every
 	// route without it, whatever the load order.
 	Fallback bool
@@ -1185,6 +1188,12 @@ func applyControlVariable(method *Method, def definition, source string) error {
 			}
 			method.Missing, method.MissingNext = status, false
 		}
+	case "times":
+		times, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || times < 1 {
+			return parseErrorf(source, def.line, `section %q: @times must be a whole number of requests from 1, such as "@times = 2"`, method.Name)
+		}
+		method.Times = times
 	case "etag":
 		switch mode := strings.ToLower(strings.TrimSpace(value)); mode {
 		case "auto":
@@ -1707,6 +1716,7 @@ var controlVariables = map[string]struct{}{
 	"require":        {},
 	"missing":        {},
 	"etag":           {},
+	"times":          {},
 	"jwt.secret":     {},
 	"throttle":       {},
 	"rate-limit.key": {},

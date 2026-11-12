@@ -91,3 +91,18 @@ func TestParseChance(t *testing.T) {
 		t.Error("an environment may not set @match.chance or @fallback")
 	}
 }
+
+func TestParseTimes(t *testing.T) {
+	methods, err := Parse("test.http", strings.NewReader("### X\n@times = 3\nGET /x\n"))
+	if err != nil || methods[0].Times != 3 {
+		t.Fatalf("Parse() = %+v, %v", methods, err)
+	}
+	for _, bad := range []string{"0", "-1", "two", ""} {
+		if _, err := Parse("test.http", strings.NewReader("### X\n@times = "+bad+"\nGET /x\n")); err == nil || !strings.Contains(err.Error(), "test.http:2:") {
+			t.Errorf("@times = %q error = %v", bad, err)
+		}
+	}
+	if len(UnusedVariables(methods)) != 0 || IsDefaultVariable("times") {
+		t.Error("@times is a control variable")
+	}
+}

@@ -319,7 +319,7 @@ Content-Type: application/json
 A route that can never answer gets a load-time warning, and `mock validate
 -strict` fails on it. That happens when an earlier route (counting
 `@fallback` routes as last) accepts every method the later route does, shares
-its port, has no `@match.chance`, `@require` or `@missing = next`, its path
+its port, has no `@match.chance`, `@times`, `@require` or `@missing = next`, its path
 matches every path the later route's does, and all of its
 matchers are also on the later route. Paths are compared segment by segment: a
 `:param` segment covers any segment (whatever the parameter is called), and a
@@ -336,6 +336,34 @@ A `@path.name` matcher on the earlier route narrows what it covers:
 `/users/me`. The check errs towards silence, so a route it does not report may
 still be unreachable. Earlier versions of `mock` rotated through duplicate
 routes; they now always return the first.
+
+### Routes that answer a few times
+
+`@times = n` lets a route answer `n` requests; after that it steps aside and
+later routes answer, as if it had not matched. That covers retry tests such as
+"fail twice, then succeed" and "time out once":
+
+```http
+### [503] Fail twice
+@times = 2
+GET /orders
+
+{"error": "unavailable"}
+
+### Orders
+GET /orders
+
+[{"id": 1}]
+```
+
+- Counts start at zero and go back to zero on a reset: `POST /reset` on the
+  admin API, or `Reset()` in a [`mocktest`](testing.md#using-mock-in-go-tests)
+  test. A reload that keeps the route keeps its count; one that changes it
+  starts it over.
+- Concurrent requests never get more than `n` answers between them.
+- `/routes` and the route inspector show `times` and `timesLeft`, and the
+  near-miss list says when a route has used up its answers.
+- A route with `@times` never shadows a later route.
 
 ### Routes that need data
 

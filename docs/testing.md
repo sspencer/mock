@@ -83,6 +83,10 @@ func TestSignup(t *testing.T) {
   received. `Calls(call)` and `Requests(filter)` return the request events to
   check bodies and headers yourself, `Clear()` forgets requests received so
   far, and `Mock` is the underlying `mockhttp.Server`.
+- `Reset()` starts [`@times`](matching.md#routes-that-answer-a-few-times)
+  counts, rate limits and chance draws over, and removes run-time overrides,
+  so a test can reuse one server; other languages `POST /reset` to the admin
+  port.
 
 From other languages, read the same data from [`/requests`](admin-ui.md#reading-the-request-log)
 on the admin port.

@@ -65,7 +65,7 @@ func (s *Server) findMethod(r *http.Request, body requestBody) (*restclient.Meth
 	// Routes are immutable once installed; SetMethods swaps the slice, so a
 	// snapshot keeps one request within one configuration revision.
 	s.mu.Lock()
-	methods, hits, rolls, revision := s.methods, s.hits, s.rolls, s.config.Revision
+	methods, hits, rolls, uses, revision := s.methods, s.hits, s.rolls, s.uses, s.config.Revision
 	s.mu.Unlock()
 
 	facts := newRequestFacts(r, body)
@@ -90,17 +90,18 @@ func (s *Server) findMethod(r *http.Request, body requestBody) (*restclient.Meth
 					}
 					path, _ := matchPath(routePattern(*method), r.URL.EscapedPath())
 					tv := templateValues{values: values, path: path, facts: facts}
-					if unavailable(method, tv) != "" || !rollChance(method, rolls[i]) {
+					if unavailable(method, tv) != "" || usedUp(method, uses[i]) || !rollChance(method, rolls[i]) || !takeUse(method, uses[i]) {
 						continue
 					}
 					route := describeRoute(*method, i, revision)
 					route.Hits = hits[i].Add(1)
+					route.TimesLeft = timesLeft(method, uses[i])
 					return method, tv, MatchInfo{Route: &route, Revision: revision}, true
 				}
 			}
 		}
 	}
-	return nil, templateValues{}, MatchInfo{Revision: revision, Candidates: closestRoutes(methods, facts)}, false
+	return nil, templateValues{}, MatchInfo{Revision: revision, Candidates: closestRoutes(methods, uses, facts)}, false
 }
 
 // methodAnswers reports whether route can answer a request with

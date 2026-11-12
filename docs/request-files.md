@@ -381,6 +381,7 @@ in the file, or in a section, where it replaces the file value.
 | `@status` | status from `200` to `999`, or a placeholder such as `{{$query.status \| default 200}}` | `200` | The response status, when the section name has none. See [Request file format](#request-file-format). |
 | `@etag` | `auto` or `off` | `off` | Add a hash `ETag` and answer a matching `If-None-Match` with `304`. See [ETags](responses.md#etags). |
 | `@missing` | `next`, or a status such as `404` | `404` for a templated `< path`, else `500` | What a missing `< path` file does: `next` lets later routes answer. See [Placeholders in file paths](#placeholders-in-file-paths). |
+| `@times` | a whole number from `1` | none | Answer that many requests, then let later routes answer until a reset. See [Routes that answer a few times](matching.md#routes-that-answer-a-few-times). |
 | `@require` | a `$reference`, such as `$fixture.users[id=$path.id]` | none | Match only when the reference has a value for the request. See [Looking up a record](placeholders.md#looking-up-a-record). |
 | `@jwt.secret` | text, which may hold placeholders | none (unsigned) | The HS256 secret for `{{$jwt}}` tokens. See [Signed tokens](placeholders.md#signed-tokens). |
 | `@port` | port number | `-p` (`8080`) | Serve the section on this port. A port in the request URL takes precedence. See [Multiple ports](matching.md#multiple-ports). |

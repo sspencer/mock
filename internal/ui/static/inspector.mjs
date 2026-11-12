@@ -222,6 +222,7 @@ export function formatRoute(route, sampleCurl = '') {
         route.override ? `Fault override: ${route.override} (POST /faults; DELETE /faults clears it)` : '',
         route.chance ? `Chance: answers ${route.chance} of matching requests` : '',
         route.require ? `Requires: ${route.require} (else later routes answer)` : '',
+        route.times ? `Times: answers ${route.times === 1 ? 'once' : `${route.times} times`}, ${route.timesLeft ?? route.times} left (POST /reset starts over)` : '',
         route.missing ? `Missing body file: ${route.missing === 'next' ? 'later routes answer' : `answers ${route.missing}`}` : '',
         route.etag ? 'ETag: automatic, with 304 for a matching If-None-Match' : '',
         route.fallback ? 'Fallback: tried after every other route' : '',
