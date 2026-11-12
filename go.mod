@@ -2,6 +2,8 @@ module github.com/sspencer/mock
 
 go 1.26
 
+toolchain go1.26.11
+
 require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/jaswdr/faker v1.19.1
