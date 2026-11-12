@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Breaking (build):** `mock` now needs Go 1.27 to build or `go install` (`go.mod` pins the 1.27.4 toolchain). Release binaries and the Docker image are unaffected for users.
+
 - `mock check` compares nested JSON keys and value types (string versus number and so on), with paths such as `user.address` and `items[0].sku`, down to `-depth` levels (3 by default; `null` matches any type), and compares chosen response headers with `-check-header Name`.
 
 - `mock run api.http -- npm test` starts `mock` on free ports, runs the command with `MOCK_URL` and `MOCK_ADMIN_URL` set, then stops, prints the strict report and exits with the command's status (or `1` when the command passed but requests went unmatched). One CI step instead of background jobs and traps.

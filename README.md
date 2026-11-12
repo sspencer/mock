@@ -15,7 +15,7 @@ Prism, or Mockoon, and not the Go unit-test mocking libraries (gomock, mockery).
 go install github.com/sspencer/mock@latest
 ```
 
-This needs Go 1.26 or newer. Binaries for Linux, macOS and Windows are on the
+This needs Go 1.27 or newer. Binaries for Linux, macOS and Windows are on the
 [Releases](https://github.com/sspencer/mock/releases) page, and
 `brew install --cask sspencer/tap/mock` and `ghcr.io/sspencer/mock` work too.
 See [Install](docs/install.md) for those and for building from source.

@@ -2,7 +2,7 @@
 
 # Install
 
-Requires [Go](https://go.dev/dl/) 1.26 or newer:
+Requires [Go](https://go.dev/dl/) 1.27 or newer:
 
 ```sh
 go install github.com/sspencer/mock@latest
