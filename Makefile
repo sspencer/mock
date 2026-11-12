@@ -11,7 +11,7 @@ GOBIN := $(shell $(GO) env GOPATH)/bin
 endif
 BINARY := $(GOBIN)/$(APP_NAME)
 
-.PHONY: all build fmt fmt-check vet update clean mod test test-ui test-browser bench verify vulncheck docker run lint dockerize
+.PHONY: all build fmt fmt-check vet update clean mod test test-ui test-browser bench verify vulncheck docker run lint dockerize docs docs-serve
 
 all: verify build
 
@@ -28,6 +28,22 @@ test-ui:
 # set CHROME_BIN to choose one).
 test-browser:
 	node --test internal/ui/browser/*.test.mjs
+
+# The documentation site (mkdocs.yml): docs/ rendered with MkDocs Material
+# into build/site. Strict mode fails on broken links and anchors. The tools
+# live in a virtualenv under build/, so nothing is installed globally; needs
+# Python 3.
+DOCS_VENV := build/docs-venv
+$(DOCS_VENV)/.installed: docs-site/requirements.txt
+	python3 -m venv $(DOCS_VENV)
+	$(DOCS_VENV)/bin/pip install -q -r docs-site/requirements.txt
+	touch $@
+
+docs: $(DOCS_VENV)/.installed
+	NO_MKDOCS_2_WARNING=1 $(DOCS_VENV)/bin/mkdocs build --strict
+
+docs-serve: $(DOCS_VENV)/.installed
+	NO_MKDOCS_2_WARNING=1 $(DOCS_VENV)/bin/mkdocs serve
 
 # Pin the scanner independently of runtime dependencies.
 vulncheck:

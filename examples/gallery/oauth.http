@@ -1,0 +1,92 @@
+# An OAuth 2.0 authorization server: the token endpoint for the
+# client_credentials, password and refresh_token grants, token
+# introspection, and a userinfo endpoint guarded by the issued token.
+# Tokens are real JWTs (HS256), so client libraries can decode them and
+# check expiry.
+#
+#   mock examples/gallery/oauth.http
+#   curl -s localhost:8080/oauth/token -d grant_type=client_credentials \
+#     -d client_id=demo-app -d client_secret=demo-secret
+#
+# See docs/examples.md#oauth-token-endpoint.
+
+@jwt.secret = {{$env.OAUTH_SECRET | default dev-signing-secret}}
+@default.header.Content-Type = application/json
+@default.header.Cache-Control = no-store
+
+### [401] Token request with the wrong client secret
+@form.client_id = demo-app
+@form.client_secret = !demo-secret
+POST /oauth/token
+
+{"error": "invalid_client", "error_description": "client authentication failed"}
+
+### Client credentials grant
+@form.grant_type = client_credentials
+@form.client_id = demo-app
+POST /oauth/token
+
+{
+  "access_token": "{{$jwt iss=http://localhost:8080 sub=demo-app scope=read:orders exp=1h}}",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "read:orders"
+}
+
+### Password grant, captured username
+@form.grant_type = password
+@form.username = ~(?P<user>[a-z][a-z0-9._-]{2,})
+@form.password = *
+POST /oauth/token
+
+{
+  "access_token": "{{$jwt iss=http://localhost:8080 sub=$form.username scope=profile exp=15m}}",
+  "refresh_token": "rt-{{$user}}-{{$uuid}}",
+  "token_type": "Bearer",
+  "expires_in": 900
+}
+
+### Refresh token grant
+@form.grant_type = refresh_token
+@form.refresh_token = ~rt-(?P<user>[a-z][a-z0-9._-]+)-.+
+POST /oauth/token
+
+{
+  "access_token": "{{$jwt iss=http://localhost:8080 sub=$user scope=profile exp=15m}}",
+  "token_type": "Bearer",
+  "expires_in": 900
+}
+
+### [400] Expired or unknown refresh token
+@form.grant_type = refresh_token
+POST /oauth/token
+
+{"error": "invalid_grant", "error_description": "the refresh token is invalid or expired"}
+
+### [400] Unsupported grant type
+POST /oauth/token
+
+{"error": "unsupported_grant_type"}
+
+### Introspect an active token
+@form.token = ~eyJ.+
+POST /oauth/introspect
+
+{"active": true, "token_type": "Bearer", "iss": "http://localhost:8080"}
+
+### Introspect anything else
+POST /oauth/introspect
+
+{"active": false}
+
+### User info for a bearer token
+@header.Authorization = ~Bearer eyJ.+
+GET /userinfo
+
+{"sub": "{{$oneOf ada grace linus}}", "email": "{{$email}}", "name": "{{$name}}"}
+
+### [401] User info without a token
+GET /userinfo
+WWW-Authenticate: Bearer realm="mock", error="invalid_token"
+
+{"error": "invalid_token"}

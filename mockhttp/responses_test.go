@@ -519,3 +519,67 @@ GET /gone
 		t.Errorf("GET /gone = %d, want 410", code)
 	}
 }
+
+func TestEachSkipsEmptyCopiesInJSON(t *testing.T) {
+	s := newDirServer(t, map[string]string{"users.json": usersFixture}, `### Some users
+@fixture = users.json
+GET /some
+Content-Type: application/json
+
+[
+  {{#each $fixture.users}}
+  {{#if $item.id != 2}}
+  {"name": "{{$item.name}}"}
+  {{/if}}
+  {{/each}}
+]
+
+### None
+@fixture = users.json
+GET /none
+Content-Type: application/json
+
+[{{#each $fixture.users}}{{#if $item.id == 9}}{{$item.id}}{{/if}}{{/each}}]
+
+### Text
+@fixture = users.json
+GET /text
+
+{{#each $fixture.users}}{{#if $item.id == 2}}-{{/if}}{{$item.id}} {{/each}}
+`)
+	_, some := serveRequest(t, s, "GET", "/some", "", "")
+	var names []map[string]string
+	if err := json.Unmarshal([]byte(some), &names); err != nil || len(names) != 3 || names[1]["name"] != "Cy" {
+		t.Errorf("GET /some = %v (%v)\n%s", names, err, some)
+	}
+	if _, none := serveRequest(t, s, "GET", "/none", "", ""); none != "[]" {
+		t.Errorf("GET /none = %q", none)
+	}
+	if _, text := serveRequest(t, s, "GET", "/text", "", ""); text != "1 -2 3 4" {
+		t.Errorf("GET /text = %q (text bodies keep every copy as written)", text)
+	}
+}
+
+func TestLoadWarnings(t *testing.T) {
+	for source, want := range map[string]string{
+		"### X\nGET /x\n\n{{$jwt iss={{host}} sub=1}}\n": "placeholders cannot nest",
+	} {
+		var logs strings.Builder
+		methods, err := restclient.Parse("t.http", strings.NewReader(source))
+		if err != nil {
+			t.Fatal(err)
+		}
+		New(methods, slog.New(slog.NewTextHandler(&logs, nil)))
+		if !strings.Contains(logs.String(), want) {
+			t.Errorf("%q: warnings lack %q:\n%s", source, want, logs.String())
+		}
+	}
+	// A default that is a $reference lints with a sample value, so it is not
+	// reported as invalid JSON.
+	var logs strings.Builder
+	methods, _ := restclient.Parse("t.http", strings.NewReader("### R\nPOST /r\nContent-Type: application/json\n\n{\"n\": {{$json.n | default $query.n}}}\n"))
+	New(methods, slog.New(slog.NewTextHandler(&logs, nil)))
+	if strings.Contains(logs.String(), "not valid JSON") {
+		t.Errorf("default $reference reported as invalid JSON:\n%s", logs.String())
+	}
+}

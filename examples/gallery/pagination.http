@@ -1,0 +1,57 @@
+# A paginated product catalog served from one fixture file: offset/limit
+# paging with a total and a next link, lookup by id with a real 404,
+# and a filtered list. Edit data/products.json and the next request sees it.
+#
+#   mock examples/gallery/pagination.http
+#   curl -s 'localhost:8080/products?offset=10&limit=5'
+#   curl -s localhost:8080/products/7
+#
+# See docs/examples.md#paginated-list.
+
+@fixture = data/products.json
+@default.header.Content-Type = application/json
+
+### Products page
+# Without ?limit= every product is listed; with it, the body carries the
+# limit and a link to the next page.
+GET /products
+
+{
+  "total": {{$fixture.products | length}},
+  "offset": {{$query.offset | default 0}},
+  {{#if $query.limit}}
+  "limit": {{$query.limit}},
+  "next": "/products?offset={{$query.offset | default 0 | add $query.limit}}&limit={{$query.limit}}",
+  {{/if}}
+  "items": [
+    {{#each $fixture.products | offset $query.offset | limit $query.limit}}
+    {"id": {{$item.id}}, "sku": "{{$item.sku}}", "name": "{{$item.name}}", "price": {{$item.price}}}
+    {{/each}}
+  ]
+}
+
+### Product by id
+@require = $fixture.products[id=$path.id]
+GET /products/:id
+
+{{$fixture.products[id=$path.id]}}
+
+### [404] No such product
+GET /products/:id
+
+{"error": "not_found", "message": "no product {{$path.id}}"}
+
+### Products in one category
+@path.category = ~brewing|serving|storage
+GET /categories/:category/products
+
+{
+  "category": "{{$path.category}}",
+  "items": [
+    {{#each $fixture.products}}
+    {{#if $item.category == $path.category}}
+    {"id": {{$item.id}}, "name": "{{$item.name}}", "in_stock": {{$item.in_stock}}}
+    {{/if}}
+    {{/each}}
+  ]
+}

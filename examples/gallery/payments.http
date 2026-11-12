@@ -1,0 +1,121 @@
+# A card payment API that fails the way real ones do. Test card numbers
+# choose the outcome, like a payment provider's sandbox:
+#
+#   4242424242424242  succeeds
+#   4000000000000002  declined (402)
+#   4000000000009995  insufficient funds (402)
+#   4000000000003220  needs 3-D Secure (200, requires_action)
+#   4000000000000119  processing error (500)
+#
+# Every charge needs an Idempotency-Key header, each API key may create 20
+# charges a second (429 after that, with X-RateLimit-* headers), and
+# sending X-Mock-Chaos: on makes one charge in ten fail with 503.
+#
+#   mock examples/gallery/payments.http
+#   curl -s localhost:8080/v1/payments -H 'Authorization: Bearer sk_test_1' \
+#     -H 'Idempotency-Key: k1' -H 'Content-Type: application/json' \
+#     -d '{"amount": 2500, "currency": "usd", "card": {"number": "4242424242424242"}}'
+#
+# See docs/examples.md#payment-api-with-failures.
+
+@fixture = data/payments.json
+@default.header.Content-Type = application/json
+
+### [401] Any request without an API key
+@header.Authorization = !
+* /v1/*
+
+{"error": {"type": "authentication_error", "message": "use Authorization: Bearer sk_test_..."}}
+
+### [401] Any request with another kind of key
+@header.Authorization = !~Bearer sk_test_.+
+* /v1/*
+
+{"error": {"type": "authentication_error", "message": "use Authorization: Bearer sk_test_..."}}
+
+### [400] Charge without an Idempotency-Key
+@header.Idempotency-Key = !
+POST /v1/payments
+
+{"error": {"type": "invalid_request_error", "message": "an Idempotency-Key header is required"}}
+
+### [503] Chaos: one charge in ten fails
+@header.X-Mock-Chaos = on
+@match.chance = 10%
+POST /v1/payments
+
+{"error": {"type": "api_error", "message": "the service is temporarily unavailable; retry with the same Idempotency-Key"}}
+
+### [400] Charge with a bad amount
+@json.amount = !~[1-9][0-9]*
+POST /v1/payments
+
+{"error": {"type": "invalid_request_error", "param": "amount", "message": "amount must be a positive whole number of cents"}}
+
+### [402] Declined card
+@json.card.number = 4000000000000002
+@rate-limit = 20/1s
+@rate-limit.key = {{$header.Authorization}}
+POST /v1/payments
+
+{"error": {"type": "card_error", "code": "card_declined", "message": "your card was declined"}}
+
+### [402] Insufficient funds
+@json.card.number = 4000000000009995
+@rate-limit = 20/1s
+@rate-limit.key = {{$header.Authorization}}
+POST /v1/payments
+
+{"error": {"type": "card_error", "code": "insufficient_funds", "message": "your card has insufficient funds"}}
+
+### Card needs 3-D Secure
+@json.card.number = 4000000000003220
+@rate-limit = 20/1s
+@rate-limit.key = {{$header.Authorization}}
+POST /v1/payments
+
+{"id": "pay_{{$ulid | keep}}", "status": "requires_action", "next_action": {"type": "redirect", "url": "https://bank.example/3ds/{{$ulid | keep}}"}}
+
+### [500] Processing error
+@json.card.number = 4000000000000119
+POST /v1/payments
+
+{"error": {"type": "api_error", "code": "processing_error", "message": "an error occurred while processing the card"}}
+
+### [201] Successful charge
+@json.card.number = ~(?P<number>[0-9]{12,19})
+@rate-limit = 20/1s
+@rate-limit.key = {{$header.Authorization}}
+POST /v1/payments
+Location: /v1/payments/pay_{{$ulid | keep}}
+
+{
+  "id": "pay_{{$ulid | keep}}",
+  "amount": {{$json.amount}},
+  "currency": "{{$json.currency | default usd | lower}}",
+  "status": "succeeded",
+  "card": {"last4": "{{$number | slice -4}}"},
+  "created": {{$timestamp}}
+}
+
+### [400] Charge with a bad card number
+POST /v1/payments
+
+{"error": {"type": "card_error", "code": "invalid_number", "param": "card.number", "message": "the card number is not a valid card number"}}
+
+### Payment by id
+@require = $fixture.payments[id=$path.id]
+GET /v1/payments/:id
+
+{{$fixture.payments[id=$path.id]}}
+
+### [201] Refund a payment
+@require = $fixture.payments[id=$path.id]
+POST /v1/payments/:id/refunds
+
+{"id": "re_{{$ulid | lower}}", "payment": "{{$path.id}}", "amount": {{$json.amount | default $fixture.payments[id=$path.id].amount}}, "status": "succeeded"}
+
+### [404] No such payment
+* /v1/payments/:id/*
+
+{"error": {"type": "invalid_request_error", "code": "resource_missing", "message": "no payment {{$path.id}}"}}

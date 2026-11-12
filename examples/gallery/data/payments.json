@@ -1,0 +1,7 @@
+{
+  "payments": [
+    {"id": "pay_1001", "amount": 2500, "currency": "usd", "status": "succeeded", "card": {"brand": "visa", "last4": "4242"}},
+    {"id": "pay_1002", "amount": 9900, "currency": "eur", "status": "refunded", "card": {"brand": "mastercard", "last4": "4444"}},
+    {"id": "pay_1003", "amount": 1200, "currency": "usd", "status": "failed", "card": {"brand": "visa", "last4": "0002"}, "failure_code": "card_declined"}
+  ]
+}

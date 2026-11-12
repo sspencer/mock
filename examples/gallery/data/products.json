@@ -1,0 +1,204 @@
+{
+  "products": [
+    {
+      "id": 1,
+      "sku": "P-001",
+      "name": "Teapot",
+      "category": "brewing",
+      "price": 4.0,
+      "in_stock": false
+    },
+    {
+      "id": 2,
+      "sku": "P-002",
+      "name": "Kettle",
+      "category": "serving",
+      "price": 5.75,
+      "in_stock": true
+    },
+    {
+      "id": 3,
+      "sku": "P-003",
+      "name": "Mug",
+      "category": "storage",
+      "price": 7.5,
+      "in_stock": true
+    },
+    {
+      "id": 4,
+      "sku": "P-004",
+      "name": "Saucer",
+      "category": "brewing",
+      "price": 9.25,
+      "in_stock": true
+    },
+    {
+      "id": 5,
+      "sku": "P-005",
+      "name": "Infuser",
+      "category": "serving",
+      "price": 11.0,
+      "in_stock": false
+    },
+    {
+      "id": 6,
+      "sku": "P-006",
+      "name": "Tea tin",
+      "category": "storage",
+      "price": 12.75,
+      "in_stock": true
+    },
+    {
+      "id": 7,
+      "sku": "P-007",
+      "name": "Strainer",
+      "category": "brewing",
+      "price": 14.5,
+      "in_stock": true
+    },
+    {
+      "id": 8,
+      "sku": "P-008",
+      "name": "Cozy",
+      "category": "serving",
+      "price": 16.25,
+      "in_stock": true
+    },
+    {
+      "id": 9,
+      "sku": "P-009",
+      "name": "Tray",
+      "category": "storage",
+      "price": 18.0,
+      "in_stock": false
+    },
+    {
+      "id": 10,
+      "sku": "P-010",
+      "name": "Whisk",
+      "category": "brewing",
+      "price": 19.75,
+      "in_stock": true
+    },
+    {
+      "id": 11,
+      "sku": "P-011",
+      "name": "Scale",
+      "category": "serving",
+      "price": 21.5,
+      "in_stock": true
+    },
+    {
+      "id": 12,
+      "sku": "P-012",
+      "name": "Timer",
+      "category": "storage",
+      "price": 23.25,
+      "in_stock": true
+    },
+    {
+      "id": 13,
+      "sku": "P-013",
+      "name": "Cup",
+      "category": "brewing",
+      "price": 25.0,
+      "in_stock": false
+    },
+    {
+      "id": 14,
+      "sku": "P-014",
+      "name": "Pitcher",
+      "category": "serving",
+      "price": 26.75,
+      "in_stock": true
+    },
+    {
+      "id": 15,
+      "sku": "P-015",
+      "name": "Sugar bowl",
+      "category": "storage",
+      "price": 28.5,
+      "in_stock": true
+    },
+    {
+      "id": 16,
+      "sku": "P-016",
+      "name": "Spoon",
+      "category": "brewing",
+      "price": 30.25,
+      "in_stock": true
+    },
+    {
+      "id": 17,
+      "sku": "P-017",
+      "name": "Coaster",
+      "category": "serving",
+      "price": 32.0,
+      "in_stock": false
+    },
+    {
+      "id": 18,
+      "sku": "P-018",
+      "name": "Thermos",
+      "category": "storage",
+      "price": 33.75,
+      "in_stock": true
+    },
+    {
+      "id": 19,
+      "sku": "P-019",
+      "name": "Bottle",
+      "category": "brewing",
+      "price": 35.5,
+      "in_stock": true
+    },
+    {
+      "id": 20,
+      "sku": "P-020",
+      "name": "Grinder",
+      "category": "serving",
+      "price": 37.25,
+      "in_stock": true
+    },
+    {
+      "id": 21,
+      "sku": "P-021",
+      "name": "Filter",
+      "category": "storage",
+      "price": 39.0,
+      "in_stock": false
+    },
+    {
+      "id": 22,
+      "sku": "P-022",
+      "name": "Scoop",
+      "category": "brewing",
+      "price": 40.75,
+      "in_stock": true
+    },
+    {
+      "id": 23,
+      "sku": "P-023",
+      "name": "Jar",
+      "category": "serving",
+      "price": 42.5,
+      "in_stock": true
+    },
+    {
+      "id": 24,
+      "sku": "P-024",
+      "name": "Caddy",
+      "category": "storage",
+      "price": 44.25,
+      "in_stock": true
+    },
+    {
+      "id": 25,
+      "sku": "P-025",
+      "name": "Brush",
+      "category": "brewing",
+      "price": 46.0,
+      "in_stock": false
+    }
+  ]
+}

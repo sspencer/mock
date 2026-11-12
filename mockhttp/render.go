@@ -1,6 +1,7 @@
 package mockhttp
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -313,18 +314,33 @@ func (w *templateWriter) value(value string) {
 	w.buf = append(w.buf, value...)
 }
 
-// separate puts a comma between JSON repeat copies, before any whitespace
-// that ends the previous copy.
-func (w *templateWriter) separate() {
-	if !w.json || w.inString {
-		return
+// renderCopy renders one copy of a repeat or each block. In JSON mode,
+// outside a string, copies are separated by commas: a copy that renders
+// only whitespace (an {{#if}} that did not hold) is dropped, and the comma
+// goes before the whitespace that ends the previous copy with content.
+// hadContent tracks whether an earlier copy of this block had any.
+func (r *renderer) renderCopy(nodes []templateNode, scope *renderScope, out *templateWriter, hadContent *bool) error {
+	mark, inString := len(out.buf), out.inString
+	if err := r.render(nodes, scope, out); err != nil {
+		return err
 	}
-	end := len(w.buf)
-	for end > 0 && strings.IndexByte(" \t\r\n", w.buf[end-1]) >= 0 {
-		end--
+	if !out.json || inString {
+		return nil
 	}
-	tail := string(w.buf[end:])
-	w.buf = append(append(w.buf[:end], ','), tail...)
+	if len(bytes.TrimSpace(out.buf[mark:])) == 0 {
+		out.buf = out.buf[:mark]
+		return nil
+	}
+	if *hadContent {
+		end := mark
+		for end > 0 && strings.IndexByte(" \t\r\n", out.buf[end-1]) >= 0 {
+			end--
+		}
+		tail := append([]byte(nil), out.buf[end:]...)
+		out.buf = append(append(out.buf[:end], ','), tail...)
+	}
+	*hadContent = true
+	return nil
 }
 
 func (r *renderer) render(nodes []templateNode, scope *renderScope, out *templateWriter) error {
@@ -345,12 +361,10 @@ func (r *renderer) render(nodes []templateNode, scope *renderScope, out *templat
 			if node.max > node.min {
 				count += r.rng.IntN(node.max - node.min + 1)
 			}
+			hadContent := false
 			for i := range count {
-				if i > 0 {
-					out.separate()
-				}
 				copyScope := &renderScope{parent: scope, index: i, inRepeat: true}
-				if err := r.render(node.children, copyScope, out); err != nil {
+				if err := r.renderCopy(node.children, copyScope, out, &hadContent); err != nil {
 					return err
 				}
 			}
@@ -370,12 +384,10 @@ func (r *renderer) render(nodes []templateNode, scope *renderScope, out *templat
 					return err
 				}
 			}
+			hadContent := false
 			for i, item := range items {
-				if i > 0 {
-					out.separate()
-				}
 				copyScope := &renderScope{parent: scope, index: i, inRepeat: true, item: item, hasItem: true}
-				if err := r.render(node.children, copyScope, out); err != nil {
+				if err := r.renderCopy(node.children, copyScope, out, &hadContent); err != nil {
 					return err
 				}
 			}
@@ -458,7 +470,10 @@ func (r *renderer) resolve(node templateNode, scope *renderScope) (string, bool)
 		// A default supplies the value; the filters after it still apply.
 		for i, filter := range filters {
 			if filter.name == "default" {
-				value, _ = r.argValue(filter.args[0], scope)
+				var found bool
+				if value, found = r.argValue(filter.args[0], scope); !found && r.sample {
+					value = sampleValue
+				}
 				ok, filters = true, filters[i+1:]
 				break
 			}

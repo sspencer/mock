@@ -1,0 +1,55 @@
+# A webhook sender: register an endpoint, then every order you create is
+# answered at once and followed by signed webhook calls to the URL in the
+# request (order.created, then order.shipped two seconds later). A
+# receiver that fails gets each call retried up to three times.
+#
+#   mock examples/gallery/webhooks.http
+#   curl -s localhost:8080/orders -H 'Content-Type: application/json' \
+#     -d '{"id": "ord_1", "webhook_url": "http://localhost:9000/hooks"}'
+#
+# The X-Signature header is an HMAC-SHA256 of the order id with the
+# endpoint secret, so a receiver can practise checking signatures (filter
+# arguments are literals or $references, so the secret is written out in
+# the hmac filter as well as in @webhook_secret). The
+# admin UI shows each call (marked callback, or retry) with the response
+# the receiver gave.
+#
+# See docs/examples.md#webhook-sender.
+
+@webhook_secret = whsec_test_secret
+@default.header.Content-Type = application/json
+
+### [201] Register a webhook endpoint
+@json.url = ~https?://.+
+POST /webhook_endpoints
+
+{"id": "we_{{$ulid | lower}}", "url": "{{$json.url}}", "secret": "{{webhook_secret}}", "events": ["order.created", "order.shipped"]}
+
+### [422] Register an endpoint without a URL
+POST /webhook_endpoints
+
+{"error": "url must be an http or https URL"}
+
+### [202] Create an order, then send its webhooks
+@json.id = *
+@json.webhook_url = ~https?://.+
+@callback.retries = 3
+@callback = POST {{$json.webhook_url}}
+@callback.header.Content-Type = application/json
+@callback.header.X-Event = order.created
+@callback.header.X-Signature = sha256={{$json.id | hmac whsec_test_secret}}
+@callback.body = {"type": "order.created", "data": {"id": "{{$json.id}}", "status": "pending"}}
+@callback.1 = POST {{$json.webhook_url}}
+@callback.1.delay = 2s
+@callback.1.header.Content-Type = application/json
+@callback.1.header.X-Event = order.shipped
+@callback.1.header.X-Signature = sha256={{$json.id | hmac whsec_test_secret}}
+@callback.1.body = {"type": "order.shipped", "data": {"id": "{{$json.id}}", "status": "shipped", "tracking": "1Z{{$randomInt 100000 999999}}"}}
+POST /orders
+
+{"id": "{{$json.id}}", "status": "pending"}
+
+### [422] Create an order without a webhook URL
+POST /orders
+
+{"error": "id and webhook_url are required"}

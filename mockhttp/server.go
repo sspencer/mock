@@ -788,6 +788,10 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method, fixt
 				check(node.elseChildren, inRepeat)
 				continue
 			case textNode:
+				if i := strings.Index(node.text, "{{$"); i >= 0 {
+					snippet := node.text[i:min(len(node.text), i+40)]
+					warn("placeholder could not be read and is preserved literally (placeholders cannot nest; pass a $reference as the argument instead)", snippet)
+				}
 				continue
 			}
 			if node.hasFilter("default") {

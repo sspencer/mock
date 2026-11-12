@@ -1,0 +1,51 @@
+# File uploads: a multipart form with a file and a description, a raw
+# upload with PUT, a size limit, and type checks. mock reads request
+# bodies up to 1 MiB for matching; the size check uses Content-Length, so
+# it works for any size.
+#
+#   mock examples/gallery/uploads.http
+#   curl -s localhost:8080/uploads -F file=@photo.png -F description=Holiday
+#
+# See docs/examples.md#file-uploads.
+
+@default.header.Content-Type = application/json
+
+### [413] Upload over 5 MB
+@header.Content-Length = ~[5-9][0-9]{6}|[0-9]{8,}
+POST /uploads
+
+{"error": "file_too_large", "max_bytes": 5000000}
+
+### [201] Image upload
+@form.file = ~(?i)(?P<filename>.+\.(png|jpe?g|gif|webp))
+POST /uploads
+Location: /uploads/{{$ulid | keep}}
+
+{
+  "id": "{{$ulid | keep}}",
+  "filename": "{{$filename}}",
+  "description": "{{$form.description | default ""}}",
+  "url": "/uploads/{{$ulid | keep}}/{{$filename | urlencode}}"
+}
+
+### [415] Upload of another file type
+@form.file = *
+POST /uploads
+
+{"error": "unsupported_media_type", "allowed": ["png", "jpeg", "gif", "webp"]}
+
+### [400] Upload without a file part
+POST /uploads
+
+{"error": "missing_file", "message": "send the file as a multipart/form-data part named \"file\""}
+
+### [201] Raw upload
+@header.Content-Type = ~(image|application)/.+
+PUT /uploads/:name
+
+{"name": "{{$path.name}}", "bytes": {{$header.Content-Length | default 0}}, "type": "{{$header.Content-Type}}"}
+
+### [415] Raw upload without a usable Content-Type
+PUT /uploads/:name
+
+{"error": "unsupported_media_type"}
