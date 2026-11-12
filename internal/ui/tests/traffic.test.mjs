@@ -76,3 +76,10 @@ test('callback rows always show their host and get a badge', () => {
     assert.deepEqual(eventBadge({ resendOf: 4, match: {} }), { text: 'resent', title: 'Resent from request #4 from the admin UI' });
     assert.equal(eventBadge({ resendOf: 0, match: { upstream: 'http://api' } }).title, 'Resent from the admin UI and forwarded to http://api');
 });
+
+test('numbered callbacks and retries get their own badge text', () => {
+    const second = { callback: { trigger: 7, index: 2 }, match: { route: { name: 'Pay' } } };
+    assert.deepEqual(eventBadge(second), { text: 'callback', title: 'Callback 2 sent by Pay after request #7' });
+    const retry = { callback: { trigger: 7, attempt: 3, error: 'connection refused' }, match: { route: { name: 'Pay' } } };
+    assert.deepEqual(eventBadge(retry), { text: 'retry', title: 'Sent by Pay after request #7 · attempt 3 · failed: connection refused' });
+});

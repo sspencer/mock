@@ -196,7 +196,7 @@ func safeMethod(method string) bool {
 // mockResponse serves the sample request from a server holding only this
 // route, without its delay, faults, streaming, rate limit or callback.
 func mockResponse(method restclient.Method, sample sampleRequest) (*checkResponse, error) {
-	method.Port, method.Fault, method.Stream, method.RateLimit, method.Callback = 0, "", 0, 0, nil
+	method.Port, method.Fault, method.Stream, method.RateLimit, method.Callbacks = 0, "", 0, 0, nil
 	method.Delay, method.DelayMax = 0, 0
 	method.Variables = maps.Clone(method.Variables)
 	delete(method.Variables, "delay")

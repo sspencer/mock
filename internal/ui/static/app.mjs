@@ -7,7 +7,7 @@ import { filterTerms, matchesFilter, routeFilter } from './filter.mjs';
 import { TrafficStream, requestHost, eventBadge } from './traffic.mjs';
 import { noSelection, selectRequest, selectRoute, selectCompare, selectedRequestId, selectedRoute, afterEventsChanged, afterRoutesLoaded } from './selection.mjs';
 import { compareEvents, differenceCount } from './compare.mjs';
-import { countNodes, formatFixture, losslessIssue, maxTreeNodes, parseFixture } from './fixture.mjs';
+import { countNodes, editableFixture, formatFixture, losslessIssue, maxTreeNodes, parseFixture } from './fixture.mjs';
 import { renderFixtureTree } from './fixturetree.mjs';
 
 const MAX_EVENTS = 1000;
@@ -642,7 +642,7 @@ function renderInspector() {
         routeDetails.textContent = formatRoute(route, routeCurl(route));
         copyRouteCurlButton.disabled = !routePort(route);
         const editing = isEditingFixture(route);
-        editFixtureButton.hidden = !route.fixture;
+        editFixtureButton.hidden = !route.fixture || !editableFixture(route.fixture);
         editFixtureButton.disabled = stale && !editing;
         editFixtureButton.setAttribute('aria-pressed', String(editing));
         fixtureEditor.hidden = !editing;

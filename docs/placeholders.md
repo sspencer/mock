@@ -29,8 +29,9 @@ a namespace:
 - `{{$cookie.session}}` reads a request cookie (case-sensitive).
 - `{{$env.API_TOKEN}}` reads an environment variable of the `mock` process
   (see [Variables from the command line](request-files.md#variables-from-the-command-line)).
-- `{{$fixture.users.0.name}}` reads a value from the route's `@fixture` JSON
-  file (see [Fixture data](#fixture-data)).
+- `{{$fixture.users.0.name}}` reads a value from the route's `@fixture` data
+  file, and `{{$fixture.users[id=$path.id].name}}` looks a record up by a
+  field (see [Fixture data](#fixture-data)).
 - `{{$request}}` is the whole request as a JSON object (see
   [Echoing the request](#echoing-the-request)).
 
@@ -55,8 +56,15 @@ Useful generated values:
 {{$bool}}          {{$integer}}        {{$float}}
 {{$uuid}}          {{$guid}}           {{$timestamp}}
 {{$isoTimestamp}}  {{$file}}           {{$sentence}}
-{{$paragraph}}     {{$article}}
+{{$paragraph}}     {{$article}}     {{$company}}
+{{$city}}          {{$country}}       {{$address}}
+{{$ip}}            {{$word}}          {{$price}}
+{{$ulid}}
 ```
+
+`{{$price}}` is an amount from `1.00` to `999.99` with two decimals, `{{$ip}}`
+an IPv4 address, and `{{$ulid}}` a [ULID](https://github.com/ulid/spec): 26
+characters that sort by creation time.
 
 Generated values are random faker data and are recalculated each time a
 response body is rendered.
@@ -68,6 +76,10 @@ These REST Client–style generators take arguments:
 {{$timestamp [offset option]}}
 {{$datetime rfc1123|iso8601 [offset option]}}
 {{$localDatetime rfc1123|iso8601 [offset option]}}
+{{$oneOf value value ...}}
+{{$randomFloat min max [decimals]}}
+{{$randomDate from to}}
+{{$jwt claim=value ...}}
 ```
 
 - `$randomInt` returns an integer from `min` (inclusive) up to `max` (exclusive).
@@ -79,6 +91,14 @@ These REST Client–style generators take arguments:
   `y` (years), `Q` (quarters), `M` (months), `w` (weeks), `d` (days), `h`,
   `m`, `s`, or `ms`. For example, `{{$timestamp -1 d}}` is one day ago and
   `{{$datetime iso8601 2 h}}` is two hours from now.
+- `$oneOf` picks one of its arguments, for enum fields:
+  `"status": "{{$oneOf pending paid "on hold"}}"`.
+- `$randomFloat` returns a number from `min` to `max` with `decimals` places
+  (default 2).
+- `$randomDate` picks a date from `from` to `to`, inclusive. With two dates
+  (`2024-01-31`) it returns a date; with RFC 3339 times
+  (`2024-01-31T09:00:00Z`) it returns a UTC time to the second.
+- `$jwt` builds a JSON Web Token; see [Signed tokens](#signed-tokens).
 - Invalid arguments leave the placeholder literal and log a load-time warning.
 - A path or query parameter named like a function (for example `?timestamp=`)
   wins over the bare placeholder, but not over a call with arguments.
@@ -91,10 +111,11 @@ treated as unknown placeholders; use `{{$env.NAME}}` in place of
 
 ### Fixture data
 
-`@fixture = path` names a JSON file whose values `{{$fixture.path}}`
+`@fixture = path` names a data file whose values `{{$fixture.path}}`
 placeholders read, so canned data can live in one file and be reused across
-routes. The path is relative to the `.http` file, like a `< path` body. Set it
-at file scope for every section, or in a section to override it:
+routes, and edited without touching the `.http` file. The path is relative to
+the `.http` file, like a `< path` body. Set it at file scope for every
+section, or in a section to override it:
 
 ```http
 @fixture = data/catalog.json
@@ -110,13 +131,50 @@ Content-Type: application/json
   numeric array indexes, and `["key"]` for keys with dots
   (`{{$fixture["site.name"]}}`). A string is inserted as its text, and other
   values as compact JSON, so `{{$fixture.featured.tags}}` copies an array.
+  `{{$fixture}}` alone is the whole file.
+- The format follows the extension. `.csv` is read as an array of objects, one
+  per row, keyed by the header row, with string values; a row may have fewer
+  fields than the header but not more. `.ndjson` and `.jsonl` are read as an
+  array of the values on each line (blank lines are skipped). Any other
+  extension is JSON.
 - The file is read for each response that uses it, so edits apply to the next
   request. `mock` also watches it and reports problems on reload. The admin UI
-  can [edit it](admin-ui.md#editing-fixtures).
-- A missing file, invalid JSON or a path with no value warns at load time and
+  can [edit](admin-ui.md#editing-fixtures) JSON fixtures; CSV and NDJSON files
+  are edited in an editor.
+- A missing file, invalid data or a path with no value warns at load time and
   leaves the placeholder literal unless it has a `| default`.
-- Path segments are literal, so a fixture can't be indexed by a request value
-  such as `{{$path.id}}`.
+
+#### Looking up a record
+
+A `[field=value]` selector keeps the array elements whose `field` equals
+`value`. The value can be a `$reference` to the request, so one route serves
+every record in the file:
+
+```http
+@fixture = data/users.json
+
+### User
+@require = $fixture.users[id=$path.id]
+GET /users/:id
+Content-Type: application/json
+
+{"id": {{$path.id}}, "name": "{{$fixture.users[id=$path.id].name}}"}
+
+### [404] No such user
+GET /users/:id
+
+{"error": "no user {{$path.id}}"}
+```
+
+- Values compare as text, so `[id=42]` matches `"id": 42` and `"id": "42"`.
+  The value can't hold spaces, quotes, `]`, `{` or `}`; a reference whose value
+  does, or has no value, selects nothing.
+- `@require = $reference` makes the route match only when the reference has a
+  value for this request. Without one, the next route answers, here the
+  `404`. The near-miss list in the admin UI says which `@require` failed.
+  `{{...}}` around the reference is optional.
+- Selectors work in every path: `{{$json.items[sku=A1].qty}}` reads the
+  request body, and `@json.items[sku=A1].qty = 2` matches on it.
 
 ### Echoing the request
 
@@ -156,6 +214,8 @@ A placeholder can pipe its value through filters, applied left to right:
 {{$name | upper}}                 ADA LOVELACE
 {{$query.q | trim | urlencode}}   cats%20and%20dogs
 {{$id | add 1}}                   43
+{{$json.total | mul 1.2 | round 2}}  59.88
+{{$timestamp | date date}}        2026-11-11
 {{$query.page | default 1}}       1 when the request has no ?page=
 {{$header.Authorization | base64}}
 {{$json.note | json}}             "a \"quoted\" note", as a JSON string
@@ -168,13 +228,24 @@ A placeholder can pipe its value through filters, applied left to right:
 | `urlencode` | Percent-encode (a space becomes `%20`). |
 | `base64` | Standard base64 encoding. |
 | `json` | Encode as a quoted JSON string; use it outside quotes. |
-| `add n` | Add the integer `n` (negative to subtract). A non-integer value is unchanged. |
+| `base64decode` | Decode standard or URL-safe base64, with or without padding. Invalid input is unchanged. |
+| `length` | The number of elements of a JSON array, members of a JSON object, or characters of anything else: `{{$fixture.users \| length}}`. |
+| `slice a [b]` | Characters from position `a` up to (not including) `b`, or to the end. Negative positions count from the end: `{{$name \| slice 0 1}}` is the initial, `slice -4` the last four. |
+| `replace a b` | Replace every `a` with `b`. |
+| `sha256` | Hex SHA-256 digest. |
+| `hmac key` | Hex HMAC-SHA256 with `key`, to sign a webhook body the way a real service does. |
+| `add n`, `sub n`, `mul n` | Arithmetic. Whole numbers stay whole; otherwise the result is a decimal. A value that isn't a number is unchanged. |
+| `int` | Drop the fractional part: `3.9` becomes `3`. |
+| `round [n]` | Round to `n` decimal places (default 0), always writing `n` places: `{{$price \| round 1}}`. |
+| `date layout` | Reformat a timestamp. It reads Unix seconds or milliseconds, RFC 3339, RFC 1123 or `2006-01-02`, and writes `unix`, `unixms`, `iso8601` (RFC 3339), `rfc1123`, `date`, `time`, or a [Go layout](https://pkg.go.dev/time#pkg-constants) such as `"Jan 2, 2006"`. An unreadable value is unchanged. |
 | `default value` | Use `value` when nothing resolves the placeholder. Later filters still apply. A placeholder with a default never warns at load time. |
 | `keep [name]` | Reuse the first generated value, see below. |
 
 Quote a filter argument that holds spaces or `|`: `{{$q | default "no query"}}`.
-An unknown filter, or one with the wrong arguments, leaves the placeholder
-literal and logs a load-time warning.
+An argument that is a `$reference` is read from the request, such as
+`{{$json.amount | mul $query.rate}}` or `{{$header.X-Id | default $query.id}}`;
+one with no value counts as empty text. An unknown filter, or one with the
+wrong arguments, leaves the placeholder literal and logs a load-time warning.
 
 Generated values such as `{{$uuid}}` are fresh at each use. Add `| keep` to
 reuse one value: every `{{$uuid | keep}}` in the response, its headers and its
@@ -247,8 +318,91 @@ Content-Type: application/json
   `{{#each $json.orders.*.sku}}`. A value that is not an array renders the
   block once, with that value as `{{$item}}`.
 - A missing array, `null`, or a body that isn't JSON renders no copies.
+- `| offset n` skips the first `n` elements and `| limit n` stops after `n`,
+  for paginated lists from one fixture. `n` is a whole number or a
+  `$reference`; a value that isn't a whole number is ignored, so a request
+  without `?limit=` gets everything:
+
+  ```http
+  ### Users page
+  @fixture = data/users.json
+  GET /users
+  Content-Type: application/json
+
+  {"total": {{$fixture.users | length}}, "users": [
+    {{#each $fixture.users | offset $query.offset | limit $query.limit}}
+    {"id": {{$item.id}}, "name": "{{$item.name}}"}
+    {{/each}}
+  ]}
+  ```
 - Commas, standalone tag lines, nesting and the 16 MiB limit work as for
   `{{#repeat}}`; `{{$index}}` and `{{$item}}` belong to the innermost block.
+
+## Conditional blocks
+
+`{{#if condition}} ... {{/if}}` renders its contents only when the condition
+holds, and `{{else}}` adds what to render otherwise. One route can then cover
+an optional field or a variant instead of two near-identical sections:
+
+```http
+### User
+GET /users/:id
+Content-Type: application/json
+
+{
+  "id": "{{$path.id}}",
+  {{#if $query.expand}}
+  "profile": {"bio": "{{$sentence}}"},
+  {{/if}}
+  {{#if $header.X-Plan == pro}}
+  "limits": {"requests": 10000}
+  {{else}}
+  "limits": {"requests": 100}
+  {{/if}}
+}
+```
+
+- `{{#if $ref}}` holds when the reference has a value other than empty,
+  `false`, `0` or `null`, so `?expand=false` reads as off.
+- `{{#if $ref == value}}` and `{{#if $ref != value}}` compare text. The value
+  can be quoted (`"site admin"`) or another `$reference`. A reference with no
+  value equals nothing.
+- The reference is anything a placeholder reads, such as `$query.name`,
+  `$json.user.role`, `$fixture.flags.beta`, `$item.active` inside an
+  `{{#each}}`, or a plain `@variable` name. Conditions stop there: there is no
+  `and`, `or` or arithmetic, so templates stay templates.
+- Blocks nest with each other and with `{{#repeat}}` and `{{#each}}`. Tags
+  alone on their line take the line with them, as for `{{#repeat}}`. A tag
+  without its partner, a second `{{else}}`, or a malformed condition is left
+  literal and logs a load-time warning.
+
+## Signed tokens
+
+`{{$jwt claim=value ...}}` builds a JSON Web Token, so a mocked login endpoint
+returns a token that client libraries can decode and check for expiry:
+
+```http
+@jwt.secret = {{$env.JWT_SECRET | default dev-secret}}
+
+### Login
+POST /login
+Content-Type: application/json
+
+{"token": "{{$jwt sub=$json.username role=admin exp=1h}}"}
+```
+
+- Each argument is a claim. A value is literal text (quote it when it holds
+  spaces) or a `$reference`; a claim whose reference has no value is left out.
+- `iat` is the time of the response unless you set it. `exp`, `nbf` and `iat`
+  take a duration from now, such as `exp=1h` or `nbf=-5m`, or Unix seconds.
+- `sub`, `iss`, `aud` and `jti` are always strings. Other values that read as
+  JSON numbers, booleans, objects or arrays keep that type
+  (`admin=true`, `uid=$json.id`); the rest are strings.
+- With `@jwt.secret` the token is signed with HS256. The secret is a template,
+  so it can come from the environment as above. Without it the token is
+  unsigned (`"alg": "none"`) and ends with a dot.
+- Under `@seed`, `iat` and relative times count from 2025-01-01, so tokens are
+  reproducible.
 
 ## Reproducible data
 
@@ -256,7 +410,7 @@ Generated values are random by default. Set `@seed` to any text to make them
 reproducible: the same request (method, URL and body) then gets the same
 names, UUIDs, `{{$randomInt}}` numbers and `{{#repeat min max}}` counts every
 time, while different requests still differ. Generated timestamps
-(`{{$timestamp}}` and `{{$isoTimestamp}}` without arguments) are fixed to
+(`{{$timestamp}}`, `{{$isoTimestamp}}` and the time in `{{$ulid}}`) are fixed to
 2025-01-01 under a seed; `{{$datetime ...}}` and other clock functions with
 arguments still use the current time.
 

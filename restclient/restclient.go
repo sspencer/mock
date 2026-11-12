@@ -95,8 +95,12 @@ type Method struct {
 	// Compress is the @compress mode: "" (off), "gzip", "deflate" or
 	// "auto" (chosen from the request's Accept-Encoding).
 	Compress string
-	// Callback is the @callback request sent after the response, if any.
-	Callback *Callback
+	// Callbacks are the @callback and @callback.N requests sent after the
+	// response, in Index order, each after the previous one finished.
+	Callbacks []*Callback
+	// CallbackRetries is the section's @callback.retries, the default for
+	// callbacks that set no retries of their own.
+	CallbackRetries int
 	// RateLimit is the @rate-limit budget: at most RateLimit requests per
 	// RateWindow, after which the route answers 429. 0 means no limit.
 	RateLimit  int
@@ -106,6 +110,22 @@ type Method struct {
 	// The server sends it only when neither a "< path" file's extension nor
 	// sniffing the body gives a specific type.
 	DefaultContentType string
+	// StatusTemplate, when set, is rendered for each response to give its
+	// status, from "### [{{...}}] Name" or @status = {{...}}. Status is then
+	// only nominal (200).
+	StatusTemplate string
+	// Require is the reference (without "$") that @require needs to have a
+	// value, such as "fixture.users[id=$path.id]"; without one, the route
+	// does not match.
+	Require string
+	// Missing is the @missing status for a "< path" file that does not
+	// exist; 0 keeps the default (404 for a templated path, else 500).
+	// MissingNext (@missing = next) lets later routes answer instead.
+	Missing     int
+	MissingNext bool
+	// ETag is set by @etag = auto: responses carry a hash ETag and answer
+	// a matching If-None-Match with 304.
+	ETag bool
 	// Fallback is set by @fallback = true: the route is tried after every
 	// route without it, whatever the load order.
 	Fallback bool
@@ -186,16 +206,29 @@ func isMethodToken(token string) bool {
 }
 
 // Callback is an outbound request a route sends after it responds, set by
-// @callback = METHOD URL and the @callback.delay, @callback.header.Name and
-// @callback.body directives. URL, header values and Body are templates
-// rendered against the triggering request.
+// @callback = METHOD URL (or @callback.N = METHOD URL) and the .delay,
+// .header.Name, .body and .retries directives under it. URL, header values
+// and Body are templates rendered against the triggering request.
 type Callback struct {
+	// Index orders a route's callbacks: 0 for @callback, N for @callback.N.
+	Index   int
 	Method  string
 	URL     string
 	Delay   time.Duration
 	Headers http.Header
 	Body    string
+	// Retries is how many times a failed send (no response, 429 or 5xx) is
+	// retried with backoff.
+	Retries int
+	// retriesSet records an explicit @callback.N.retries, which wins over
+	// the section's @callback.retries.
+	retriesSet bool
+	// line is the first directive that mentions the callback, for errors.
+	line int
 }
+
+// maxCallbackRetries caps @callback.retries.
+const maxCallbackRetries = 10
 
 // legacyVariablePattern matches the removed "# $name=value" comment variables.
 var legacyVariablePattern = regexp.MustCompile(`^\$([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(.*)$`)
@@ -436,7 +469,11 @@ func (o Options) Parse(source string, r io.Reader) ([]Method, error) {
 			if err := flush(); err != nil {
 				return nil, err
 			}
-			name, status, err := parseSectionName(strings.TrimSpace(after))
+			name, statusTemplate := strings.TrimSpace(after), ""
+			if match := sectionStatusTemplatePattern.FindStringSubmatch(name); match != nil {
+				name, statusTemplate = name[len(match[0]):], match[1]
+			}
+			name, status, err := parseSectionName(name)
 			if err != nil {
 				return nil, parseErrorf(source, lineNumber, "%v", err)
 			}
@@ -445,6 +482,7 @@ func (o Options) Parse(source string, r io.Reader) ([]Method, error) {
 				name = unnamedSection
 			}
 			current = newMethod(name, status, source, lineNumber)
+			current.StatusTemplate = statusTemplate
 			section = section[:0]
 			sectionEndings = sectionEndings[:0]
 			sectionNameLine = lineNumber
@@ -514,6 +552,10 @@ func (o Options) Parse(source string, r io.Reader) ([]Method, error) {
 // sectionStatusPattern matches a leading "[code]" in a ### section name.
 var sectionStatusPattern = regexp.MustCompile(`^\[\s*(\d+)\s*\]\s*`)
 
+// sectionStatusTemplatePattern matches a leading "[{{placeholder}}]" in a
+// ### section name, a status rendered for each response.
+var sectionStatusTemplatePattern = regexp.MustCompile(`^\[\s*(\{\{.*?\}\})\s*\]\s*`)
+
 // parseSectionName splits an optional leading "[status]" from a ### section
 // name, as in "### [204] Delete a user". Status is 0 when none is given.
 // Brackets that do not hold only digits, like "[beta]", stay part of the name.
@@ -573,7 +615,7 @@ func scanDirectives(lines []string, lineAt func(int) int, source, sectionName st
 // value may hold any characters; surrounding whitespace is trimmed and the
 // escapes \n, \r, \t and \\ are replaced.
 func parseDefinition(line, source string, lineNumber int) (definition, error) {
-	name, value, ok := strings.Cut(line[1:], "=")
+	name, value, ok := cutDefinition(line[1:])
 	if !ok {
 		return definition{}, parseErrorf(source, lineNumber,
 			"invalid variable definition %s (expected \"@name = value\")", quoteSnippet(line))
@@ -591,6 +633,25 @@ func parseDefinition(line, source string, lineNumber int) (definition, error) {
 			"invalid variable name %q (use letters, digits, '_', '.', '-', starting with a letter or '_')", name)
 	}
 	return definition{name: name, value: unescapeValue(strings.TrimSpace(value)), line: lineNumber}, nil
+}
+
+// cutDefinition splits "name = value" at the first "=" outside brackets, so
+// a @json.items[sku=A1].qty matcher keeps its selector.
+func cutDefinition(text string) (name, value string, ok bool) {
+	depth := 0
+	for i := 0; i < len(text); i++ {
+		switch text[i] {
+		case '[':
+			depth++
+		case ']':
+			depth = max(depth-1, 0)
+		case '=':
+			if depth == 0 {
+				return text[:i], text[i+1:], true
+			}
+		}
+	}
+	return text, "", false
 }
 
 func unescapeValue(value string) string {
@@ -657,6 +718,7 @@ func parseSection(pending pendingSection, fileDefs []definition, opts Options, s
 	method := pending.method
 	lines := pending.lines
 	sectionNameLine := pending.nameLine
+	nameStatus := method.Status != 0 || method.StatusTemplate != ""
 	if method.Status == 0 {
 		method.Status = http.StatusOK
 	}
@@ -681,18 +743,26 @@ func parseSection(pending pendingSection, fileDefs []definition, opts Options, s
 		method.Variables[def.name] = def.value
 		method.VariableLines[def.name] = def.line
 	}
-	var callbackLine int
 	for _, def := range defs {
 		if err := applyControlVariable(&method, def, source); err != nil {
 			return method, err
 		}
-		if strings.HasPrefix(def.name, "callback.") && callbackLine == 0 {
-			callbackLine = def.line
-		}
 	}
-	if method.Callback != nil && method.Callback.Method == "" {
-		return method, parseErrorf(source, callbackLine,
-			`section %q: @callback.* directives need "@callback = METHOD URL" (example: "@callback = POST {{$json.callbackUrl}}")`, method.Name)
+	if err := applyStatusDirective(&method, defs, pending.directives.defs, nameStatus, source); err != nil {
+		return method, err
+	}
+	for _, callback := range method.Callbacks {
+		if callback.Method == "" {
+			directive := "@callback"
+			if callback.Index > 0 {
+				directive += "." + strconv.Itoa(callback.Index)
+			}
+			return method, parseErrorf(source, callback.line,
+				`section %q: %s.* directives need "%s = METHOD URL" (example: "%s = POST {{$json.callbackUrl}}")`, method.Name, directive, directive, directive)
+		}
+		if !callback.retriesSet {
+			callback.Retries = method.CallbackRetries
+		}
 	}
 
 	if i >= len(lines) {
@@ -1089,8 +1159,35 @@ func applyControlVariable(method *Method, def definition, source string) error {
 	}
 	switch def.name {
 	case "status":
-		return parseErrorf(source, def.line,
-			`section %q: @status is not supported; put the status in the section name instead (example: "### [204] Delete a user")`, method.Name)
+		// applyStatusDirective handles it, once the section name's status is known.
+	case "require":
+		ref, err := ParseRequire(value)
+		if err != nil {
+			return parseErrorf(source, def.line, "section %q: @require %v", method.Name, err)
+		}
+		method.Require = ref
+	case "missing":
+		switch text := strings.ToLower(strings.TrimSpace(value)); text {
+		case "next":
+			method.Missing, method.MissingNext = 0, true
+		default:
+			status, err := strconv.Atoi(text)
+			if err != nil || status < 200 || status > 999 {
+				return parseErrorf(source, def.line, `section %q: @missing must be next or a status between 200 and 999, such as "@missing = 404"`, method.Name)
+			}
+			method.Missing, method.MissingNext = status, false
+		}
+	case "etag":
+		switch mode := strings.ToLower(strings.TrimSpace(value)); mode {
+		case "auto":
+			method.ETag = true
+		case "off":
+			method.ETag = false
+		default:
+			return parseErrorf(source, def.line, `section %q: @etag must be auto or off`, method.Name)
+		}
+	case "jwt.secret":
+		// Read with Variable when a {{$jwt}} token is signed.
 	case "file":
 		return parseErrorf(source, def.line, "section %q: %s", method.Name, fileVariableRemoved)
 	case "delay":
@@ -1146,7 +1243,7 @@ func applyControlVariable(method *Method, def definition, source string) error {
 	case "fixture":
 		fixture := strings.TrimSpace(value)
 		if fixture == "" || strings.Contains(fixture, "{{") {
-			return parseErrorf(source, def.line, `section %q: @fixture needs a JSON file path without placeholders, such as "@fixture = data/users.json"`, method.Name)
+			return parseErrorf(source, def.line, `section %q: @fixture needs a JSON, CSV or NDJSON file path without placeholders, such as "@fixture = data/users.json"`, method.Name)
 		}
 		method.Fixture = fixture
 	case "callback":
@@ -1154,7 +1251,7 @@ func applyControlVariable(method *Method, def definition, source string) error {
 		if err != nil {
 			return parseErrorf(source, def.line, "section %q: @callback %v", method.Name, err)
 		}
-		callback := method.callback()
+		callback := method.callback(0, def.line)
 		callback.Method, callback.URL = callbackMethod, target
 	case "proxy":
 		proxy := strings.TrimSpace(value)
@@ -1191,17 +1288,48 @@ func applyControlVariable(method *Method, def definition, source string) error {
 	return nil
 }
 
-// callback returns the method's Callback, creating it for the first
-// @callback directive.
-func (m *Method) callback() *Callback {
-	if m.Callback == nil {
-		m.Callback = &Callback{Headers: make(http.Header)}
+// applyStatusDirective applies @status, a response status or a template
+// such as "{{$query.status | default 200}}". A status in the section name
+// wins over a file-level @status; a section cannot set both.
+func applyStatusDirective(method *Method, defs, sectionDefs []definition, nameStatus bool, source string) error {
+	i := slices.IndexFunc(defs, func(def definition) bool { return def.name == "status" })
+	if i < 0 {
+		return nil
 	}
-	return m.Callback
+	def := defs[i]
+	if nameStatus {
+		if slices.ContainsFunc(sectionDefs, func(d definition) bool { return d.name == "status" }) {
+			return parseErrorf(source, def.line, `section %q sets a status in its name and with @status; keep one`, method.Name)
+		}
+		return nil
+	}
+	value := strings.TrimSpace(def.value)
+	if PlaceholderPattern.MatchString(value) {
+		method.StatusTemplate = value
+		return nil
+	}
+	status, err := strconv.Atoi(Expand(value, method.Variables, nil))
+	if err != nil || status < 200 || status > 999 {
+		return parseErrorf(source, def.line, `section %q: @status must be a status between 200 and 999 or a placeholder, such as "@status = {{$query.status | default 200}}"`, method.Name)
+	}
+	method.Status = status
+	return nil
 }
 
-// applyCallbackDirective handles @callback.delay, @callback.header.Name and
-// @callback.body.
+// requirePattern matches a @require reference: $name, optionally in {{ }}.
+var requirePattern = regexp.MustCompile(`^(?:\{\{\s*)?\$(` + PlaceholderName + `)(?:\s*\}\})?$`)
+
+// ParseRequire parses a @require value, a request or fixture reference such
+// as "$fixture.users[id=$path.id]" or "{{$json.user.id}}", into the name
+// after the "$".
+func ParseRequire(raw string) (string, error) {
+	match := requirePattern.FindStringSubmatch(strings.TrimSpace(raw))
+	if match == nil {
+		return "", errors.New(`must be one $reference, such as "$fixture.users[id=$path.id]" or "$json.user.id"`)
+	}
+	return match[1], nil
+}
+
 // ParseChance parses a @match.chance value, a percentage above 0% and at
 // most 100% such as "20%", into a share between 0 and 1. 100% is returned
 // as 0, which means the route accepts every matching request.
@@ -1217,27 +1345,80 @@ func ParseChance(raw string) (float64, error) {
 	return percent / 100, nil
 }
 
+// callback returns the route's callback with this index, creating it (in
+// index order) for the first directive that mentions it.
+func (m *Method) callback(index, line int) *Callback {
+	i, found := slices.BinarySearchFunc(m.Callbacks, index, func(c *Callback, index int) int { return c.Index - index })
+	if !found {
+		m.Callbacks = slices.Insert(m.Callbacks, i, &Callback{Index: index, Headers: make(http.Header), line: line})
+	}
+	return m.Callbacks[i]
+}
+
+// applyCallbackDirective handles the directives under @callback: retries
+// for the whole section, and for one callback (@callback.N for numbered
+// ones) N itself, delay, header.Name, body and retries.
 func applyCallbackDirective(method *Method, def definition, key, value, source string) error {
-	callback := method.callback()
+	if key == "retries" {
+		retries, err := parseRetries(value)
+		if err != nil {
+			return parseErrorf(source, def.line, "section %q: @callback.retries %v", method.Name, err)
+		}
+		method.CallbackRetries = retries
+		return nil
+	}
+	index, prefix := 0, "@callback."
+	if first, rest, _ := strings.Cut(key, "."); first != "" && first[0] >= '0' && first[0] <= '9' {
+		n, err := strconv.Atoi(first)
+		if err != nil || n < 1 || n > 99 {
+			return parseErrorf(source, def.line, `section %q: @callback.%s: callbacks are numbered 1 to 99, such as "@callback.2 = POST {{$json.callbackUrl}}"`, method.Name, first)
+		}
+		index, key, prefix = n, rest, "@callback."+first+"."
+		if key == "" {
+			callbackMethod, target, err := ParseCallback(value)
+			if err != nil {
+				return parseErrorf(source, def.line, "section %q: @callback.%d %v", method.Name, n, err)
+			}
+			callback := method.callback(n, def.line)
+			callback.Method, callback.URL = callbackMethod, target
+			return nil
+		}
+	}
+	callback := method.callback(index, def.line)
 	switch {
 	case key == "delay":
 		delay, err := time.ParseDuration(strings.TrimSpace(value))
 		if err != nil || delay < 0 {
-			return parseErrorf(source, def.line, `section %q: @callback.delay must be a non-negative duration, such as "500ms"`, method.Name)
+			return parseErrorf(source, def.line, `section %q: %sdelay must be a non-negative duration, such as "500ms"`, method.Name, prefix)
 		}
 		callback.Delay = delay
 	case key == "body":
 		callback.Body = value
+	case key == "retries" && index > 0:
+		retries, err := parseRetries(value)
+		if err != nil {
+			return parseErrorf(source, def.line, "section %q: %sretries %v", method.Name, prefix, err)
+		}
+		callback.Retries, callback.retriesSet = retries, true
 	case strings.HasPrefix(key, "header."):
 		name := strings.TrimPrefix(key, "header.")
 		if !ValidHeaderName(name) {
-			return parseErrorf(source, def.line, `section %q: @callback.header. needs a valid header name (example: "@callback.header.Content-Type = application/json")`, method.Name)
+			return parseErrorf(source, def.line, `section %q: %sheader. needs a valid header name (example: "%sheader.Content-Type = application/json")`, method.Name, prefix, prefix)
 		}
 		callback.Headers.Set(name, value)
 	default:
-		return parseErrorf(source, def.line, `section %q: unknown directive @%s (use @callback.delay, @callback.header.Name or @callback.body)`, method.Name, def.name)
+		return parseErrorf(source, def.line, `section %q: unknown directive @%s (use %sdelay, %sheader.Name, %sbody or @callback.retries)`, method.Name, def.name, prefix, prefix, prefix)
 	}
 	return nil
+}
+
+// parseRetries parses a callback retry count from 0 to maxCallbackRetries.
+func parseRetries(value string) (int, error) {
+	retries, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || retries < 0 || retries > maxCallbackRetries {
+		return 0, fmt.Errorf("must be a whole number from 0 to %d", maxCallbackRetries)
+	}
+	return retries, nil
 }
 
 // ParseCallback parses an @callback value, "METHOD URL", such as
@@ -1426,13 +1607,23 @@ var controlVariables = map[string]struct{}{
 	"rate-limit":   {},
 	"fallback":     {},
 	"match.chance": {},
+	"status":       {},
+	"require":      {},
+	"missing":      {},
+	"etag":         {},
+	"jwt.secret":   {},
 }
 
 // PlaceholderPattern matches {{name}}, {{%name}} and {{$name args}} placeholders
 // in bodies and headers. Submatch 1 is the optional "%" (percent-encode) or "$"
 // (request parameter or generated value) prefix; submatch 2 is the name;
 // submatch 3 is the space-separated arguments, which only {{$name}} accepts.
-var PlaceholderPattern = regexp.MustCompile(`\{\{([%$]?)([A-Za-z_](?:[A-Za-z0-9_.-]|\["[^"\s{}]+"\])*)(?:[ \t]+([^{}]*?))?[ \t]*}}`)
+var PlaceholderPattern = regexp.MustCompile(`\{\{([%$]?)(` + PlaceholderName + `)(?:[ \t]+([^{}]*?))?[ \t]*}}`)
+
+// PlaceholderName is the regexp for a placeholder name such as user.name,
+// meta["user.id"] or users[id=$path.id].name: dot-separated fields,
+// ["quoted"] keys and [key=value] array selectors.
+const PlaceholderName = `[A-Za-z_](?:[A-Za-z0-9_.-]|\["[^"\s{}]+"\]|\[[A-Za-z0-9_-]+=[^\]\s{}"]+\])*`
 
 // Expand replaces placeholders in input. {{name}} and {{%name}} (percent-encoded)
 // resolve from vars, whose values may themselves hold placeholders; a variable

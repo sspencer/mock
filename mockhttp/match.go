@@ -85,13 +85,17 @@ func (s *Server) findMethod(r *http.Request, body requestBody) (*restclient.Meth
 						continue
 					}
 					values, ok := facts.match(method, requestMethod)
-					if !ok || !rollChance(method, rolls[i]) {
+					if !ok {
+						continue
+					}
+					path, _ := matchPath(routePattern(*method), r.URL.EscapedPath())
+					tv := templateValues{values: values, path: path, facts: facts}
+					if unavailable(method, tv) != "" || !rollChance(method, rolls[i]) {
 						continue
 					}
 					route := describeRoute(*method, i, revision)
 					route.Hits = hits[i].Add(1)
-					path, _ := matchPath(routePattern(*method), r.URL.EscapedPath())
-					return method, templateValues{values: values, path: path, facts: facts}, MatchInfo{Route: &route, Revision: revision}, true
+					return method, tv, MatchInfo{Route: &route, Revision: revision}, true
 				}
 			}
 		}
@@ -448,10 +452,20 @@ func selectJSONNodes(root any, path string) []any {
 		for _, node := range nodes {
 			switch node := node.(type) {
 			case map[string]any:
-				if child, ok := node[segment.Name]; ok && !segment.Any {
+				if child, ok := node[segment.Name]; ok && !segment.Any && !segment.Select {
 					next = append(next, child)
 				}
 			case []any:
+				if segment.Select {
+					for _, element := range node {
+						if object, ok := element.(map[string]any); ok {
+							if text, ok := jsonText(object[segment.Name]); ok && text == segment.Value {
+								next = append(next, element)
+							}
+						}
+					}
+					continue
+				}
 				if segment.Quoted {
 					continue
 				}

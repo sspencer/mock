@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -352,8 +354,16 @@ func (r *renderer) render(nodes []templateNode, scope *renderScope, out *templat
 					return err
 				}
 			}
+		case ifNode:
+			children := node.elseChildren
+			if r.condition(node.cond, scope) {
+				children = node.children
+			}
+			if err := r.render(children, scope, out); err != nil {
+				return err
+			}
 		case eachNode:
-			items := r.eachItems(node.source, scope)
+			items := r.pageItems(r.eachItems(node.source, scope), node.filters, scope)
 			if len(items) == 0 && r.sample {
 				// Lint one copy, with placeholders standing in for the item.
 				if err := r.render(node.children, &renderScope{parent: scope, inRepeat: true}, out); err != nil {
@@ -381,6 +391,10 @@ func (r *renderer) render(nodes []templateNode, scope *renderScope, out *templat
 // the array at source, or the one value there when it is not an array.
 // Missing values, null, and bodies that are not JSON give none.
 func (r *renderer) eachItems(source string, scope *renderScope) []any {
+	source, ok := r.expandSelectors(source, scope)
+	if !ok {
+		return nil
+	}
 	var root any
 	var path string
 	if p, ok := strings.CutPrefix(source, "json."); ok {
@@ -444,7 +458,8 @@ func (r *renderer) resolve(node templateNode, scope *renderScope) (string, bool)
 		// A default supplies the value; the filters after it still apply.
 		for i, filter := range filters {
 			if filter.name == "default" {
-				value, ok, filters = filter.args[0], true, filters[i+1:]
+				value, _ = r.argValue(filter.args[0], scope)
+				ok, filters = true, filters[i+1:]
 				break
 			}
 		}
@@ -464,10 +479,97 @@ func (r *renderer) resolve(node templateNode, scope *renderScope) (string, bool)
 				scope.kept[key] = value
 			}
 		default:
-			value = applyFilter(filter, value)
+			value = applyFilter(r.resolveArgs(filter, scope), value)
 		}
 	}
 	return value, true
+}
+
+// argValue resolves a filter, block or condition argument: a $reference
+// gives its value (ok is false when it has none), anything else is literal.
+func (r *renderer) argValue(arg string, scope *renderScope) (string, bool) {
+	if !isRef(arg) {
+		return arg, true
+	}
+	node, _ := refNode(arg)
+	return r.resolve(node, scope)
+}
+
+// resolveArgs returns filter with its $reference arguments resolved. One
+// that has no value becomes "".
+func (r *renderer) resolveArgs(filter templateFilter, scope *renderScope) templateFilter {
+	if !slices.ContainsFunc(filter.args, isRef) {
+		return filter
+	}
+	args := make([]string, len(filter.args))
+	for i, arg := range filter.args {
+		args[i], _ = r.argValue(arg, scope)
+	}
+	return templateFilter{name: filter.name, args: args}
+}
+
+// condition evaluates an {{#if}} condition. A presence test holds when the
+// reference has a value other than "", "false", "0" or "null"; == and !=
+// compare text, and a reference with no value equals nothing.
+func (r *renderer) condition(cond *templateCond, scope *renderScope) bool {
+	value, ok := r.resolve(cond.left, scope)
+	if cond.op == "" {
+		return ok && truthy(value)
+	}
+	right, rightOK := r.argValue(cond.right, scope)
+	equal := ok && rightOK && value == right
+	return equal == (cond.op == "==")
+}
+
+func truthy(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "false", "0", "null":
+		return false
+	}
+	return true
+}
+
+// pageItems applies an each block's offset and limit. An argument that is
+// not a whole number is ignored; negative values count as 0.
+func (r *renderer) pageItems(items []any, filters []templateFilter, scope *renderScope) []any {
+	for _, filter := range filters {
+		text, _ := r.argValue(filter.args[0], scope)
+		n, err := strconv.Atoi(strings.TrimSpace(text))
+		if err != nil {
+			continue
+		}
+		n = max(n, 0)
+		switch filter.name {
+		case "offset":
+			items = items[min(n, len(items)):]
+		case "limit":
+			items = items[:min(n, len(items))]
+		}
+	}
+	return items
+}
+
+// selectorRefPattern matches a [field=$reference] selector in a name.
+var selectorRefPattern = regexp.MustCompile(`\[([A-Za-z0-9_-]+)=(\$[^\]\s{}"]+)\]`)
+
+// expandSelectors replaces the $references in a name's [field=$ref]
+// selectors with their values, as in fixture.users[id=$path.id]. ok is false
+// when a reference has no value or a value a selector cannot hold.
+func (r *renderer) expandSelectors(name string, scope *renderScope) (string, bool) {
+	if !strings.Contains(name, "=$") {
+		return name, true
+	}
+	ok := true
+	expanded := selectorRefPattern.ReplaceAllStringFunc(name, func(selector string) string {
+		parts := selectorRefPattern.FindStringSubmatch(selector)
+		value, found := r.argValue(parts[2], scope)
+		if !found || value == "" || strings.ContainsAny(value, "]\" \t\r\n{}") {
+			ok = false
+			return selector
+		}
+		return "[" + parts[1] + "=" + value + "]"
+	})
+	return expanded, ok
 }
 
 func keepKey(node templateNode, keep templateFilter) string {
@@ -506,6 +608,14 @@ func (r *renderer) evaluate(node templateNode, scope *renderScope) (string, bool
 			value = strings.ReplaceAll(url.QueryEscape(value), "+", "%20")
 		}
 		return value, true
+	}
+	name, ok := r.expandSelectors(node.name, scope)
+	if !ok {
+		return "", false
+	}
+	node.name = name
+	if node.name == "jwt" {
+		return r.jwt(node.args, scope)
 	}
 	if len(node.args) > 0 {
 		value, err := callFunction(node.name, node.args, r.now, r.rng)
@@ -606,6 +716,22 @@ func (r *renderer) generatedValue(key string) string {
 		return f.Lorem().Paragraph(3 + r.rng.IntN(2))
 	case "article":
 		return f.Lorem().Paragraph(5 + r.rng.IntN(3))
+	case "company":
+		return f.Company().Name()
+	case "city":
+		return f.Address().City()
+	case "country":
+		return f.Address().Country()
+	case "address":
+		return f.Address().Address()
+	case "ip":
+		return f.Internet().Ipv4()
+	case "word":
+		return f.Lorem().Word()
+	case "price":
+		return strconv.FormatFloat(1+r.rng.Float64()*998.99, 'f', 2, 64)
+	case "ulid":
+		return r.ulid(reference)
 	default:
 		return ""
 	}
@@ -626,9 +752,46 @@ func (r *renderer) uuid() string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
+// crockford is the base32 alphabet of ULIDs.
+const crockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+// ulid returns a ULID: 48 bits of milliseconds since the Unix epoch at
+// reference, then 80 random bits from the response's random source, in
+// Crockford base32 (26 characters, sortable by time).
+func (r *renderer) ulid(reference time.Time) string {
+	var b [16]byte
+	ms := uint64(reference.UnixMilli())
+	for i := range 6 {
+		b[i] = byte(ms >> (8 * (5 - i)))
+	}
+	hi, lo := r.rng.Uint64(), r.rng.Uint64()
+	for i := 6; i < 16; i++ {
+		if i < 14 {
+			b[i] = byte(hi >> (8 * (i - 6)))
+		} else {
+			b[i] = byte(lo >> (8 * (i - 14)))
+		}
+	}
+	// 128 bits as 26 five-bit groups, the first holding the top 3 bits.
+	out := make([]byte, 26)
+	var acc uint64
+	bits, n := 2, 0 // 2 leading zero bits pad 128 to 130.
+	for _, v := range b {
+		acc = acc<<8 | uint64(v)
+		bits += 8
+		for bits >= 5 {
+			bits -= 5
+			out[n] = crockford[(acc>>bits)&31]
+			n++
+		}
+	}
+	return string(out)
+}
+
 func isGeneratedKey(key string) bool {
 	switch key {
-	case "integer", "float", "bool", "uuid", "guid", "timestamp", "isoTimestamp", "name", "firstName", "lastName", "phone", "user", "email", "url", "server", "hash", "file", "sentence", "paragraph", "article":
+	case "integer", "float", "bool", "uuid", "guid", "timestamp", "isoTimestamp", "name", "firstName", "lastName", "phone", "user", "email", "url", "server", "hash", "file", "sentence", "paragraph", "article",
+		"company", "city", "country", "address", "ip", "word", "price", "ulid":
 		return true
 	default:
 		return false

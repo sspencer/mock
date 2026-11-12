@@ -221,3 +221,12 @@ test('formatRoute shows a default Content-Type', () => {
     assert.ok(formatRoute({ method: 'GET', path: '/x' }).includes('Response headers\n(automatic)'));
 });
 
+test('formatRoute shows status templates, @require, @missing and @etag', () => {
+    const text = formatRoute({ method: 'GET', path: '/x', status: 200, statusTemplate: '{{$query.status | default 200}}', require: '$fixture.users[id=$path.id]', missing: 'next', etag: true });
+    assert.ok(text.includes('Response: {{$query.status | default 200}} · delay 0s'));
+    assert.ok(text.includes('Requires: $fixture.users[id=$path.id] (else later routes answer)'));
+    assert.ok(text.includes('Missing body file: later routes answer'));
+    assert.ok(text.includes('ETag: automatic'));
+    assert.ok(formatRoute({ method: 'GET', path: '/x', missing: '410' }).includes('Missing body file: answers 410'));
+});
+

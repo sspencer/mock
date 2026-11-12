@@ -6,6 +6,12 @@
 export const maxTreeNodes = 2000;
 
 // parseFixture returns { value } or { error, line, column } for JSON text.
+// editableFixture reports whether the fixture editor can open a @fixture
+// file: CSV (.csv) and NDJSON (.ndjson, .jsonl) fixtures are read-only.
+export function editableFixture(name = '') {
+    return !/\.(csv|ndjson|jsonl)$/i.test(name);
+}
+
 export function parseFixture(text) {
     try {
         return { value: JSON.parse(text) };

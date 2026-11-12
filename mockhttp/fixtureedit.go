@@ -73,6 +73,10 @@ func (s *Server) serveFixtureRead(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the route has no @fixture", http.StatusNotFound)
 		return
 	}
+	if fixtureFormat(method.Fixture) != "json" {
+		http.Error(w, "only JSON fixtures can be edited; edit "+method.Fixture+" in an editor", http.StatusConflict)
+		return
+	}
 	file := fixtureFilePath(method)
 	content, exists, err := readFixtureFile(file)
 	if err != nil {
@@ -98,6 +102,10 @@ func (s *Server) serveFixtureWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	file := filepath.Clean(edit.File)
+	if fixtureFormat(file) != "json" {
+		http.Error(w, "only JSON fixtures can be edited", http.StatusConflict)
+		return
+	}
 	if !s.isFixtureFile(file) {
 		http.Error(w, "the file is not the @fixture of a current route", http.StatusForbidden)
 		return

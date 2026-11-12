@@ -301,8 +301,11 @@ POST /c
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := methods[0].Callback
-	if c == nil || c.Method != "PUT" || c.URL != "https://hooks.example.com/done/{{$json.id}}" || c.Delay != time.Second ||
+	if len(methods[0].Callbacks) != 1 {
+		t.Fatalf("callbacks = %+v", methods[0].Callbacks)
+	}
+	c := methods[0].Callbacks[0]
+	if c.Method != "PUT" || c.URL != "https://hooks.example.com/done/{{$json.id}}" || c.Delay != time.Second ||
 		c.Headers.Get("X-Token") != "abc" || c.Body != `{"id": "{{$json.id}}"}` {
 		t.Fatalf("callback = %+v", c)
 	}
@@ -315,7 +318,9 @@ POST /c
 		"@callback = POST ftp://example.com",
 		"@callback = POST https://user:pw@example.com",
 		"@callback = POST https://example.com\n@callback.delay = soon",
-		"@callback = POST https://example.com\n@callback.retries = 3",
+		"@callback = POST https://example.com\n@callback.retries = 11",
+		"@callback.2.body = {}",
+		"@callback.0 = POST https://example.com",
 		"@callback.body = {}",
 	} {
 		if _, err := Parse("t.http", strings.NewReader("### C\n"+bad+"\nPOST /c\n")); err == nil {

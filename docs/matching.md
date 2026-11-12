@@ -319,7 +319,7 @@ Content-Type: application/json
 A route that can never answer gets a load-time warning, and `mock validate
 -strict` fails on it. That happens when an earlier route (counting
 `@fallback` routes as last) accepts every method the later route does, shares
-its port, has no `@match.chance`, its path
+its port, has no `@match.chance`, `@require` or `@missing = next`, its path
 matches every path the later route's does, and all of its
 matchers are also on the later route. Paths are compared segment by segment: a
 `:param` segment covers any segment (whatever the parameter is called), and a
@@ -336,6 +336,17 @@ A `@path.name` matcher on the earlier route narrows what it covers:
 `/users/me`. The check errs towards silence, so a route it does not report may
 still be unreachable. Earlier versions of `mock` rotated through duplicate
 routes; they now always return the first.
+
+### Routes that need data
+
+`@require = $reference` and `@missing = next` let a route step aside when it
+has nothing to answer with, so the next route answers instead, as if the route
+had not matched. `@require` needs a value for the reference, such as a fixture
+record found by [`[field=value]`](placeholders.md#looking-up-a-record);
+`@missing = next` needs its
+[`< path` file](request-files.md#placeholders-in-file-paths) to exist. Put a
+route with a general answer, such as a `404`, after it.
+
 ### Fallback routes
 
 `@fallback = true` moves a route after every route without it, wherever it is
