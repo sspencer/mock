@@ -1,0 +1,14 @@
+# The image GoReleaser publishes (ghcr.io/sspencer/mock) from the binaries it
+# builds; the Dockerfile next to it builds from source instead.
+FROM alpine:3.23
+
+ARG TARGETPLATFORM
+WORKDIR /app
+COPY $TARGETPLATFORM/mock /usr/local/bin/mock
+COPY examples ./examples
+
+USER nobody
+
+EXPOSE 8080 8081
+ENTRYPOINT ["mock"]
+CMD ["-b", "0.0.0.0", "examples/user.http"]

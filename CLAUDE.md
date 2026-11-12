@@ -47,4 +47,4 @@ The pipeline is: parse `.http` → assign each route a port → serve all ports 
 Design constraints:
 - Plain HTTP only. TLS and CORS support were removed on purpose; don't add them back.
 - Headers after the request line are *response* headers. Request matching uses `@header.Name`.
-- Releases are tagged `vX.Y.Z` and published by GoReleaser. Record release history in `CHANGELOG.md`.
+- Releases are tagged `vX.Y.Z` and published by GoReleaser (`.goreleaser.yaml`): archives, the `ghcr.io/sspencer/mock` image (`Dockerfile.release`, from the built binaries; `Dockerfile` builds from source) and a Homebrew cask in `sspencer/homebrew-tap` (needs the `HOMEBREW_TAP_GITHUB_TOKEN` secret). Record release history in `CHANGELOG.md`.

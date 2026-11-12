@@ -21,7 +21,8 @@ builds:
       - -s -w -X main.version={{.Tag}}
 
 archives:
-  - formats: [tar.gz]
+  - id: mock
+    formats: [tar.gz]
     format_overrides:
       - goos: windows
         formats: [zip]
@@ -35,6 +36,52 @@ archives:
 
 checksum:
   name_template: checksums.txt
+
+# A multi-arch image on the GitHub container registry, tagged with the
+# version and latest. The release workflow logs in to ghcr.io.
+dockers_v2:
+  - id: mock
+    ids: [mock]
+    dockerfile: Dockerfile.release
+    images:
+      - ghcr.io/sspencer/mock
+    tags:
+      - "{{ .Version }}"
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    extra_files:
+      - examples
+    labels:
+      org.opencontainers.image.title: mock
+      org.opencontainers.image.description: Turn REST Client .http files into a local HTTP mock server.
+      org.opencontainers.image.source: https://github.com/sspencer/mock
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.licenses: Unlicense
+
+# A Homebrew cask in the sspencer/homebrew-tap repository. It needs a
+# HOMEBREW_TAP_GITHUB_TOKEN secret that can push to that repository; without
+# it the release skips the upload.
+homebrew_casks:
+  - name: mock
+    ids: [mock]
+    binaries: [mock]
+    homepage: https://github.com/sspencer/mock
+    description: Turn REST Client .http files into a local HTTP mock server
+    license: Unlicense
+    repository:
+      owner: sspencer
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    skip_upload: '{{ if isEnvSet "HOMEBREW_TAP_GITHUB_TOKEN" }}false{{ else }}true{{ end }}'
+    # The binary is not notarized; clear the quarantine flag so macOS runs it.
+    hooks:
+      post:
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/mock"]
+          end
 
 changelog:
   disable: true

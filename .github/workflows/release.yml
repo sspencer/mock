@@ -5,8 +5,10 @@ on:
     tags:
       - "v*"
 
+# contents: the GitHub release; packages: the ghcr.io/sspencer/mock image.
 permissions:
   contents: write
+  packages: write
 
 jobs:
   goreleaser:
@@ -33,6 +35,19 @@ jobs:
           go test -race ./...
           make vulncheck
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the GitHub container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Release
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -41,3 +56,6 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A token that can push to sspencer/homebrew-tap; the cask upload is
+          # skipped when it is not set.
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
