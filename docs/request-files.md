@@ -195,7 +195,7 @@ is read at startup; restart `mock` to pick up changes to it.
 | Response headers after the request line | Separate request vs response documents |
 | `@header.Name`, `@cookie.name`, `@query.name`, `@path.name`, `@body`, `@json.path`, `@xml.path`, `@form.name` request matchers (exact, `*`, `!`, `~regex`, `!text`, `!~regex`) | none |
 | `{{name}}`, `{{%name}}` and `{{$placeholder}}` in bodies, response headers and `< path` file paths, with [filters](placeholders.md#filters) and [`{{#repeat}}` blocks](placeholders.md#generated-lists) | Request variables (`{{login.response.body.token}}`; a load warning) |
-| `< path` external body files | Mixing inline text and `< path` in one body; imports of other `.http` files |
+| `< path` external body files; [`@import`](#sharing-variables-with-import) of another file's variables (a `mock` extension) | Mixing inline text and `< path` in one body |
 
 Inline bodies normalize line endings to LF and discard leading and trailing
 blank lines. With `@trim = off` a section's inline body is kept exactly as
@@ -384,6 +384,7 @@ in the file, or in a section, where it replaces the file value.
 | `@times` | a whole number from `1` | none | Answer that many requests, then let later routes answer until a reset. See [Routes that answer a few times](matching.md#routes-that-answer-a-few-times). |
 | `@require` | a `$reference`, such as `$fixture.users[id=$path.id]` | none | Match only when the reference has a value for the request. See [Looking up a record](placeholders.md#looking-up-a-record). |
 | `@jwt.secret` | text, which may hold placeholders | none (unsigned) | The HS256 secret for `{{$jwt}}` tokens. See [Signed tokens](placeholders.md#signed-tokens). |
+| `@import` | a request file path | none | Bring in that file's file-level definitions (file scope only). See [Sharing variables with @import](#sharing-variables-with-import). |
 | `@port` | port number | `-p` (`8080`) | Serve the section on this port. A port in the request URL takes precedence. See [Multiple ports](matching.md#multiple-ports). |
 | `@header.Name` | [matcher value](matching.md#matcher-values): `text`, `*`, `!`, `~regex`, `!text` or `!~regex` | none | Require the incoming request header to match. A section's header matcher replaces a file one of the same name. See [Header matching](matching.md#header-matching). |
 | `@cookie.name` | matcher value | none | Require the request cookie to match. See [Cookie matching](matching.md#cookie-matching). |
@@ -399,6 +400,41 @@ replacements (`### [204] Name` and `< path`).
 
 Every other variable is only used through `{{name}}` references. `mock` warns
 at load time about variables that nothing references.
+
+### Sharing variables with @import
+
+`@import = path` brings in another request file's file-level definitions, so
+several files can share a host, tokens and defaults such as `@delay` or
+`@default.header.*`:
+
+```http
+@import = shared/common.http
+
+### Profile
+GET /me
+X-Upstream: https://{{host}}/me
+```
+
+```http
+# shared/common.http
+@host = api.example.com
+@token = dev-token
+@default.header.Content-Type = application/json
+```
+
+- Only the imported file's file-scoped definitions come in: those above its
+  first `###` and in its sections of only definitions. Its routes do not; load
+  that file too to serve them.
+- The definitions apply where the `@import` line stands, so a definition after
+  it overrides an imported one; put imports first. Imported files may import
+  others; a cycle is a load error.
+- The path is relative to the importing file and may leave its directory
+  (`../shared/common.http`). It cannot hold placeholders. `@import` goes at
+  file scope; in a section it is a load error.
+- Imported variables a file does not use are not reported as unused, and an
+  error in an imported value names the imported file and line.
+- `mock` watches imported files: editing one reloads every file that imports
+  it.
 
 ### Variables from the command line
 

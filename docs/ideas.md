@@ -43,7 +43,6 @@ The ideas with the best value for their effort, in suggested order:
 | ID | Idea | Effort | Why |
 |----|------|--------|-----|
 | [`TE-1`](#testing-and-ci) | `mock run -- command` | M | Start, test, stop and report coverage in one CI step |
-| [`CL-1`](#command-line-and-configuration) | `@import` | M | Shared variables across files; the only "not supported" dialect item users ask for |
 | [`UI-1`](#admin-ui) | Route switches in the UI | M | Turn a route off or add a fault while demonstrating or exploring |
 | [`TE-4`](#testing-and-ci) | Temporary routes through the admin API | M | Opens per-test stubbing to every language, not only Go |
 | [`AP-1`](#working-with-real-apis) | Deeper drift check | M | `mock check` compares only top-level JSON keys today |
@@ -97,7 +96,6 @@ state only decides whether a route is eligible.
 
 | ID | Idea | Effort | Description |
 |----|------|--------|-------------|
-| `CL-1` | `@import` | **M** | `@import ./common.http` (or a variables-only file) shares `@host`, tokens and defaults across request files. The dialect table lists imports as not supported. Needs cycle detection and watcher support for the imported files. |
 | `CL-2` | Project config file | **S** | A `mock.toml` (or `.mockrc`) in the working directory holding the flags a project always passes: files, directories, ports, upstream, redaction. Flags still win. |
 | `CL-3` | Report every load error | **M** | `mock validate` stops at the first parse error, so fixing a file reveals the next one. Let the parser recover at the next `###` and report all of them. |
 | `CL-4` | `mock fmt` | **M** | Normalize spacing, directive order and blank lines in `.http` files, like `gofmt`, with `-check` for CI. Most useful once files are shared across a team. |
