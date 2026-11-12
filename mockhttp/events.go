@@ -194,6 +194,7 @@ func (s *Server) ServeRoutes(w http.ResponseWriter, r *http.Request) {
 		route := describeRoute(method, i, s.config.Revision)
 		route.Hits = s.hits[i].Load()
 		route.Override = s.describeOverride(method)
+		route.TimesLeft = timesLeft(&method, s.uses[i])
 		routes = append(routes, route)
 	}
 	s.mu.Unlock()

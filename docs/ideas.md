@@ -42,7 +42,6 @@ The ideas with the best value for their effort, in suggested order:
 
 | ID | Idea | Effort | Why |
 |----|------|--------|-----|
-| [`ST-1`](#stateful-behavior) | `@times` | M | Retry tests ("fail twice, then succeed") cannot be expressed today |
 | [`DI-1`](#distribution-and-editor-support) | Published Docker image and Homebrew formula | S | Removes the Go toolchain from the install path |
 | [`TE-1`](#testing-and-ci) | `mock run -- command` | M | Start, test, stop and report coverage in one CI step |
 | [`MA-1`](#matching-and-routing) | `mock match` | S | Answers "which route gets this request?" without serving |
@@ -53,17 +52,14 @@ The ideas with the best value for their effort, in suggested order:
 
 ## Stateful behavior
 
-Routes are stateless today: the first matching route always answers, and
-response rotation was removed on purpose. State is the largest gap in what a
-route can express. These ideas keep the "first match wins" model; state only
-decides whether a route is eligible.
+`@times` gives a route a count, and `POST /reset` starts counts over; beyond
+that, routes are stateless. These ideas keep the "first match wins" model;
+state only decides whether a route is eligible.
 
 | ID | Idea | Effort | Description |
 |----|------|--------|-------------|
-| `ST-1` | `@times = n` | **M** | A route answers `n` times, then falls through to the next matching route. Covers "fail twice, then succeed" and "time out once". Counts live beside the hit counts in `coverage.go`; the shadow warnings must learn that a limited route does not shadow the one below it. |
-| `ST-2` | Named scenarios | **L** | `@scenario`, `@state` and `@next-state`: a route is eligible only while its scenario is in a given state, and answering can move it to another ("order is `pending` until `POST /orders/1/pay`"). WireMock's scenarios work this way. Builds on `ST-1`. |
-| `ST-3` | Reset state | **S** | `POST /reset` on the admin API (and `mocktest.Server.Reset`) returns counts, scenarios and rate limits to their starting values without a reload, so each test starts clean. Needed by `ST-1` and `ST-2`; useful for `@rate-limit` already. |
-| `ST-4` | State in the admin UI | **S** | Show a route's remaining `@times` count and each scenario's current state in the route inspector, with a reset button. Follows `ST-1` to `ST-3`. |
+| `ST-2` | Named scenarios | **L** | `@scenario`, `@state` and `@next-state`: a route is eligible only while its scenario is in a given state, and answering can move it to another ("order is `pending` until `POST /orders/1/pay`"). WireMock's scenarios work this way. Builds on `@times` and `POST /reset`. |
+| `ST-4` | State in the admin UI | **S** | Show each scenario's current state in the route inspector (the remaining `@times` count is shown already), with a reset button. Follows `ST-2`. |
 | `ST-5` | Hit count placeholder | **S** | `{{$hits}}` inserts how many times the route has answered, for bodies such as `{"attempt": 3}` and for polling endpoints that report progress. |
 | `ST-6` | In-memory collections | **L** | `@collection = users.json` turns a fixture into a small store: `GET` lists and reads, `POST` adds, `PUT`/`PATCH` change and `DELETE` removes, in memory until restart or reset. This is json-server's whole purpose and Mockoon's "CRUD routes on data buckets". It is a second way to define behavior, so decide first whether it fits a tool built on explicit routes. |
 | `ST-7` | Captured values across requests | **L** | Store a value from one request (`@store token = {{$json.token}}`) and match or insert it in later ones (`{{$store.token}}`). Makes login-then-use flows realistic. Needs a scoping rule (global, per client, per session; see `TE-7`). |
@@ -193,7 +189,7 @@ reason.
   TLS-terminating proxy in front of it, or use a dev-server proxy for browsers
   (`DO-5`).
 - **Response rotation.** Removed in an earlier release in favor of "first
-  match wins". `ST-1` and `@match.chance` cover its uses without it.
+  match wins". `@times` and `@match.chance` cover its uses without it.
 - **OpenAPI import.** A converter existed and was deleted. `AP-2` proposes
   checking against a schema, not generating routes from one.
 - **Scripted or exec responses.** A JavaScript or shell handler would turn

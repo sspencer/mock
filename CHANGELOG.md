@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `@times = n` lets a route answer `n` requests, then steps aside for later routes, for retry tests such as "fail twice, then succeed". `POST /reset` on the admin API (and `Reset()` in `mocktest`) starts counts, rate limits and chance draws over and removes run-time overrides, without a reload.
+
 - An example gallery in `examples/gallery/`: an OAuth 2.0 token endpoint, a paginated catalog from a fixture, file uploads, a webhook sender with signed, retried callbacks, and a card payment API with test cards, idempotency keys, per-key rate limits and random failures. `docs/examples.md` walks through each, and CI sends every route its documented requests.
 
 - The documentation in `docs/` builds into a searchable site with MkDocs Material (`make docs`, `make docs-serve`), checked in strict mode on pull requests and published to GitHub Pages from master by the new Docs workflow.

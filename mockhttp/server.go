@@ -31,7 +31,10 @@ type Server struct {
 	hits []*atomic.Uint64
 	// rolls counts each route's @match.chance draws, which seed the draws
 	// under @seed.
-	rolls          []*atomic.Uint64
+	rolls []*atomic.Uint64
+	// uses counts the requests each @times route answered since the last
+	// reset; carried across reloads like hits.
+	uses           []*atomic.Uint64
 	unmatched      unmatchedLog
 	logger         *slog.Logger
 	events         []RequestEvent
@@ -74,6 +77,7 @@ func New(methods []restclient.Method, logger *slog.Logger) *Server {
 		methods:     cloneMethods(methods),
 		hits:        carryHits(methods, nil, nil),
 		rolls:       carryHits(methods, nil, nil),
+		uses:        carryHits(methods, nil, nil),
 		session:     rand.Text(),
 		logger:      logger,
 		subscribers: make(map[chan RequestEvent]struct{}),
@@ -92,6 +96,7 @@ func (s *Server) SetMethods(methods []restclient.Method) {
 	defer s.mu.Unlock()
 	s.hits = carryHits(compiled, s.methods, s.hits)
 	s.rolls = carryHits(compiled, s.methods, s.rolls)
+	s.uses = carryHits(compiled, s.methods, s.uses)
 	s.pruneLimiters(compiled)
 	s.methods = compiled
 	s.config.Revision++
@@ -499,7 +504,7 @@ func warnShadowedRoutes(logger *slog.Logger, methods []restclient.Method) {
 // b's (see pathCovers), a has no @match.chance, and each of a's constraints
 // is also one of b's. It errs towards false; routes it misses still work.
 func shadows(a, b restclient.Method) bool {
-	if !acceptsAllMethods(a, b) || (a.Port != 0 && a.Port != b.Port) || a.Chance > 0 || a.Require != "" || a.MissingNext {
+	if !acceptsAllMethods(a, b) || (a.Port != 0 && a.Port != b.Port) || a.Chance > 0 || a.Require != "" || a.MissingNext || a.Times > 0 {
 		return false
 	}
 	segments, ok := pathCovers(routePattern(a), routePattern(b))

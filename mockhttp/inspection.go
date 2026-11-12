@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/sspencer/mock/restclient"
@@ -70,6 +71,10 @@ type RouteInfo struct {
 	Missing string `json:"missing,omitempty"`
 	// ETag is set for @etag = auto.
 	ETag bool `json:"etag,omitempty"`
+	// Times is the @times limit, and TimesLeft how many more requests the
+	// route answers before later routes take over, when set.
+	Times     int  `json:"times,omitempty"`
+	TimesLeft *int `json:"timesLeft,omitempty"`
 	// DefaultContentType is the @default.header or -H Content-Type, sent
 	// when the type cannot be guessed from the file extension or the body.
 	DefaultContentType string `json:"defaultContentType,omitempty"`
@@ -119,7 +124,7 @@ func describeRoute(method restclient.Method, index int, revision uint64) RouteIn
 	}
 	return RouteInfo{ID: fmt.Sprintf("%d:%d", revision, index), Revision: revision, Name: method.Name, Method: method.Method,
 		Path: (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath(), Query: method.Query.Encode(), Port: method.Port, Source: method.Source, Line: method.Line, Status: method.Status,
-		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), Proxy: method.Proxy, Fixture: method.Fixture, Compress: method.Compress, Callback: describeCallback(method), RateLimit: describeRateLimit(method), DefaultContentType: method.DefaultContentType, Throttle: describeThrottle(method.Throttle), StatusTemplate: method.StatusTemplate, Require: describeRequire(method), Missing: describeMissing(method), ETag: method.ETag, Fallback: method.Fallback, Chance: describeChance(method), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
+		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), Proxy: method.Proxy, Fixture: method.Fixture, Compress: method.Compress, Callback: describeCallback(method), RateLimit: describeRateLimit(method), DefaultContentType: method.DefaultContentType, Throttle: describeThrottle(method.Throttle), StatusTemplate: method.StatusTemplate, Require: describeRequire(method), Missing: describeMissing(method), ETag: method.ETag, Times: method.Times, Fallback: method.Fallback, Chance: describeChance(method), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
 		MatchQuery: cloneValues(method.MatchQuery), MatchPath: cloneOptional(method.MatchPath),
 		MatchBody: method.MatchBody, MatchJSON: cloneOptional(method.MatchJSON), MatchXML: cloneOptional(method.MatchXML), MatchForm: cloneValues(method.MatchForm), MatchCookies: cloneValues(method.MatchCookies),
 		Variables: cloneVariables(method.Variables), Body: body, BodyTruncated: truncated}
@@ -395,9 +400,11 @@ func abs(value int) int {
 	return value
 }
 
-func closestRoutes(methods []restclient.Method, facts *requestFacts) []RouteMismatch {
+// closestRoutes ranks the routes by how close they came to matching. uses
+// holds each route's @times counter, aligned with methods (it may be nil).
+func closestRoutes(methods []restclient.Method, uses []*atomic.Uint64, facts *requestFacts) []RouteMismatch {
 	candidates := make([]RouteMismatch, 0, len(methods))
-	for _, method := range methods {
+	for i, method := range methods {
 		candidate := mismatch(method, facts)
 		if len(candidate.Reasons) == 0 {
 			// It matched, but a @require, @missing = next or @match.chance
@@ -407,6 +414,9 @@ func closestRoutes(methods []restclient.Method, facts *requestFacts) []RouteMism
 				if reason := unavailable(&method, templateValues{values: values, path: path, facts: facts}); reason != "" {
 					candidate.Reasons = []string{reason}
 				}
+			}
+			if len(candidate.Reasons) == 0 && method.Times > 0 && i < len(uses) && usedUp(&method, uses[i]) {
+				candidate.Reasons = []string{fmt.Sprintf("Answered its @times = %d already (POST /reset starts it over)", method.Times)}
 			}
 			if len(candidate.Reasons) == 0 && method.Chance > 0 {
 				candidate.Reasons = []string{"Skipped by @match.chance = " + describeChance(method) + " for this request"}

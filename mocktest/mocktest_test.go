@@ -130,3 +130,22 @@ func TestSplitCall(t *testing.T) {
 		}
 	}
 }
+
+func TestReset(t *testing.T) {
+	api := StartSource(t, "### [503] Down once\n@times = 1\nGET /x\n\n### Up\nGET /x\n\nup\n")
+	get := func() int {
+		resp, err := http.Get(api.URL + "/x")
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if a, b := get(), get(); a != 503 || b != 200 {
+		t.Fatalf("statuses = %d, %d", a, b)
+	}
+	api.Reset()
+	if code := get(); code != 503 {
+		t.Errorf("after Reset = %d, want 503", code)
+	}
+}
