@@ -237,6 +237,9 @@ func resolveWatchPaths(httpFiles []string, methods []restclient.Method) []string
 	for _, file := range httpFiles {
 		add(file)
 	}
+	for _, path := range restclient.ImportDependencies(methods) {
+		add(path)
+	}
 	for _, method := range methods {
 		for _, raw := range []string{method.File, method.Fixture} {
 			if raw == "" {

@@ -134,6 +134,9 @@ type Method struct {
 	// ETag is set by @etag = auto: responses carry a hash ETag and answer
 	// a matching If-None-Match with 304.
 	ETag bool
+	// Imports are the files brought in with @import (directly or through
+	// another import), as resolved paths, so they can be watched.
+	Imports []string
 	// Times is the @times limit: the route answers that many requests, then
 	// lets later routes answer (until a reset). 0 means no limit.
 	Times int
@@ -268,6 +271,18 @@ type definition struct {
 	name  string
 	value string
 	line  int
+	// file is the request file the definition is written in, which differs
+	// from the section's file for one brought in by @import.
+	file string
+}
+
+// in returns the file to name in an error about the definition: its own
+// file, or fallback for one with none (a command-line variable).
+func (d definition) in(fallback string) string {
+	if d.file != "" {
+		return d.file
+	}
+	return fallback
 }
 
 // directives is the leading run of blank, "#" comment, and "@name = value"
@@ -379,6 +394,9 @@ func CheckVariableOverride(name string) error {
 	if isMatcherName(name) {
 		return fmt.Errorf("@%s is a request matcher, not a variable, and cannot be set from the command line", name)
 	}
+	if name == "import" {
+		return fmt.Errorf("@import cannot be set from the command line; import the file in a request file instead")
+	}
 	return nil
 }
 
@@ -416,6 +434,30 @@ func (o Options) Load(paths []string) ([]Method, error) {
 
 // Parse parses one request file with these options.
 func (o Options) Parse(source string, r io.Reader) ([]Method, error) {
+	sections, fileDefs, err := scanFile(source, r)
+	if err != nil {
+		return nil, err
+	}
+	fileDefs, imports, err := expandImports(source, fileDefs, []string{importKey(source)})
+	if err != nil {
+		return nil, err
+	}
+	var methods []Method
+	for _, pending := range sections {
+		method, err := parseSection(pending, fileDefs, o, source)
+		if err != nil {
+			return nil, err
+		}
+		method.Imports = imports
+		methods = append(methods, method)
+	}
+	return methods, nil
+}
+
+// scanFile splits a request file into its ### sections and its file-scoped
+// definitions (above the first ###, or in sections that hold only
+// definitions).
+func scanFile(source string, r io.Reader) ([]pendingSection, []definition, error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	// ending is the terminator of the line just scanned ("\n", "\r\n" or ""
@@ -478,7 +520,7 @@ func (o Options) Parse(source string, r io.Reader) ([]Method, error) {
 		line := scanner.Text()
 		if after, ok := strings.CutPrefix(line, "###"); ok {
 			if err := flush(); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			name, statusTemplate := strings.TrimSpace(after), ""
 			if match := sectionStatusTemplatePattern.FindStringSubmatch(name); match != nil {
@@ -486,7 +528,7 @@ func (o Options) Parse(source string, r io.Reader) ([]Method, error) {
 			}
 			name, status, err := parseSectionName(name)
 			if err != nil {
-				return nil, parseErrorf(source, lineNumber, "%v", err)
+				return nil, nil, parseErrorf(source, lineNumber, "%v", err)
 			}
 			currentUnnamed = name == ""
 			if currentUnnamed {
@@ -510,7 +552,7 @@ func (o Options) Parse(source string, r io.Reader) ([]Method, error) {
 				leading, leadingEndings = leading[:0], leadingEndings[:0]
 				def, err := parseDefinition(trimmed, source, lineNumber)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				fileDefs = append(fileDefs, def)
 				continue
@@ -529,7 +571,7 @@ func (o Options) Parse(source string, r io.Reader) ([]Method, error) {
 				sectionNameLine, bodyStartLine = lineNumber-len(leading), lineNumber-len(leading)
 				continue
 			}
-			return nil, parseErrorf(source, lineNumber,
+			return nil, nil, parseErrorf(source, lineNumber,
 				"content before first ### section: %s (start each mock with ### Name, or define a file variable with @name = value)", quoteSnippet(trimmed))
 		}
 		if len(section) == 0 {
@@ -541,23 +583,15 @@ func (o Options) Parse(source string, r io.Reader) ([]Method, error) {
 	if err := scanner.Err(); err != nil {
 		// Scanner errors (e.g. token too long) are not always line-precise.
 		if lineNumber > 0 {
-			return nil, parseErrorf(source, lineNumber, "failed to read file: %v", err)
+			return nil, nil, parseErrorf(source, lineNumber, "failed to read file: %v", err)
 		}
-		return nil, fmt.Errorf("%s: failed to read file: %w", source, err)
+		return nil, nil, fmt.Errorf("%s: failed to read file: %w", source, err)
 	}
 	if err := flush(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	var methods []Method
-	for _, pending := range sections {
-		method, err := parseSection(pending, fileDefs, o, source)
-		if err != nil {
-			return nil, err
-		}
-		methods = append(methods, method)
-	}
-	return methods, nil
+	return sections, fileDefs, nil
 }
 
 // sectionStatusPattern matches a leading "[code]" in a ### section name.
@@ -643,7 +677,7 @@ func parseDefinition(line, source string, lineNumber int) (definition, error) {
 		return definition{}, parseErrorf(source, lineNumber,
 			"invalid variable name %q (use letters, digits, '_', '.', '-', starting with a letter or '_')", name)
 	}
-	return definition{name: name, value: unescapeValue(strings.TrimSpace(value)), line: lineNumber}, nil
+	return definition{name: name, value: unescapeValue(strings.TrimSpace(value)), line: lineNumber, file: source}, nil
 }
 
 // cutDefinition splits "name = value" at the first "=" outside brackets, so
@@ -753,6 +787,11 @@ func parseSection(pending pendingSection, fileDefs []definition, opts Options, s
 		}
 		method.Variables[def.name] = def.value
 		method.VariableLines[def.name] = def.line
+		if def.file != "" && def.file != source {
+			// Imported: a shared file defines more than one importer uses,
+			// so its variables are not reported as unused.
+			method.VariableLines[def.name] = 0
+		}
 	}
 	for _, def := range defs {
 		if err := applyControlVariable(&method, def, source); err != nil {
@@ -951,7 +990,7 @@ func applyDefaultHeaders(method *Method, defs []definition, extra http.Header, s
 			continue
 		}
 		if !ValidHeaderName(name) || !ValidHeaderValue(def.value) {
-			return parseErrorf(source, def.line,
+			return parseErrorf(def.in(source), def.line,
 				`section %q: @%s needs a valid header name and value (example: "@default.header.Content-Type = application/json")`, method.Name, def.name)
 		}
 		defaults.Set(name, def.value)
@@ -1041,7 +1080,7 @@ func checkPathMatchers(method *Method, sectionDefs []definition, source string) 
 		delete(method.MatchPath, name)
 		for _, def := range sectionDefs {
 			if def.name == "path."+name {
-				return parseErrorf(source, def.line,
+				return parseErrorf(def.in(source), def.line,
 					"section %q: @path.%s has no matching :%s parameter in the request path %q", method.Name, name, name, method.Path)
 			}
 		}
@@ -1052,7 +1091,7 @@ func checkPathMatchers(method *Method, sectionDefs []definition, source string) 
 // parseMatcherValue validates a matcher value and wraps errors with the line.
 func parseMatcherValue(method *Method, def definition, value, source string) error {
 	if _, err := ParseMatcher(value); err != nil {
-		return parseErrorf(source, def.line, "section %q: @%s: %v", method.Name, def.name, err)
+		return parseErrorf(def.in(source), def.line, "section %q: @%s: %v", method.Name, def.name, err)
 	}
 	return nil
 }
@@ -1064,11 +1103,11 @@ func applyControlVariable(method *Method, def definition, source string) error {
 	value := Expand(def.value, method.Variables, nil)
 	if headerName, ok := strings.CutPrefix(def.name, "header."); ok {
 		if headerName == "" {
-			return parseErrorf(source, def.line,
+			return parseErrorf(def.in(source), def.line,
 				`section %q: @header. requires a header name (example: "@header.Authorization = Bearer token")`, method.Name)
 		}
 		if !ValidHeaderName(headerName) || !ValidHeaderValue(value) {
-			return parseErrorf(source, def.line, "invalid request header matcher %q", headerName)
+			return parseErrorf(def.in(source), def.line, "invalid request header matcher %q", headerName)
 		}
 		if err := parseMatcherValue(method, def, value, source); err != nil {
 			return err
@@ -1078,7 +1117,7 @@ func applyControlVariable(method *Method, def definition, source string) error {
 	}
 	if name, ok := strings.CutPrefix(def.name, "query."); ok {
 		if name == "" {
-			return parseErrorf(source, def.line,
+			return parseErrorf(def.in(source), def.line,
 				`section %q: @query. requires a parameter name (example: "@query.page = ~[0-9]+")`, method.Name)
 		}
 		if err := parseMatcherValue(method, def, value, source); err != nil {
@@ -1089,18 +1128,18 @@ func applyControlVariable(method *Method, def definition, source string) error {
 	}
 	if def.name == "body" {
 		if value == "" {
-			return parseErrorf(source, def.line,
+			return parseErrorf(def.in(source), def.line,
 				`section %q: @body needs a value (use "!" to require an empty body, "*" for any body, or "~regex")`, method.Name)
 		}
 		if _, err := ParseBodyMatcher(value); err != nil {
-			return parseErrorf(source, def.line, "section %q: @body: %v", method.Name, err)
+			return parseErrorf(def.in(source), def.line, "section %q: @body: %v", method.Name, err)
 		}
 		method.MatchBody = value
 		return nil
 	}
 	if path, ok := strings.CutPrefix(def.name, "json."); ok {
 		if _, err := ParseJSONPath(path); err != nil || path == "" {
-			return parseErrorf(source, def.line,
+			return parseErrorf(def.in(source), def.line,
 				`section %q: @%s needs a dot-separated JSON field path (example: "@json.user.name = alice", or @json.meta["user.id"] for a key with dots)`, method.Name, def.name)
 		}
 		if err := parseMatcherValue(method, def, value, source); err != nil {
@@ -1119,7 +1158,7 @@ func applyControlVariable(method *Method, def definition, source string) error {
 			}
 		}
 		if err != nil || path == "" {
-			return parseErrorf(source, def.line,
+			return parseErrorf(def.in(source), def.line,
 				`section %q: @%s needs a dot-separated XML element path starting at the root element (example: "@xml.order.customer.id = 42", or @xml.order["@id"] for an attribute)`, method.Name, def.name)
 		}
 		if err := parseMatcherValue(method, def, value, source); err != nil {
@@ -1130,7 +1169,7 @@ func applyControlVariable(method *Method, def definition, source string) error {
 	}
 	if name, ok := strings.CutPrefix(def.name, "form."); ok {
 		if name == "" {
-			return parseErrorf(source, def.line,
+			return parseErrorf(def.in(source), def.line,
 				`section %q: @form. requires a field name (example: "@form.grant_type = client_credentials")`, method.Name)
 		}
 		if err := parseMatcherValue(method, def, value, source); err != nil {
@@ -1141,7 +1180,7 @@ func applyControlVariable(method *Method, def definition, source string) error {
 	}
 	if name, ok := strings.CutPrefix(def.name, "cookie."); ok {
 		if name == "" {
-			return parseErrorf(source, def.line,
+			return parseErrorf(def.in(source), def.line,
 				`section %q: @cookie. requires a cookie name (example: "@cookie.session = *")`, method.Name)
 		}
 		if err := parseMatcherValue(method, def, value, source); err != nil {
@@ -1155,11 +1194,11 @@ func applyControlVariable(method *Method, def definition, source string) error {
 	}
 	if name, ok := strings.CutPrefix(def.name, "path."); ok {
 		if name == "" {
-			return parseErrorf(source, def.line,
+			return parseErrorf(def.in(source), def.line,
 				`section %q: @path. requires a path parameter name (example: "@path.id = ~[0-9]+")`, method.Name)
 		}
 		if value == "*" || value == "!" {
-			return parseErrorf(source, def.line,
+			return parseErrorf(def.in(source), def.line,
 				`section %q: @path.%s = %s is not supported; path parameters are always present (use "~pattern" or an exact value)`, method.Name, name, value)
 		}
 		if err := parseMatcherValue(method, def, value, source); err != nil {
@@ -1174,7 +1213,7 @@ func applyControlVariable(method *Method, def definition, source string) error {
 	case "require":
 		ref, err := ParseRequire(value)
 		if err != nil {
-			return parseErrorf(source, def.line, "section %q: @require %v", method.Name, err)
+			return parseErrorf(def.in(source), def.line, "section %q: @require %v", method.Name, err)
 		}
 		method.Require = ref
 	case "missing":
@@ -1184,14 +1223,16 @@ func applyControlVariable(method *Method, def definition, source string) error {
 		default:
 			status, err := strconv.Atoi(text)
 			if err != nil || status < 200 || status > 999 {
-				return parseErrorf(source, def.line, `section %q: @missing must be next or a status between 200 and 999, such as "@missing = 404"`, method.Name)
+				return parseErrorf(def.in(source), def.line, `section %q: @missing must be next or a status between 200 and 999, such as "@missing = 404"`, method.Name)
 			}
 			method.Missing, method.MissingNext = status, false
 		}
+	case "import":
+		return parseErrorf(def.in(source), def.line, `section %q: @import goes at file scope, above the first ### or in a section of only definitions`, method.Name)
 	case "times":
 		times, err := strconv.Atoi(strings.TrimSpace(value))
 		if err != nil || times < 1 {
-			return parseErrorf(source, def.line, `section %q: @times must be a whole number of requests from 1, such as "@times = 2"`, method.Name)
+			return parseErrorf(def.in(source), def.line, `section %q: @times must be a whole number of requests from 1, such as "@times = 2"`, method.Name)
 		}
 		method.Times = times
 	case "etag":
@@ -1201,45 +1242,45 @@ func applyControlVariable(method *Method, def definition, source string) error {
 		case "off":
 			method.ETag = false
 		default:
-			return parseErrorf(source, def.line, `section %q: @etag must be auto or off`, method.Name)
+			return parseErrorf(def.in(source), def.line, `section %q: @etag must be auto or off`, method.Name)
 		}
 	case "jwt.secret":
 		// Read with Variable when a {{$jwt}} token is signed.
 	case "file":
-		return parseErrorf(source, def.line, "section %q: %s", method.Name, fileVariableRemoved)
+		return parseErrorf(def.in(source), def.line, "section %q: %s", method.Name, fileVariableRemoved)
 	case "delay":
 		delay, err := ParseDelay(value)
 		if err != nil {
-			return parseErrorf(source, def.line, "section %q: @delay %v", method.Name, err)
+			return parseErrorf(def.in(source), def.line, "section %q: @delay %v", method.Name, err)
 		}
 		method.Delay, method.DelayMax, method.DelaySigma = delay.Min, delay.Max, delay.Sigma
 	case "throttle":
 		rate, err := ParseThrottle(value)
 		if err != nil {
-			return parseErrorf(source, def.line, "section %q: @throttle %v", method.Name, err)
+			return parseErrorf(def.in(source), def.line, "section %q: @throttle %v", method.Name, err)
 		}
 		method.Throttle = rate
 	case "rate-limit.key":
 		if strings.TrimSpace(def.value) == "" {
-			return parseErrorf(source, def.line, `section %q: @rate-limit.key needs a value, such as "@rate-limit.key = {{$header.Authorization}}"`, method.Name)
+			return parseErrorf(def.in(source), def.line, `section %q: @rate-limit.key needs a value, such as "@rate-limit.key = {{$header.Authorization}}"`, method.Name)
 		}
 		method.RateLimitKey = strings.TrimSpace(def.value)
 	case "rate-limit":
 		limit, window, err := ParseRateLimit(value)
 		if err != nil {
-			return parseErrorf(source, def.line, "section %q: @rate-limit %v", method.Name, err)
+			return parseErrorf(def.in(source), def.line, "section %q: @rate-limit %v", method.Name, err)
 		}
 		method.RateLimit, method.RateWindow = limit, window
 	case "stream":
 		pause, err := time.ParseDuration(strings.TrimSpace(value))
 		if err != nil || pause < 0 {
-			return parseErrorf(source, def.line, `section %q: @stream must be a non-negative duration, such as "50ms"`, method.Name)
+			return parseErrorf(def.in(source), def.line, `section %q: @stream must be a non-negative duration, such as "50ms"`, method.Name)
 		}
 		method.Stream = pause
 	case "fault":
 		fault, rate, err := ParseFault(value)
 		if err != nil {
-			return parseErrorf(source, def.line, "section %q: @fault %v", method.Name, err)
+			return parseErrorf(def.in(source), def.line, "section %q: @fault %v", method.Name, err)
 		}
 		method.Fault, method.FaultRate = fault, rate
 	case "template":
@@ -1249,15 +1290,15 @@ func applyControlVariable(method *Method, def definition, source string) error {
 		case "on", "off":
 			method.Template = mode
 		default:
-			return parseErrorf(source, def.line, `section %q: @template must be auto, on or off`, method.Name)
+			return parseErrorf(def.in(source), def.line, `section %q: @template must be auto, on or off`, method.Name)
 		}
 	case "trim":
 		if mode := strings.TrimSpace(value); mode != "on" && mode != "off" {
-			return parseErrorf(source, def.line, `section %q: @trim must be on or off`, method.Name)
+			return parseErrorf(def.in(source), def.line, `section %q: @trim must be on or off`, method.Name)
 		}
 	case "seed":
 		if strings.TrimSpace(value) == "" {
-			return parseErrorf(source, def.line, `section %q: @seed needs a value, such as "@seed = 42"`, method.Name)
+			return parseErrorf(def.in(source), def.line, `section %q: @seed needs a value, such as "@seed = 42"`, method.Name)
 		}
 	case "compress":
 		switch mode := strings.ToLower(strings.TrimSpace(value)); mode {
@@ -1266,31 +1307,31 @@ func applyControlVariable(method *Method, def definition, source string) error {
 		case "gzip", "deflate", "auto":
 			method.Compress = mode
 		default:
-			return parseErrorf(source, def.line, `section %q: @compress must be gzip, deflate, auto or off`, method.Name)
+			return parseErrorf(def.in(source), def.line, `section %q: @compress must be gzip, deflate, auto or off`, method.Name)
 		}
 	case "fixture":
 		fixture := strings.TrimSpace(value)
 		if fixture == "" || strings.Contains(fixture, "{{") {
-			return parseErrorf(source, def.line, `section %q: @fixture needs a JSON, CSV or NDJSON file path without placeholders, such as "@fixture = data/users.json"`, method.Name)
+			return parseErrorf(def.in(source), def.line, `section %q: @fixture needs a JSON, CSV or NDJSON file path without placeholders, such as "@fixture = data/users.json"`, method.Name)
 		}
 		method.Fixture = fixture
 	case "callback":
 		callbackMethod, target, err := ParseCallback(value)
 		if err != nil {
-			return parseErrorf(source, def.line, "section %q: @callback %v", method.Name, err)
+			return parseErrorf(def.in(source), def.line, "section %q: @callback %v", method.Name, err)
 		}
 		callback := method.callback(0, def.line)
 		callback.Method, callback.URL = callbackMethod, target
 	case "proxy":
 		proxy := strings.TrimSpace(value)
 		if err := ValidateProxy(proxy); err != nil {
-			return parseErrorf(source, def.line, "section %q: @proxy %v", method.Name, err)
+			return parseErrorf(def.in(source), def.line, "section %q: @proxy %v", method.Name, err)
 		}
 		method.Proxy = proxy
 	case "port":
 		port, err := parsePort(value)
 		if err != nil {
-			return parseErrorf(source, def.line, "section %q: @port %v", method.Name, err)
+			return parseErrorf(def.in(source), def.line, "section %q: @port %v", method.Name, err)
 		}
 		method.Port = port
 	case "fallback":
@@ -1300,17 +1341,17 @@ func applyControlVariable(method *Method, def definition, source string) error {
 		case "false":
 			method.Fallback = false
 		default:
-			return parseErrorf(source, def.line, `section %q: @fallback must be true or false`, method.Name)
+			return parseErrorf(def.in(source), def.line, `section %q: @fallback must be true or false`, method.Name)
 		}
 	case "match.chance":
 		chance, err := ParseChance(value)
 		if err != nil {
-			return parseErrorf(source, def.line, "section %q: @match.chance %v", method.Name, err)
+			return parseErrorf(def.in(source), def.line, "section %q: @match.chance %v", method.Name, err)
 		}
 		method.Chance = chance
 	default:
 		if strings.HasPrefix(def.name, "match.") {
-			return parseErrorf(source, def.line, `section %q: unknown directive @%s (did you mean @match.chance?)`, method.Name, def.name)
+			return parseErrorf(def.in(source), def.line, `section %q: unknown directive @%s (did you mean @match.chance?)`, method.Name, def.name)
 		}
 	}
 	return nil
@@ -1327,7 +1368,7 @@ func applyStatusDirective(method *Method, defs, sectionDefs []definition, nameSt
 	def := defs[i]
 	if nameStatus {
 		if slices.ContainsFunc(sectionDefs, func(d definition) bool { return d.name == "status" }) {
-			return parseErrorf(source, def.line, `section %q sets a status in its name and with @status; keep one`, method.Name)
+			return parseErrorf(def.in(source), def.line, `section %q sets a status in its name and with @status; keep one`, method.Name)
 		}
 		return nil
 	}
@@ -1338,7 +1379,7 @@ func applyStatusDirective(method *Method, defs, sectionDefs []definition, nameSt
 	}
 	status, err := strconv.Atoi(Expand(value, method.Variables, nil))
 	if err != nil || status < 200 || status > 999 {
-		return parseErrorf(source, def.line, `section %q: @status must be a status between 200 and 999 or a placeholder, such as "@status = {{$query.status | default 200}}"`, method.Name)
+		return parseErrorf(def.in(source), def.line, `section %q: @status must be a status between 200 and 999 or a placeholder, such as "@status = {{$query.status | default 200}}"`, method.Name)
 	}
 	method.Status = status
 	return nil
@@ -1390,7 +1431,7 @@ func applyCallbackDirective(method *Method, def definition, key, value, source s
 	if key == "retries" {
 		retries, err := parseRetries(value)
 		if err != nil {
-			return parseErrorf(source, def.line, "section %q: @callback.retries %v", method.Name, err)
+			return parseErrorf(def.in(source), def.line, "section %q: @callback.retries %v", method.Name, err)
 		}
 		method.CallbackRetries = retries
 		return nil
@@ -1399,13 +1440,13 @@ func applyCallbackDirective(method *Method, def definition, key, value, source s
 	if first, rest, _ := strings.Cut(key, "."); first != "" && first[0] >= '0' && first[0] <= '9' {
 		n, err := strconv.Atoi(first)
 		if err != nil || n < 1 || n > 99 {
-			return parseErrorf(source, def.line, `section %q: @callback.%s: callbacks are numbered 1 to 99, such as "@callback.2 = POST {{$json.callbackUrl}}"`, method.Name, first)
+			return parseErrorf(def.in(source), def.line, `section %q: @callback.%s: callbacks are numbered 1 to 99, such as "@callback.2 = POST {{$json.callbackUrl}}"`, method.Name, first)
 		}
 		index, key, prefix = n, rest, "@callback."+first+"."
 		if key == "" {
 			callbackMethod, target, err := ParseCallback(value)
 			if err != nil {
-				return parseErrorf(source, def.line, "section %q: @callback.%d %v", method.Name, n, err)
+				return parseErrorf(def.in(source), def.line, "section %q: @callback.%d %v", method.Name, n, err)
 			}
 			callback := method.callback(n, def.line)
 			callback.Method, callback.URL = callbackMethod, target
@@ -1417,7 +1458,7 @@ func applyCallbackDirective(method *Method, def definition, key, value, source s
 	case key == "delay":
 		delay, err := time.ParseDuration(strings.TrimSpace(value))
 		if err != nil || delay < 0 {
-			return parseErrorf(source, def.line, `section %q: %sdelay must be a non-negative duration, such as "500ms"`, method.Name, prefix)
+			return parseErrorf(def.in(source), def.line, `section %q: %sdelay must be a non-negative duration, such as "500ms"`, method.Name, prefix)
 		}
 		callback.Delay = delay
 	case key == "body":
@@ -1425,17 +1466,17 @@ func applyCallbackDirective(method *Method, def definition, key, value, source s
 	case key == "retries" && index > 0:
 		retries, err := parseRetries(value)
 		if err != nil {
-			return parseErrorf(source, def.line, "section %q: %sretries %v", method.Name, prefix, err)
+			return parseErrorf(def.in(source), def.line, "section %q: %sretries %v", method.Name, prefix, err)
 		}
 		callback.Retries, callback.retriesSet = retries, true
 	case strings.HasPrefix(key, "header."):
 		name := strings.TrimPrefix(key, "header.")
 		if !ValidHeaderName(name) {
-			return parseErrorf(source, def.line, `section %q: %sheader. needs a valid header name (example: "%sheader.Content-Type = application/json")`, method.Name, prefix, prefix)
+			return parseErrorf(def.in(source), def.line, `section %q: %sheader. needs a valid header name (example: "%sheader.Content-Type = application/json")`, method.Name, prefix, prefix)
 		}
 		callback.Headers.Set(name, value)
 	default:
-		return parseErrorf(source, def.line, `section %q: unknown directive @%s (use %sdelay, %sheader.Name, %sbody or @callback.retries)`, method.Name, def.name, prefix, prefix, prefix)
+		return parseErrorf(def.in(source), def.line, `section %q: unknown directive @%s (use %sdelay, %sheader.Name, %sbody or @callback.retries)`, method.Name, def.name, prefix, prefix, prefix)
 	}
 	return nil
 }
@@ -1717,6 +1758,7 @@ var controlVariables = map[string]struct{}{
 	"missing":        {},
 	"etag":           {},
 	"times":          {},
+	"import":         {},
 	"jwt.secret":     {},
 	"throttle":       {},
 	"rate-limit.key": {},

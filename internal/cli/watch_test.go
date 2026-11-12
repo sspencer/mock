@@ -125,3 +125,10 @@ func absPath(path string) string {
 	}
 	return abs
 }
+
+func TestResolveWatchPathsIncludesImports(t *testing.T) {
+	paths := resolveWatchPaths([]string{"api.http"}, []restclient.Method{{Source: "api.http", Imports: []string{"shared/common.http"}}})
+	if len(paths) != 2 || paths[1] != absPath("shared/common.http") {
+		t.Fatalf("paths = %v", paths)
+	}
+}

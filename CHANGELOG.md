@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `@import = shared/common.http` brings in another file's file-level definitions (variables and directives such as `@delay` or `@default.header.*`), so request files can share hosts, tokens and defaults. Imports nest, cycles are load errors, imported variables a file doesn't use aren't reported as unused, and editing an imported file reloads the files that import it.
+
 - `mock match api.http GET '/users?role=admin' -H 'X-Tenant: a'` prints the route that would answer a request, or the closest routes and why each turned it away (exit 1), without starting a server. `-response` renders the response too, and `-json` prints it all as JSON. Go code can call `Server.Explain`.
 
 - Releases publish a multi-arch image, `ghcr.io/sspencer/mock` (linux/amd64 and linux/arm64, tagged with the version and `latest`), and a Homebrew cask in `sspencer/homebrew-tap` (`brew install --cask sspencer/tap/mock`).
