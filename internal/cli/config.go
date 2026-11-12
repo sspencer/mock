@@ -74,6 +74,11 @@ type config struct {
 	LogFormat string
 	// Help holds the usage text when -h or --help was requested.
 	Help string
+
+	// quiet and onReady are set by mock run, not by flags: quiet leaves out
+	// the startup banner, and onReady is called once the ports are bound.
+	quiet   bool
+	onReady func(serving)
 }
 
 const defaultBind = "127.0.0.1"
@@ -101,6 +106,7 @@ const usageText = `usage:
   mock validate [-strict] [-json] [-var name=value] [-env NAME [-env-file FILE]] <file.http|dir> [file.http|dir...]
   mock init [-force] [dir]
   mock import [-host HOST] [-path PREFIX] <file.har|->
+  mock run [flags] <file.http|-d dir> [file.http...] -- command [args...]
   mock match [-H 'Name: value'] [-d body] [-response] [-json] <file.http|dir> [file.http|dir...] METHOD URL
   mock check -upstream URL [-all] [-json] [-header 'Name: value'] [-var name=value] [-env NAME [-env-file FILE]] [-timeout 10s] <file.http|dir> [file.http|dir...]
 

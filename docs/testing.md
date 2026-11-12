@@ -45,6 +45,36 @@ kill "$mock_pid"     # SIGTERM
 wait "$mock_pid"   # fails the job if any request went unmatched
 ```
 
+[`mock run`](#running-a-test-suite-against-mock) does the same in one line:
+`mock run fixtures.http -- npm test`.
+
+## Running a test suite against mock
+
+`mock run` does the whole CI step in one command: it starts `mock` on free
+ports, runs your test command with the mock's address in the environment,
+stops, prints the strict report, and exits with the command's status:
+
+```sh
+mock run api.http -- npm test
+mock run -d mocks -- pytest -x
+```
+
+- The command gets `MOCK_URL` (the default mock port, such as
+  `http://127.0.0.1:53124`) and `MOCK_ADMIN_URL` (the admin UI, unless `-x`).
+  Point your client at `MOCK_URL` instead of a fixed port.
+- Strict mode is always on. If the command succeeds but some request matched
+  no route, `mock run` exits `1`; if the command fails, it exits with the
+  command's status. The report goes to stderr either way.
+- Everything before `--` is `mock`'s own flags and request files, so
+  `-v`, `-e`, `-H`, `-P flaky` and `-d` work as usual; `-p` and `-a` choose
+  fixed ports instead of free ones. Routes with their own `@port` still bind
+  that port.
+- The startup banner and per-request logs are left out, so the command's
+  output reads cleanly; load warnings still show. Ctrl-C stops the command
+  (with an interrupt, then a kill after five seconds) and `mock`.
+- From the command, [`POST /routes`](admin-ui.md#temporary-routes) and
+  `POST /reset` on `MOCK_ADMIN_URL` stub and reset routes between tests.
+
 ## Using mock in Go tests
 
 The `mocktest` package runs a mock server inside a Go test, from the same

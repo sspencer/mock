@@ -32,6 +32,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if len(args) > 0 && args[0] == "import" {
 		return runImport(args[1:], stdin, stdout, stderr)
 	}
+	if len(args) > 0 && args[0] == "run" {
+		return runRun(ctx, args[1:], stdin, stdout, stderr)
+	}
 	if len(args) > 0 && args[0] == "match" {
 		return runMatch(args[1:], stdout)
 	}
@@ -50,6 +53,21 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		fmt.Fprintln(stdout, currentVersion())
 		return nil
 	}
+	return serve(ctx, cfg, stdin, stdout, stderr, logger)
+}
+
+// serving describes a server that has bound its ports, for config.onReady.
+type serving struct {
+	// MockURL is the base URL of the default mock port (or the first mock
+	// port when no route uses the default), and AdminURL that of the admin
+	// UI, "" with -x.
+	MockURL, AdminURL string
+	Routes            int
+}
+
+// serve runs the server for a parsed configuration until ctx is done or a
+// server fails.
+func serve(ctx context.Context, cfg config, stdin io.Reader, stdout, stderr io.Writer, logger *slog.Logger) error {
 	// With JSON logs every stdout line is a JSON object; routes listed on
 	// reload become records too (a nil routesOut).
 	jsonLogs := cfg.LogFormat == "json"
@@ -188,6 +206,8 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 
 	if mockServer == nil {
 		logger.Info("starting static HTTP server", "addr", boundAddress(cfg.Bind, mockListeners[0]), "dir", input.StaticDir)
+	} else if cfg.quiet {
+		// mock run: the command's output is what matters.
 	} else {
 		if adminHandler != nil && bindsAllInterfaces(cfg.Bind) && cfg.UIToken == "" {
 			fmt.Fprintln(stderr, "warning: bound to all interfaces; admin UI is unauthenticated and request logs may include Authorization headers and bodies; set -t (--ui-token) to require a token")
@@ -248,6 +268,20 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	errCh := make(chan error, len(servers))
 	for i, server := range servers {
 		go func() { errCh <- server.Serve(listeners[i]) }()
+	}
+	if cfg.onReady != nil && mockServer != nil {
+		ready := serving{Routes: len(input.Methods)}
+		ln := mockListeners[0]
+		for _, candidate := range mockListeners {
+			if candidate.Addr().(*net.TCPAddr).Port == plan.defaultPort {
+				ln = candidate
+			}
+		}
+		ready.MockURL = "http://" + clientAddress(cfg.Bind, ln)
+		if adminListener != nil {
+			ready.AdminURL = "http://" + clientAddress(cfg.Bind, adminListener)
+		}
+		cfg.onReady(ready)
 	}
 	select {
 	case <-ctx.Done():
@@ -314,4 +348,13 @@ func announceJSON(logger *slog.Logger, cfg config, mockListeners []net.Listener,
 		logger.Info("watching request files for changes")
 	}
 	showMethods(nil, logger, methods)
+}
+
+// clientAddress is the address a client on this machine uses for a
+// listener: the bind host, or loopback for an all-interfaces bind.
+func clientAddress(bind string, ln net.Listener) string {
+	if bindsAllInterfaces(bind) {
+		bind = "127.0.0.1"
+	}
+	return boundAddress(bind, ln)
 }
