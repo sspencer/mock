@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `mock check` compares nested JSON keys and value types (string versus number and so on), with paths such as `user.address` and `items[0].sku`, down to `-depth` levels (3 by default; `null` matches any type), and compares chosen response headers with `-check-header Name`.
+
 - `mock run api.http -- npm test` starts `mock` on free ports, runs the command with `MOCK_URL` and `MOCK_ADMIN_URL` set, then stops, prints the strict report and exits with the command's status (or `1` when the command passed but requests went unmatched). One CI step instead of background jobs and traps.
 
 - Route switches in the admin UI: **Switches** in the route inspector turns a route off (later routes answer), forces its status, or adds a delay or fault while `mock` runs, until switched back on or reset. Switched routes get a badge in the route list, and `/state` counts them. `/faults` takes the same `off` and `status` fields, and `/routes` reports each route's own `switch`.

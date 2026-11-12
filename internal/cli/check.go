@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,7 +22,7 @@ import (
 	"github.com/sspencer/mock/restclient"
 )
 
-const checkUsage = "usage: mock check -upstream URL [-all] [-json] [-header 'Name: value'] [-var name=value] [-env NAME [-env-file FILE]] [-timeout 10s] <file.http|dir> [file.http|dir...]"
+const checkUsage = "usage: mock check -upstream URL [-all] [-json] [-depth 3] [-check-header Name] [-header 'Name: value'] [-var name=value] [-env NAME [-env-file FILE]] [-timeout 10s] <file.http|dir> [file.http|dir...]"
 
 // maxCheckBody caps how much of each response body is read for the JSON
 // field comparison.
@@ -49,6 +50,7 @@ type checkResponse struct {
 	Status      int    `json:"status"`
 	ContentType string `json:"contentType,omitempty"`
 	body        []byte
+	headers     http.Header
 }
 
 type checkReport struct {
@@ -86,6 +88,9 @@ func runCheck(ctx context.Context, args []string, stdout io.Writer) error {
 	timeout := fs.Duration("timeout", 10*time.Second, "time limit for each upstream request")
 	var headers headerFlag
 	fs.Var(&headers, "header", "add `Name: value` to every upstream request (repeatable)")
+	depth := fs.Int("depth", 3, "compare JSON bodies this many levels deep (1: top-level keys only)")
+	var checkHeaders listFlag
+	fs.Var(&checkHeaders, "check-header", "also compare this response header `Name` (repeatable)")
 	var vars varFlag
 	fs.Var(&vars, "var", "set `name=value` in every request file (repeatable)")
 	var env envFlags
@@ -113,6 +118,9 @@ func runCheck(ctx context.Context, args []string, stdout io.Writer) error {
 	if *timeout <= 0 {
 		return usageError("-timeout must be positive")
 	}
+	if *depth < 1 {
+		return usageError("-depth must be at least 1")
+	}
 	if err := env.check("-env-file", "-env"); err != nil {
 		return err
 	}
@@ -132,7 +140,7 @@ func runCheck(ctx context.Context, args []string, stdout io.Writer) error {
 	}
 	report := checkReport{OK: true, Results: []checkResult{}}
 	for _, method := range methods {
-		result := checkRoute(ctx, client, upstream, http.Header(headers), method, *all)
+		result := checkRoute(ctx, client, upstream, http.Header(headers), method, *all, compareOptions{depth: *depth, headers: checkHeaders})
 		if result.Result == "drift" || result.Result == "error" {
 			report.OK = false
 		}
@@ -157,7 +165,7 @@ func runCheck(ctx context.Context, args []string, stdout io.Writer) error {
 
 // checkRoute sends method's sample request to the mock and to upstream and
 // compares the answers.
-func checkRoute(ctx context.Context, client *http.Client, upstream *url.URL, extra http.Header, method restclient.Method, all bool) checkResult {
+func checkRoute(ctx context.Context, client *http.Client, upstream *url.URL, extra http.Header, method restclient.Method, all bool, opts compareOptions) checkResult {
 	sample := buildSampleRequest(method)
 	result := checkResult{Name: method.Name, Method: method.Method, Target: sample.Target, Source: method.Source, Line: method.Line}
 	switch {
@@ -181,7 +189,7 @@ func checkRoute(ctx context.Context, client *http.Client, upstream *url.URL, ext
 		return result
 	}
 	result.Upstream = real
-	result.Differences = compareResponses(sample.Method, mock, real)
+	result.Differences = compareResponses(sample.Method, mock, real, opts)
 	result.Result = "ok"
 	if len(result.Differences) > 0 {
 		result.Result = "drift"
@@ -213,7 +221,7 @@ func mockResponse(method restclient.Method, sample sampleRequest) (*checkRespons
 	}
 	response := recorder.Result()
 	body, _ := io.ReadAll(io.LimitReader(response.Body, maxCheckBody))
-	return &checkResponse{Status: response.StatusCode, ContentType: response.Header.Get("Content-Type"), body: body}, nil
+	return &checkResponse{Status: response.StatusCode, ContentType: response.Header.Get("Content-Type"), body: body, headers: response.Header.Clone()}, nil
 }
 
 // upstreamResponse sends the sample request to the real API, under its base
@@ -246,13 +254,22 @@ func upstreamResponse(ctx context.Context, client *http.Client, upstream *url.UR
 	if err != nil {
 		return nil, fmt.Errorf("upstream response failed: %v", err)
 	}
-	return &checkResponse{Status: response.StatusCode, ContentType: response.Header.Get("Content-Type"), body: data}, nil
+	return &checkResponse{Status: response.StatusCode, ContentType: response.Header.Get("Content-Type"), body: data, headers: response.Header.Clone()}, nil
 }
 
 // compareResponses lists how the real answer differs from the mock's: the
 // status, the Content-Type media type, and, when both are the same JSON
 // status, the top-level fields (of the first element, for arrays).
-func compareResponses(method string, mock, real *checkResponse) []string {
+// compareOptions says how deep mock check compares JSON bodies and which
+// response headers it compares.
+type compareOptions struct {
+	// depth is how many levels of nested objects are compared; 1 compares
+	// only the top-level keys.
+	depth   int
+	headers []string
+}
+
+func compareResponses(method string, mock, real *checkResponse, opts compareOptions) []string {
 	var differences []string
 	if mock.Status != real.Status {
 		differences = append(differences, fmt.Sprintf("status: mock %d, upstream %d", mock.Status, real.Status))
@@ -261,13 +278,32 @@ func compareResponses(method string, mock, real *checkResponse) []string {
 	if mockType != realType {
 		differences = append(differences, fmt.Sprintf("content type: mock %s, upstream %s", orNone(mockType), orNone(realType)))
 	}
+	for _, name := range opts.headers {
+		mockValue := strings.Join(mock.headers.Values(name), ", ")
+		realValue := strings.Join(real.headers.Values(name), ", ")
+		if mockValue != realValue {
+			differences = append(differences, fmt.Sprintf("header %s: mock %s, upstream %s", http.CanonicalHeaderKey(name), orNone(quoteValue(mockValue)), orNone(quoteValue(realValue))))
+		}
+	}
 	if mock.Status != real.Status || method == http.MethodHead || !isJSONType(mockType) || !isJSONType(realType) {
 		return differences
 	}
-	return append(differences, compareJSONFields(mock.body, real.body)...)
+	return append(differences, compareJSONFields(mock.body, real.body, max(opts.depth, 1))...)
 }
 
-func compareJSONFields(mockBody, realBody []byte) []string {
+func quoteValue(value string) string {
+	if value == "" {
+		return ""
+	}
+	return strconv.Quote(value)
+}
+
+// compareJSONFields compares the shape of two JSON bodies: values of
+// different types, and object keys missing on either side for objects at
+// most depth levels deep (the body is level 1). Arrays compare their first
+// elements. null matches any type, since APIs often send null for an
+// optional field.
+func compareJSONFields(mockBody, realBody []byte, depth int) []string {
 	var mockValue, realValue any
 	if len(realBody) == 0 && len(mockBody) == 0 {
 		return nil
@@ -278,44 +314,72 @@ func compareJSONFields(mockBody, realBody []byte) []string {
 	if err := json.Unmarshal(realBody, &realValue); err != nil {
 		return []string{"json: the upstream body is not valid JSON"}
 	}
+	var differences []string
+	compareJSONValues("", mockValue, realValue, 1, depth, &differences)
+	return differences
+}
+
+func compareJSONValues(path string, mockValue, realValue any, level, depth int, differences *[]string) {
 	where := "json"
-	mockList, mockIsList := mockValue.([]any)
-	realList, realIsList := realValue.([]any)
-	if mockIsList && realIsList {
-		if len(mockList) == 0 || len(realList) == 0 {
-			return nil // Nothing to compare without an element on both sides.
-		}
-		mockValue, realValue, where = mockList[0], realList[0], "json [0]"
+	if path != "" {
+		where = "json " + path
+	}
+	if mockValue == nil || realValue == nil {
+		return
 	}
 	if kind(mockValue) != kind(realValue) {
-		return []string{fmt.Sprintf("%s: mock has %s, upstream %s", where, kind(mockValue), kind(realValue))}
+		*differences = append(*differences, fmt.Sprintf("%s: mock has %s, upstream %s", where, kind(mockValue), kind(realValue)))
+		return
 	}
-	mockObject, ok := mockValue.(map[string]any)
-	if !ok {
-		return nil
-	}
-	realObject := realValue.(map[string]any)
-	var missing, extra []string
-	for key := range realObject {
-		if _, ok := mockObject[key]; !ok {
-			missing = append(missing, key)
+	switch mockValue := mockValue.(type) {
+	case []any:
+		realList := realValue.([]any)
+		if len(mockValue) > 0 && len(realList) > 0 {
+			compareJSONValues(path+"[0]", mockValue[0], realList[0], level, depth, differences)
+		}
+	case map[string]any:
+		if level > depth {
+			return // Deeper than -depth: its type matched, its keys are not compared.
+		}
+		realObject := realValue.(map[string]any)
+		var missing, extra, common []string
+		for key := range realObject {
+			if _, ok := mockValue[key]; !ok {
+				missing = append(missing, key)
+			}
+		}
+		for key := range mockValue {
+			if _, ok := realObject[key]; ok {
+				common = append(common, key)
+			} else {
+				extra = append(extra, key)
+			}
+		}
+		if len(missing) > 0 {
+			slices.Sort(missing)
+			*differences = append(*differences, fmt.Sprintf("%s: missing from mock: %s", where, strings.Join(missing, ", ")))
+		}
+		if len(extra) > 0 {
+			slices.Sort(extra)
+			*differences = append(*differences, fmt.Sprintf("%s: only in mock: %s", where, strings.Join(extra, ", ")))
+		}
+		slices.Sort(common)
+		for _, key := range common {
+			compareJSONValues(jsonPathJoin(path, key), mockValue[key], realObject[key], level+1, depth, differences)
 		}
 	}
-	for key := range mockObject {
-		if _, ok := realObject[key]; !ok {
-			extra = append(extra, key)
-		}
+}
+
+// jsonPathJoin adds a key to a path for messages, as user.address or
+// meta["a.b"].
+func jsonPathJoin(path, key string) string {
+	if strings.ContainsAny(key, ". []\"") {
+		return path + `["` + key + `"]`
 	}
-	var differences []string
-	if len(missing) > 0 {
-		slices.Sort(missing)
-		differences = append(differences, fmt.Sprintf("%s: missing from mock: %s", where, strings.Join(missing, ", ")))
+	if path == "" {
+		return key
 	}
-	if len(extra) > 0 {
-		slices.Sort(extra)
-		differences = append(differences, fmt.Sprintf("%s: only in mock: %s", where, strings.Join(extra, ", ")))
-	}
-	return differences
+	return path + "." + key
 }
 
 // kind names a decoded JSON value's type for messages.

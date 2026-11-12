@@ -135,6 +135,8 @@ mock check -upstream https://staging.example.com/api -header "Authorization: Bea
 drift  GET /users/1 (api.http:12 Find user)
          json: missing from mock: created_at
          json: only in mock: nickname
+         json address: missing from mock: postcode
+         json id: mock has a string, upstream a number
 ok     GET /users (api.http:3 List users)
 skip   POST /users (api.http:20 Create user): not a safe method; use -all to send it
 checked 3 routes: 1 ok, 1 drifted, 0 errors, 1 skipped
@@ -144,8 +146,15 @@ It compares:
 
 - the status code;
 - the `Content-Type` media type (parameters such as `charset` are ignored);
-- when both answers are JSON with the same status, the top-level object
-  fields, or the first element's fields when both are arrays.
+- any response headers named with `-check-header`, by value;
+- when both answers are JSON with the same status, the shape of the bodies:
+  object keys missing on either side, and values of different types (string,
+  number, boolean, object or array), with a path such as `user.address` or
+  `items[0].sku` in each message. Arrays compare their first elements. A
+  `null` on either side matches any type, since APIs often send `null` for an
+  optional field. Keys are compared down to `-depth` levels of nested objects
+  (3 by default; `-depth 1` compares only the top-level keys); deeper values
+  are still compared by type.
 
 The sample request fills path parameters with an exact `@path` value or a
 sample (`1` for names such as `id` or `user_id`, else `example`), and adds
@@ -162,6 +171,8 @@ path. The mock answers in-process without `@delay`, `@fault`, `@stream`,
 | `-var name=value` | Set a variable in every request file, as with `mock -v` |
 | `-env NAME`, `-env-file FILE` | Use a [REST Client environment](request-files.md#rest-client-environments), as with `mock -e` and `-E` |
 | `-timeout 10s` | Time limit for each upstream request |
+| `-depth 3` | How many levels of nested objects to compare keys in. Lower it to cut noise from deep payloads |
+| `-check-header Name` | Also compare this response header's value, such as `Cache-Control` or `Location`. Repeatable |
 | `-json` | Print the report as JSON: `ok` and one result per route with `result` (`ok`, `drift`, `skipped` or `error`), `differences`, and each side's `status` and `contentType` |
 
 `@proxy` routes are skipped. A route whose sample request cannot match it (a

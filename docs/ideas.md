@@ -42,7 +42,6 @@ The ideas with the best value for their effort, in suggested order:
 
 | ID | Idea | Effort | Why |
 |----|------|--------|-----|
-| [`AP-1`](#working-with-real-apis) | Deeper drift check | M | `mock check` compares only top-level JSON keys today |
 
 ## Stateful behavior
 
@@ -79,7 +78,6 @@ state only decides whether a route is eligible.
 
 | ID | Idea | Effort | Description |
 |----|------|--------|-------------|
-| `AP-1` | Deeper drift check | **M** | `mock check` compares status, media type and top-level JSON keys. Add nested keys, value types (`string` versus `number`), array element shape and a chosen list of headers, with `-depth` to limit noise. |
 | `AP-2` | Check against a schema | **L** | `mock check -openapi spec.yaml` validates each route's rendered response against the operation's schema, without calling the real service. This is a check only; the OpenAPI *import* that was removed is not proposed again (see [Not planned](#not-planned)). Prism validates this way. |
 | `AP-3` | Recording options | **M** | `-r` records each method and path once. Add `--record-by query,body` to keep variants as separate sections with matchers, `--record-bodies dir` to write large or binary bodies as `< files`, and `--record-refresh` to replace sections whose upstream response changed. |
 | `AP-4` | Import from curl and Postman | **M** | `mock import` reads HAR only. `mock import -curl` (a pasted command, from stdin) is small; a Postman collection with saved example responses is the larger half. Both reuse `draftSection`. |

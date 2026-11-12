@@ -108,7 +108,7 @@ const usageText = `usage:
   mock import [-host HOST] [-path PREFIX] <file.har|->
   mock run [flags] <file.http|-d dir> [file.http...] -- command [args...]
   mock match [-H 'Name: value'] [-d body] [-response] [-json] <file.http|dir> [file.http|dir...] METHOD URL
-  mock check -upstream URL [-all] [-json] [-header 'Name: value'] [-var name=value] [-env NAME [-env-file FILE]] [-timeout 10s] <file.http|dir> [file.http|dir...]
+  mock check -upstream URL [-all] [-json] [-depth 3] [-check-header Name] [-header 'Name: value'] [-var name=value] [-env NAME [-env-file FILE]] [-timeout 10s] <file.http|dir> [file.http|dir...]
 
 flags:
   -p, --port PORT      default HTTP port, for routes whose request target or
