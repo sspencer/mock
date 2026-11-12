@@ -1,85 +1,133 @@
-/* Mock request console.
- * Ink, electric violet and acid lime on warm paper. Two hard-edged cards
- * (traffic and routes, inspector) sit under an ink bar; lime marks what is
- * live or selected, violet marks what you can act on. Each theme supplies
- * its colors through the custom properties below; nothing else names a
- * color. */
+/* Mock request console: a transit wayfinding board.
+ *
+ * The product speaks in routes, traffic and switches, so the page borrows
+ * from station signage. A black sign band tops one continuous white board,
+ * divided by solid rules instead of floating cards. Each HTTP method is a
+ * line with its own color, as on a transit map, and the traffic log is drawn
+ * as a line map: a track runs down the status column and every request is a
+ * stop on it, lit in its signal color. Selecting inverts a row to sign black.
+ *
+ * Type is Overpass, descended from highway signage, with Overpass Mono for
+ * wire data only (paths, headers, bodies). Labels are sentence case.
+ *
+ * Each theme supplies its colors through the custom properties below;
+ * nothing else names a color. */
+
+@font-face {
+    font-family: "Overpass";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("fonts/overpass.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: "Overpass Mono";
+    font-style: normal;
+    font-weight: 300 700;
+    font-display: swap;
+    src: url("fonts/overpass-mono.woff2") format("woff2");
+}
 
 :root {
-    --bg: #efe9dc;
-    --surface: #fcf9f2;
-    --surface-2: #f3eee2;
-    --surface-3: #e5ddcb;
-    --ink: #16122b;
-    --muted: #524c6b;
-    --faint: #807a94;
-    --line: #ddd5c3;
-    --line-strong: #c3b9a3;
-    --edge: #16122b;
-    --accent: #5a23e6;
+    /* The board. */
+    --bg: #e8e8e4;
+    --surface: #ffffff;
+    --surface-2: #f3f3f0;
+    --surface-3: #e4e4df;
+    --ink: #1a1a1a;
+    --muted: #55554f;
+    --faint: #85857e;
+    --line: #e2e2dd;
+    --line-strong: #bdbdb6;
+    --edge: #000000;
+    /* What you can act on is the blue line; what is selected is sign black. */
+    --accent: #0039a6;
     --accent-ink: #ffffff;
-    --accent-soft: rgba(90, 35, 230, 0.12);
-    --accent-softer: rgba(90, 35, 230, 0.06);
-    --hi: #c8f31d;
-    --hi-ink: #16122b;
-    --bar: #16122b;
+    --accent-soft: rgba(0, 57, 166, 0.12);
+    --accent-softer: rgba(0, 57, 166, 0.06);
+    --hi: #000000;
+    --hi-ink: #ffffff;
+    --hi-muted: #c9c9c2;
+    /* The sign band. */
+    --bar: #000000;
     --bar-ink: #ffffff;
-    --bar-muted: #b8b1d6;
-    --bar-hover: rgba(255, 255, 255, 0.13);
-    --bar-line: #16122b;
-    --blue: #1447e6;
-    --green: #0b7a3e;
-    --amber: #9a5800;
-    --orange: #c93a00;
-    --purple: #7a1fd6;
-    --red: #d4161c;
+    --bar-muted: #c2c2ba;
+    --bar-hover: rgba(255, 255, 255, 0.16);
+    --bar-line: #000000;
+    /* One line per HTTP method, filled plates with white type. */
+    --line-get: #0039a6;
+    --line-post: #00853e;
+    --line-put: #e8590c;
+    --line-patch: #9b2fae;
+    --line-delete: #d5281b;
+    --line-other: #6d6e71;
+    --on-line: #ffffff;
+    /* Signal lamps for status. */
+    --sig-go: #00933c;
+    --sig-info: #0039a6;
+    --sig-caution: #f2a900;
+    --sig-stop: #e02b20;
+    /* The same hues as text. */
+    --blue: #0039a6;
+    --green: #00703a;
+    --amber: #8a5a00;
+    --orange: #b84300;
+    --purple: #86259a;
+    --red: #c0211a;
     --on-tone: #ffffff;
     --danger: var(--red);
-    --danger-soft: rgba(212, 22, 28, 0.09);
+    --danger-soft: rgba(213, 40, 27, 0.09);
     --warn: var(--amber);
-    --ok: #0f9d52;
-    --shadow-hard: #16122b;
-    --shadow-card: 3px 3px 0 var(--shadow-hard);
-    --shadow-pop: 6px 6px 0 var(--shadow-hard);
-    --backdrop: rgba(22, 18, 43, 0.45);
-    --radius: 8px;
-    --radius-sm: 4px;
-    --gutter: 12px;
-    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
-    --sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --ok: var(--sig-go);
+    --backdrop: rgba(0, 0, 0, 0.5);
+    --rule: 2px;
+    --radius: 0px;
+    --radius-sm: 3px;
+    --gutter: 0px;
+    --mono: "Overpass Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: "Overpass", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
     color-scheme: light;
 }
 
 [data-theme="dark"] {
-    --bg: #0b0916;
-    --surface: #141026;
-    --surface-2: #1b1634;
-    --surface-3: #2a2350;
-    --ink: #f2efff;
-    --muted: #ada6cc;
-    --faint: #7a739c;
-    --line: #272049;
-    --line-strong: #3c3470;
-    --edge: #51468f;
-    --accent: #a98bff;
-    --accent-ink: #120b33;
-    --accent-soft: rgba(169, 139, 255, 0.18);
-    --accent-softer: rgba(169, 139, 255, 0.09);
-    --bar: #141026;
-    --bar-muted: #ada6cc;
-    --bar-hover: rgba(255, 255, 255, 0.10);
-    --bar-line: #51468f;
-    --blue: #7fb0ff;
-    --green: #4fe39a;
-    --amber: #ffc04a;
+    --bg: #0c0c0c;
+    --surface: #161616;
+    --surface-2: #1f1f1f;
+    --surface-3: #2c2c2c;
+    --ink: #f2f2ee;
+    --muted: #b0b0a8;
+    --faint: #7d7d76;
+    --line: #2a2a2a;
+    --line-strong: #444440;
+    --edge: #6b6b65;
+    --accent: #8fb4ff;
+    --accent-ink: #000000;
+    --accent-soft: rgba(143, 180, 255, 0.18);
+    --accent-softer: rgba(143, 180, 255, 0.09);
+    --hi: #f2f2ee;
+    --hi-ink: #000000;
+    --hi-muted: #4a4a45;
+    --bar-line: #6b6b65;
+    --line-get: #2f6bdf;
+    --line-post: #1d9a55;
+    --line-put: #f0701f;
+    --line-patch: #b454c8;
+    --line-delete: #e4483a;
+    --line-other: #808183;
+    --sig-go: #2fbf6b;
+    --sig-info: #6f9bff;
+    --sig-caution: #ffc233;
+    --sig-stop: #ff5a4d;
+    --blue: #8fb4ff;
+    --green: #5fd28f;
+    --amber: #f0b840;
     --orange: #ff9a5c;
-    --purple: #c9a4ff;
-    --red: #ff7a7a;
-    --on-tone: #0b0916;
-    --danger-soft: rgba(255, 122, 122, 0.14);
-    --ok: #4fe39a;
-    --shadow-hard: #2f2763;
-    --backdrop: rgba(4, 3, 10, 0.7);
+    --purple: #d39be0;
+    --red: #ff8076;
+    --on-tone: #0c0c0c;
+    --danger-soft: rgba(255, 128, 118, 0.14);
+    --backdrop: rgba(0, 0, 0, 0.72);
     color-scheme: dark;
 }
 
@@ -98,6 +146,9 @@ body {
     font-family: var(--sans);
     font-size: 14px;
     line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+    /* Wire data must show its characters as sent: no "ff" ligatures. */
+    font-variant-ligatures: none;
     -webkit-font-smoothing: antialiased;
 }
 
@@ -119,21 +170,12 @@ h2 {
     line-height: 1.3;
 }
 
-/* Section titles are small mono capitals behind a violet block. */
+/* Section titles are set like sign headings: heavy, tight, sentence case. */
 .panel-header h2 {
-    font-family: var(--mono);
-    font-size: 0.72rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-}
-
-.panel-header h2::before {
-    display: inline-block;
-    width: 7px;
-    height: 7px;
-    margin-right: 8px;
-    background: var(--accent);
-    content: "";
+    font-size: 1.06rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
 }
 
 code {
@@ -165,30 +207,30 @@ code {
     grid-template-rows: auto minmax(0, 1fr);
     width: 100%;
     height: 100%;
-    padding: 0 var(--gutter) calc(var(--gutter) + 3px);
+    padding: 0;
 }
 
 .app-shell:has(.config-banner:not([hidden])) {
     grid-template-rows: auto auto minmax(0, 1fr);
 }
 
-/* The bar is ink in both themes and sets its own text colors. */
+/* The sign band is black in both themes and sets its own text colors. */
 .topbar {
     --ink: var(--bar-ink);
     --muted: var(--bar-muted);
     --surface-3: var(--bar-hover);
-    --ok: var(--hi);
-    --warn: #ffc04a;
-    --danger: #ff7a7a;
-    --danger-soft: rgba(255, 122, 122, 0.25);
+    --accent: #ffffff;
+    --ok: #2fd16f;
+    --warn: #ffc233;
+    --danger: #ff5a4d;
+    --danger-soft: rgba(255, 90, 77, 0.3);
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    height: 48px;
-    margin: 0 calc(-1 * var(--gutter)) var(--gutter);
-    padding: 0 calc(var(--gutter) + 2px);
-    border-bottom: 1.5px solid var(--bar-line);
+    height: 52px;
+    padding: 0 12px 0 16px;
+    border-bottom: var(--rule) solid var(--bar-line);
     background: var(--bar);
     color: var(--bar-ink);
 }
@@ -200,20 +242,20 @@ code {
     min-width: 0;
 }
 
+/* The mark is a route bullet: two stops joined by a line, in a roundel. */
 .brand-mark {
-    width: 22px;
-    height: 22px;
+    width: 26px;
+    height: 26px;
     flex: 0 0 auto;
 }
-.brand-mark rect { fill: var(--hi); }
-.brand-mark circle { fill: var(--hi-ink); }
-.brand-mark path { stroke: var(--hi-ink); stroke-width: 2; }
+.brand-mark rect { fill: var(--bar-ink); }
+.brand-mark circle { fill: var(--bar); }
+.brand-mark path { stroke: var(--bar); stroke-width: 2; }
 
 h1 {
-    font-family: var(--mono);
-    font-size: 1.05rem;
-    font-weight: 700;
-    letter-spacing: -0.03em;
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: -0.035em;
     line-height: 1;
 }
 
@@ -222,33 +264,26 @@ h1 {
     align-items: center;
     gap: 7px;
     min-width: 0;
-    margin: 0 0 0 10px;
+    margin: 0 0 0 14px;
     color: var(--muted);
-    font-family: var(--mono);
-    font-size: 0.72rem;
+    font-size: 0.82rem;
+    font-weight: 500;
     line-height: 1.3;
 }
 
 #streamStatus { overflow-wrap: anywhere; }
 
+/* A signal lamp: green while listening, amber paused, red offline. */
 .live-pip {
-    width: 8px;
-    height: 8px;
+    width: 10px;
+    height: 10px;
     flex: 0 0 auto;
     border-radius: 50%;
     background: var(--ok);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent);
 }
 
-.stream-paused .live-pip {
-    background: var(--warn);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 18%, transparent);
-}
-
-.stream-offline .live-pip {
-    background: var(--danger);
-    box-shadow: 0 0 0 3px var(--danger-soft);
-}
+.stream-paused .live-pip { background: var(--warn); }
+.stream-offline .live-pip { background: var(--danger); }
 
 .topbar-actions,
 .panel-actions,
@@ -274,19 +309,15 @@ h1 {
     border-radius: var(--radius-sm);
     background: var(--surface);
     color: var(--ink);
-    font-size: 0.78rem;
+    font-size: 0.8rem;
     font-weight: 600;
     white-space: nowrap;
     user-select: none;
-    transition: background-color 100ms ease, border-color 100ms ease, color 100ms ease, transform 60ms ease;
 }
 
-/* Hovering a button inks it in lime. */
+/* Hovering a button inverts it, as selecting a row does. */
 .theme-toggle:hover,
-.clear-button:hover:not(:disabled) { border-color: var(--hi-ink); background: var(--hi); color: var(--hi-ink); }
-
-.theme-toggle:active,
-.clear-button:active:not(:disabled) { transform: translate(1px, 1px); }
+.clear-button:hover:not(:disabled) { border-color: var(--hi); background: var(--hi); color: var(--hi-ink); }
 
 .clear-button:disabled {
     opacity: 0.45;
@@ -304,42 +335,55 @@ h1 {
     color: var(--muted);
 }
 
+.topbar-actions .theme-toggle,
+.topbar-actions .clear-button { height: 32px; color: var(--bar-ink); font-size: 0.84rem; }
+
 .topbar-actions .theme-toggle:hover,
-.topbar-actions .clear-button:hover:not(:disabled),
+.topbar-actions .clear-button:hover:not(:disabled) {
+    border-color: var(--bar-ink);
+    background: var(--bar-ink);
+    color: var(--bar);
+}
+
 .routes-panel-actions .clear-button:hover:not(:disabled),
 .mobile-back:hover:not(:disabled) {
+    border-color: transparent;
     background: var(--surface-3);
     color: var(--ink);
 }
 
 .clear-button.active,
-.detail-actions > [aria-pressed="true"] {
-    border-color: var(--edge);
-    background: var(--ink);
-    color: var(--surface);
+.detail-actions > [aria-pressed="true"],
+.detail-actions > [aria-expanded="true"] {
+    border-color: var(--hi);
+    background: var(--hi);
+    color: var(--hi-ink);
 }
 
 #pauseButton.active,
 #pauseButton.active:hover {
+    border-color: var(--warn);
     background: var(--warn);
-    color: #16122b;
+    color: #000000;
 }
 
 .danger-button:hover:not(:disabled) {
-    border-color: var(--edge);
-    background: var(--red);
-    color: var(--on-tone);
+    border-color: var(--line-delete);
+    background: var(--line-delete);
+    color: var(--on-line);
 }
 
-.primary-button,
+/* The one action a form exists for is filled; hovering moves it to blue. */
+.primary-button {
+    border-color: var(--hi);
+    background: var(--hi);
+    color: var(--hi-ink);
+}
 .primary-button:hover:not(:disabled) {
-    border-color: var(--edge);
+    border-color: var(--accent);
     background: var(--accent);
-    box-shadow: 2px 2px 0 var(--shadow-hard);
     color: var(--accent-ink);
 }
-.primary-button:hover:not(:disabled) { filter: brightness(1.12); }
-.primary-button:active:not(:disabled) { box-shadow: none; }
 
 .icon-button {
     width: 30px;
@@ -377,20 +421,22 @@ h1 {
     transform: none;
 }
 
-.segmented .clear-button:hover:not(:disabled) { background: var(--hi); color: var(--hi-ink); }
+.segmented .clear-button:hover:not(:disabled) { background: var(--surface-3); color: var(--ink); }
 
 .segmented .clear-button[aria-pressed="true"],
 .segmented .clear-button[aria-pressed="true"]:hover {
-    background: var(--ink);
-    color: var(--surface);
+    background: var(--hi);
+    color: var(--hi-ink);
 }
 
 /* ---------- Workspace ---------- */
 
+/* One board: panels sit flush and solid rules divide them. */
 .workspace {
     display: grid;
     grid-template-columns: minmax(0, var(--left-width, 45%)) 8px minmax(0, 1fr);
     min-height: 0;
+    background: var(--surface);
 }
 
 .request-panel,
@@ -404,10 +450,7 @@ h1 {
 .request-panel,
 .side-panel {
     overflow: hidden;
-    border: 1.5px solid var(--edge);
-    border-radius: var(--radius);
     background: var(--surface);
-    box-shadow: var(--shadow-card);
 }
 
 .request-panel {
@@ -427,10 +470,10 @@ h1 {
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 8px 12px;
-    min-height: 44px;
-    padding: 7px 10px 7px 16px;
-    border-bottom: 1.5px solid var(--edge);
-    background: var(--surface-2);
+    min-height: 48px;
+    padding: 8px 12px 8px 16px;
+    border-bottom: var(--rule) solid var(--edge);
+    background: var(--surface);
 }
 
 .panel-header.compact > .panel-heading {
@@ -447,9 +490,8 @@ h1 {
 
 .count-display {
     color: var(--muted);
-    font-family: var(--mono);
-    font-size: 0.7rem;
-    font-variant-numeric: tabular-nums;
+    font-size: 0.82rem;
+    font-weight: 500;
 }
 
 /* Filter: a full row under the Traffic heading. */
@@ -458,18 +500,17 @@ h1 {
     display: flex;
     flex: 1 0 100%;
     align-items: center;
-    height: 30px;
-    margin: 0 6px 3px 0;
+    height: 32px;
+    margin: 0 4px 4px 0;
     border: 1.5px solid var(--edge);
     border-radius: var(--radius-sm);
     background: var(--surface);
     color: var(--muted);
-    transition: border-color 100ms ease, box-shadow 100ms ease;
 }
 
 .filter-control:focus-within {
     border-color: var(--accent);
-    box-shadow: 2px 2px 0 var(--accent);
+    box-shadow: 0 0 0 1.5px var(--accent);
 }
 
 .filter-control .icon { margin-left: 9px; }
@@ -483,7 +524,7 @@ h1 {
     outline: 0;
     background: transparent;
     color: var(--ink);
-    font-size: 0.8rem;
+    font-size: 0.86rem;
 }
 
 .filter-input::placeholder { color: var(--faint); opacity: 1; }
@@ -498,9 +539,10 @@ h1 {
     border: 1px solid var(--line-strong);
     border-radius: 4px;
     background: var(--surface);
-    color: var(--faint);
-    font-family: var(--mono);
-    font-size: 0.65rem;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1;
 }
 
 .filter-control:focus-within .key-hint { visibility: hidden; }
@@ -537,84 +579,84 @@ thead th {
     position: sticky;
     top: 0;
     z-index: 2;
-    padding: 6px 16px;
+    padding: 7px 16px 5px;
     border-bottom: 1px solid var(--line-strong);
     background: var(--surface);
     color: var(--muted);
-    font-family: var(--mono);
-    font-size: 0.64rem;
+    font-size: 0.78rem;
     font-weight: 600;
-    letter-spacing: 0.08em;
     text-align: left;
-    text-transform: uppercase;
 }
 
 td {
-    height: 34px;
+    height: 36px;
     padding: 0 16px;
     border-bottom: 1px solid var(--line);
     vertical-align: middle;
 }
 
-th:nth-child(1), td:nth-child(1) { width: 92px; }
-th:nth-child(2), td:nth-child(2) { width: 62px; padding-inline: 0; white-space: nowrap; }
+th:nth-child(1), td:nth-child(1) { width: 96px; }
+th:nth-child(2), td:nth-child(2) { width: 74px; padding-inline: 0; white-space: nowrap; }
 
 td.time-cell {
-    color: var(--faint);
-    font-family: var(--mono);
-    font-size: 0.74rem;
-    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+    font-size: 0.84rem;
     white-space: nowrap;
 }
 
 td.request-cell {
     overflow: hidden;
     font-family: var(--mono);
-    font-size: 0.8rem;
+    font-size: 0.84rem;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .request-host { color: var(--faint); }
 
+/* Proxied, callback, resent and retry requests carry a small plate. */
 .proxied-badge {
     margin-left: 8px;
-    padding: 1px 6px;
-    border: 1px solid currentColor;
-    border-radius: 3px;
-    color: var(--accent);
-    font-family: var(--mono);
-    font-size: 0.64rem;
+    padding: 1px 6px 0;
+    border: 1.5px solid currentColor;
+    border-radius: 2px;
+    color: var(--muted);
+    font-family: var(--sans);
+    font-size: 0.72rem;
     font-weight: 600;
 }
 
+/* --row-bg lets a stop's halo match its row as the row changes color. */
 tbody tr[data-id] {
+    --row-bg: var(--surface);
     cursor: pointer;
-    transition: background-color 80ms ease;
 }
 
 /* A route's row is its button plus the hit count beside it. */
 tbody tr[data-id]:hover,
-.routes-list li:has(.route-button:hover) { background: var(--surface-2); }
+.routes-list li:has(.route-button:hover) { --row-bg: var(--surface-2); background: var(--surface-2); }
 
-/* The selection is a lime highlighter stroke, in both themes. */
+/* Selecting inverts the row to sign black (white at night). */
 tbody tr.selected,
 tbody tr.selected[data-id]:hover,
 .routes-list li:has(.route-button[aria-pressed="true"]) {
+    --row-bg: var(--hi);
     background: var(--hi);
-    box-shadow: inset 4px 0 0 var(--accent);
     color: var(--hi-ink);
 }
 
 tbody tr.selected td,
-tbody tr.selected .request-host,
-tbody tr.selected [class^="method-"],
-tbody tr.selected .proxied-badge,
-.routes-list li:has(.route-button[aria-pressed="true"]) :is(.route-button, .route-name, .route-hits, [class^="method-"]) {
+tbody tr.selected .status-code,
+.routes-list li:has(.route-button[aria-pressed="true"]) :is(.route-button, .route-hits) {
     color: var(--hi-ink);
 }
 
-tbody tr.selected .status-code { outline: 1.5px solid var(--hi-ink); }
+tbody tr.selected .request-host,
+tbody tr.selected .time-cell,
+tbody tr.selected .proxied-badge,
+.routes-list li:has(.route-button[aria-pressed="true"]) .route-name {
+    color: var(--hi-muted);
+}
 
 tbody tr[data-id]:focus-visible {
     outline: 2px solid var(--accent);
@@ -623,59 +665,88 @@ tbody tr[data-id]:focus-visible {
 
 .empty-state {
     height: 120px;
-    color: var(--faint);
-    font-size: 0.82rem;
+    color: var(--muted);
+    font-size: 0.9rem;
     text-align: center;
 }
 
 #requestTableBody .empty-state { border-bottom: 0; }
 
-/* Methods are outlined tags; statuses are solid blocks. */
+/* Each method is a line with its own color: a filled plate, white type. */
 [class^="method-"] {
+    --line-color: var(--line-other);
     display: inline-block;
-    min-width: 52px;
-    margin-right: 8px;
-    padding: 1px 4px;
-    border: 1.5px solid currentColor;
-    border-radius: 3px;
-    color: var(--muted);
-    font-family: var(--mono);
-    font-size: 0.66rem;
+    min-width: 62px;
+    margin-right: 10px;
+    padding: 2px 6px 0;
+    border-radius: 2px;
+    background: var(--line-color);
+    color: var(--on-line);
+    font-family: var(--sans);
+    font-size: 0.74rem;
     font-weight: 700;
-    letter-spacing: 0.04em;
-    line-height: 1.35;
+    letter-spacing: 0.02em;
+    line-height: 1.45;
     text-align: center;
     text-transform: uppercase;
 }
 
-.method-get    { color: var(--blue); }
-.method-post   { color: var(--green); }
-.method-put    { color: var(--amber); }
-.method-patch  { color: var(--purple); }
-.method-delete { color: var(--red); }
+.method-get    { --line-color: var(--line-get); }
+.method-post   { --line-color: var(--line-post); }
+.method-put    { --line-color: var(--line-put); }
+.method-patch  { --line-color: var(--line-patch); }
+.method-delete { --line-color: var(--line-delete); }
+
+/* The traffic log is a line map. A track runs down the status column and
+ * each request is a stop on it, lit in its signal color, newest at the top.
+ * A request no route answered is a hollow stop. */
+tbody tr[data-id] td:nth-child(2) { position: relative; }
+
+tbody tr[data-id] td:nth-child(2)::before {
+    position: absolute;
+    top: 0;
+    bottom: -1px;
+    left: 6px;
+    width: 2px;
+    background: var(--edge);
+    content: "";
+}
+
+tbody tr.selected td:nth-child(2)::before { background: var(--hi-ink); }
 
 .status-code {
-    --tone: var(--muted);
+    --tone: var(--faint);
+    position: relative;
+    top: 2px;
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    min-width: 40px;
-    height: 20px;
-    padding: 0 6px;
-    border-radius: 3px;
-    background: var(--tone);
-    color: var(--on-tone);
-    font-family: var(--mono);
-    font-size: 0.72rem;
+    gap: 10px;
+    color: var(--ink);
+    font-size: 0.88rem;
     font-weight: 700;
-    font-variant-numeric: tabular-nums;
     line-height: 1;
 }
 
-.status-2xx { --tone: var(--green); }
-.status-3xx { --tone: var(--blue); }
-.status-4xx { --tone: var(--orange); }
-.status-5xx { --tone: var(--red); }
+.status-code::before {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: var(--tone);
+    margin-top: -3px;
+    box-shadow: 0 0 0 2px var(--row-bg);
+    content: "";
+}
+
+.no-route .status-code::before {
+    border: 3px solid var(--tone);
+    background: var(--row-bg);
+}
+
+.status-2xx { --tone: var(--sig-go); }
+.status-3xx { --tone: var(--sig-info); }
+.status-4xx { --tone: var(--sig-caution); }
+.status-5xx { --tone: var(--sig-stop); }
 
 /* ---------- Routes ---------- */
 
@@ -708,7 +779,7 @@ tbody tr[data-id]:focus-visible {
     gap: 6px;
     width: 100%;
     min-width: 0;
-    height: 32px;
+    height: 34px;
     padding: 0 12px 0 16px;
     border: 0;
     background: transparent;
@@ -722,7 +793,7 @@ tbody tr[data-id]:focus-visible {
     min-width: 0;
     overflow: hidden;
     font-family: var(--mono);
-    font-size: 0.78rem;
+    font-size: 0.84rem;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -732,7 +803,7 @@ tbody tr[data-id]:focus-visible {
     min-width: 0;
     overflow: hidden;
     color: var(--muted);
-    font-size: 0.76rem;
+    font-size: 0.84rem;
     text-align: right;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -740,37 +811,33 @@ tbody tr[data-id]:focus-visible {
 
 .routes-list .route-hits {
     flex: 0 0 auto;
-    min-width: 28px;
-    height: 20px;
+    min-width: 30px;
+    height: 22px;
     margin-right: 12px;
-    padding: 0 6px;
-    border: 1.5px solid var(--edge);
-    border-radius: 3px;
-    background: var(--surface);
+    padding: 1px 6px 0;
+    border: 1.5px solid currentColor;
+    border-radius: 2px;
+    background: transparent;
     color: var(--ink);
-    font-weight: 600;
-    font-family: var(--mono);
-    font-size: 0.7rem;
-    font-variant-numeric: tabular-nums;
+    font-size: 0.78rem;
+    font-weight: 700;
     text-align: center;
 }
 /* A route switched at run time (off, forced status, delay or fault). */
 .routes-list .route-switch {
     flex: 0 0 auto;
-    padding: 0 5px;
-    border-radius: 3px;
-    background: var(--danger-soft);
-    color: var(--danger);
-    font-family: var(--mono);
-    font-size: 0.66rem;
+    padding: 2px 6px 0;
+    border-radius: 2px;
+    background: var(--line-delete);
+    color: var(--on-line);
+    font-size: 0.72rem;
     font-weight: 700;
-    letter-spacing: 0.04em;
-    line-height: 1.5;
-    text-transform: uppercase;
+    line-height: 1.45;
 }
 
-.routes-list .route-hits.unused { border-color: var(--line-strong); border-style: dashed; background: transparent; color: var(--faint); font-weight: 400; }
-.routes-list .route-hits:hover { border-color: var(--edge); border-style: solid; background: var(--accent); color: var(--accent-ink) !important; }
+.routes-list .route-hits.unused { border-color: var(--line-strong); color: var(--faint); font-weight: 500; }
+.routes-list li:has(.route-button[aria-pressed="true"]) .route-hits.unused { border-color: var(--hi-muted); color: var(--hi-muted); }
+.routes-list .route-hits:hover { border-color: var(--accent); background: var(--accent); color: var(--accent-ink) !important; }
 .routes-list .route-hits:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 .routes-list .empty-state {
@@ -796,13 +863,16 @@ tbody tr[data-id]:focus-visible {
     content: "";
 }
 
-.splitter.vertical { cursor: col-resize; }
+.splitter.vertical {
+    cursor: col-resize;
+    background: linear-gradient(to right, transparent 3px, var(--edge) 3px, var(--edge) 5px, transparent 5px);
+}
 .splitter.vertical::after { left: 2.5px; top: calc(50% - 18px); width: 3px; height: 36px; }
 
 .splitter.horizontal {
     cursor: row-resize;
-    border-top: 1.5px solid var(--edge);
-    background: var(--surface-2);
+    border-top: var(--rule) solid var(--edge);
+    background: var(--surface);
 }
 .splitter.horizontal::after { top: 1.5px; left: calc(50% - 18px); width: 36px; height: 3px; }
 
@@ -867,11 +937,19 @@ tbody tr[data-id]:focus-visible {
     gap: 6px;
 }
 
-.detail-actions > .clear-button {
-    height: 26px;
+/* Header actions are quiet text until hovered or pressed, so a row of them
+ * does not compete with the content below. */
+.detail-actions > .clear-button,
+.panel-actions > .clear-button {
+    height: 28px;
     padding: 0 9px;
-    font-size: 0.76rem;
+    border-color: transparent;
+    background: transparent;
 }
+
+.detail-actions > .clear-button:hover:not(:disabled),
+.panel-actions > .clear-button:hover:not(:disabled) { border-color: var(--hi); background: var(--hi); }
+.panel-actions > .danger-button:hover:not(:disabled) { border-color: var(--line-delete); background: var(--line-delete); }
 
 .detail-meta { padding: 0 16px; }
 .detail-meta > * { margin: 10px 0 0; }
@@ -1000,13 +1078,84 @@ textarea.resend-input { resize: vertical; }
     overflow: auto;
     color: var(--ink);
     font-family: var(--mono);
-    font-size: 0.78rem;
-    line-height: 1.65;
+    font-size: 0.82rem;
+    line-height: 1.6;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
 
 .detail-content:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ---------- Route sheet ---------- */
+
+/* A route is shown as a sheet: a sign with its line and path, its facts,
+ * then its requirements and response. */
+.route-sheet {
+    padding-top: 16px;
+    font-family: var(--sans);
+    font-size: 0.86rem;
+    line-height: 1.5;
+    white-space: normal;
+}
+
+.sheet-sign {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 2px;
+    margin: 0 0 16px;
+}
+
+.sheet-sign [class^="method-"] {
+    min-width: 0;
+    padding: 4px 10px 1px;
+    font-size: 0.95rem;
+}
+
+.sheet-target {
+    font-family: var(--mono);
+    font-size: 1.25rem;
+    font-weight: 700;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.sheet-facts {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    margin: 0 0 4px;
+    border-top: var(--rule) solid var(--edge);
+}
+
+.sheet-facts dt,
+.sheet-facts dd {
+    margin: 0;
+    padding: 6px 0 4px;
+    border-bottom: 1px solid var(--line);
+}
+
+.sheet-facts dt { padding-right: 24px; color: var(--muted); }
+.sheet-facts dd { font-weight: 600; overflow-wrap: anywhere; }
+
+.sheet-section h3 {
+    margin: 18px 0 6px;
+    font-size: 0.86rem;
+    font-weight: 700;
+}
+
+.sheet-code {
+    margin: 0;
+    padding: 9px 12px;
+    border-left: 3px solid var(--edge);
+    background: var(--surface-2);
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.sheet-none { margin: 0; color: var(--faint); }
 
 .detail-content:empty::before {
     position: absolute;
@@ -1029,7 +1178,7 @@ textarea.resend-input { resize: vertical; }
     grid-template-rows: auto auto minmax(0, 1fr);
     min-height: 0;
     margin-top: 10px;
-    border-top: 1.5px solid var(--edge);
+    border-top: var(--rule) solid var(--edge);
 }
 
 .fixture-editor[hidden] { display: none; }
@@ -1173,12 +1322,10 @@ textarea.resend-input { resize: vertical; }
     max-width: calc(100% - 28px);
     margin: 0;
     padding: 7px 12px;
-    border: 1.5px solid var(--hi-ink);
     border-radius: var(--radius-sm);
     background: var(--hi);
-    box-shadow: 3px 3px 0 var(--shadow-hard);
     color: var(--hi-ink);
-    font-size: 0.78rem;
+    font-size: 0.84rem;
     font-weight: 600;
     overflow-wrap: anywhere;
 }
@@ -1191,11 +1338,9 @@ textarea.resend-input { resize: vertical; }
 
 .config-banner {
     min-width: 0;
-    margin-bottom: 10px;
-    padding: 8px 12px;
-    border: 1.5px solid var(--danger);
-    border-left-width: 5px;
-    border-radius: var(--radius-sm);
+    padding: 8px 16px;
+    border-bottom: var(--rule) solid var(--edge);
+    border-left: 6px solid var(--danger);
     background: var(--danger-soft);
     color: var(--danger);
     font-size: 0.8rem;
@@ -1220,10 +1365,9 @@ textarea.resend-input { resize: vertical; }
     margin: auto;
     padding: 0;
     overflow: hidden;
-    border: 1.5px solid var(--edge);
+    border: var(--rule) solid var(--edge);
     border-radius: var(--radius);
     background: var(--surface);
-    box-shadow: var(--shadow-pop);
     color: var(--ink);
 }
 
@@ -1244,8 +1388,8 @@ textarea.resend-input { resize: vertical; }
     padding: 12px 14px 12px 20px;
 }
 
-.help-dialog-header { border-bottom: 1.5px solid var(--edge); background: var(--surface-2); }
-.help-dialog-header h2 { font-family: var(--mono); font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.help-dialog-header { border-bottom: var(--rule) solid var(--edge); }
+.help-dialog-header h2 { font-size: 1.06rem; font-weight: 800; letter-spacing: -0.01em; }
 .help-dialog-footer { border-top: 1px solid var(--line); }
 
 .help-dialog-x {
@@ -1296,12 +1440,9 @@ textarea.resend-input { resize: vertical; }
 
 .compare-section h3 {
     margin: 16px 0 6px;
-    color: var(--muted);
-    font-family: var(--mono);
-    font-size: 0.68rem;
+    color: var(--ink);
+    font-size: 0.86rem;
     font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
 }
 
 .compare-empty {
@@ -1383,7 +1524,7 @@ textarea.resend-input { resize: vertical; }
 }
 
 @media (max-width: 900px) {
-    .app-shell { --gutter: 8px; height: 100dvh; }
+    .app-shell { height: 100dvh; }
     .workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
     #workspaceSplitter { display: none; }
     .workspace > .side-panel { display: none; }

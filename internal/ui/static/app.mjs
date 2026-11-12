@@ -10,6 +10,7 @@ import { compareEvents, differenceCount } from './compare.mjs';
 import { countNodes, editableFixture, formatFixture, losslessIssue, maxTreeNodes, parseFixture } from './fixture.mjs';
 import { renderFixtureTree } from './fixturetree.mjs';
 import { switchBadge, switchFields, switchPayload } from './switches.mjs';
+import { parseRouteSheet, renderRouteSheet } from './routesheet.mjs';
 
 const MAX_EVENTS = 1000;
 const MOCK_CONFIG = JSON.parse(document.getElementById("mock-config").textContent);
@@ -471,8 +472,7 @@ function upsertEvent(http) {
 }
 
 function updateRequestCount() {
-    const value = String(eventOrder.length).padStart(3, '0');
-    requestCount.textContent = `${value}/${MAX_EVENTS}`;
+    requestCount.textContent = `${eventOrder.length} of ${MAX_EVENTS}`;
     requestCount.setAttribute('aria-label', `${eventOrder.length} requests`);
 }
 
@@ -501,7 +501,7 @@ function renderTable() {
     const visibleIDs = new Set(visible.map(event => event.id));
     dropMissingSelection(id => visibleIDs.has(id));
     if (visible.length === 0) {
-        renderEmptyState(filterText ? 'No matching requests' : 'No requests yet');
+        renderEmptyState(filterText ? 'No requests match this filter.' : '');
         return;
     }
 
@@ -522,6 +522,8 @@ function renderTable() {
         if (selectedRequestId(selection) === http.id) {
             row.classList.add('selected');
         }
+        // A request no route answered is drawn as a hollow stop on the line.
+        if (!http.match?.route && !http.callback) row.classList.add('no-route');
 
         const c0 = row.insertCell(0);
         c0.className = 'time-cell';
@@ -562,7 +564,7 @@ function renderTable() {
         const urlSpan = document.createElement('span');
         urlSpan.textContent = host ? http.request.url : ` ${http.request.url}`;
         urlSpan.title = target;
-        row.title = `${http.request.method} ${target} · ${http.response.time}`;
+        row.title = `${http.request.method} ${target} in ${http.response.time}`;
         c2.appendChild(urlSpan);
         const badge = eventBadge(http);
         if (badge) {
@@ -571,7 +573,7 @@ function renderTable() {
             badgeSpan.textContent = badge.text;
             badgeSpan.title = badge.title;
             c2.appendChild(badgeSpan);
-            row.title += ` · ${badge.title}`;
+            row.title += `. ${badge.title}`;
         }
     }
 
@@ -649,8 +651,12 @@ function renderInspector() {
         routeTitle.textContent = route.name || 'Route';
         routeSummary.textContent = stale
             ? 'This route belongs to a previous revision. Select a current route to inspect it.'
-            : `Configured route · revision ${route.revision} · ${route.source}:${route.line}`;
-        routeDetails.textContent = formatRoute(route, routeCurl(route));
+            : `${route.source}:${route.line}, revision ${route.revision}`;
+        // The text is the sheet's source (and what a DOM without layout
+        // shows); the sheet's elements replace it.
+        const routeText = formatRoute(route, routeCurl(route));
+        routeDetails.textContent = routeText;
+        routeDetails.replaceChildren(...renderRouteSheet(parseRouteSheet(routeText)));
         copyRouteCurlButton.disabled = !routePort(route);
         const editing = isEditingFixture(route);
         const switching = isSwitchOpen(route) && !stale;
@@ -669,10 +675,10 @@ function renderInspector() {
     const match = event.match;
     const route = match?.route;
     matchSummary.textContent = event.callback
-        ? `Callback ${eventBadge(event).title.replace(/^Sent/, 'sent')} · ${event.response.time}`
+        ? `Callback ${eventBadge(event).title.replace(/^Sent/, 'sent')}, in ${event.response.time}`
         : route
-        ? `${route.name} · ${route.source}:${route.line} · revision ${match.revision} · ${event.response.time}`
-        : `${match?.upstream ? `Proxied to ${match.upstream} · no` : 'No'} matching route · revision ${match?.revision ?? '?'} · ${event.response.time}`;
+        ? `Answered by ${route.name} (${route.source}:${route.line}, revision ${match.revision}) in ${event.response.time}`
+        : `No route matched (revision ${match?.revision ?? '?'})${match?.upstream ? `; forwarded to ${match.upstream}` : ''}, in ${event.response.time}`;
     mismatchPanel.hidden = !!route;
     copyRouteDraftButton.hidden = !!event.callback;
     resendButton.hidden = !!event.callback;
@@ -872,11 +878,11 @@ function renderComparison() {
     if (selection.kind !== 'compare') return;
     const a = eventsById.get(selection.a), b = eventsById.get(selection.b);
     if (!a || !b) return;
-    const labelA = `A · #${a.id}`, labelB = `B · #${b.id}`;
+    const labelA = `A: #${a.id}`, labelB = `B: #${b.id}`;
     const comparison = compareEvents(a, b);
     const count = differenceCount(comparison);
     compareTitle.textContent = `Compare #${a.id} and #${b.id}`;
-    compareSummary.textContent = `A: ${a.request.method} ${a.request.url} · B: ${b.request.method} ${b.request.url} · ${count ? `${count} difference${count === 1 ? '' : 's'}` : 'no differences besides timing'}`;
+    compareSummary.textContent = `A is ${a.request.method} ${a.request.url}, B is ${b.request.method} ${b.request.url}. ${count ? `${count} difference${count === 1 ? '' : 's'}` : 'No differences besides timing'}.`;
     compareOnlyDiffs.setAttribute('aria-pressed', String(compareDifferencesOnly));
     compareDetails.replaceChildren(
         compareTable('Overview', comparison.overview, labelA, labelB),
@@ -1251,7 +1257,7 @@ function renderEmptyState(message) {
     const cell = row.insertCell();
     cell.colSpan = 3;
     cell.className = 'empty-state';
-    cell.textContent = message || 'No requests yet';
+    cell.textContent = message || 'No requests yet. Send one to the mock port and it shows up here.';
 }
 
 async function loadRoutes() {
@@ -1272,7 +1278,7 @@ async function loadRoutes() {
             selection = afterRoutesLoaded(selection, routes, fixtureEdit?.key === fixtureKey(route) ? route : null);
             renderInspector();
         }
-        routeCount.textContent = String(routes.length).padStart(2, '0');
+        routeCount.textContent = String(routes.length);
         routeCount.setAttribute('aria-label', `${routes.length} configured routes`);
         routesList.replaceChildren();
         if (!routes.length) {

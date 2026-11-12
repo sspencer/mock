@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A new look for the admin UI, drawn from transit signage to suit a tool of routes, traffic and switches: a black sign band over one continuous board, the traffic log as a line map (each request a stop lit by its status; hollow when no route answered), a color plate per HTTP method, and selection that inverts a row. A selected route is shown as a sheet (method and path, a table of settings, then requirements and response) instead of a block of text. The typeface is Overpass, embedded in the binary (about 50 KB). Summary lines read as sentences, and the request count reads `12 of 1000`. Behavior and shortcuts are unchanged.
+
 - **Breaking (build):** `mock` now needs Go 1.27 to build or `go install` (`go.mod` pins the 1.27.4 toolchain). Release binaries and the Docker image are unaffected for users.
 
 - `mock check` compares nested JSON keys and value types (string versus number and so on), with paths such as `user.address` and `items[0].sku`, down to `-depth` levels (3 by default; `null` matches any type), and compares chosen response headers with `-check-header Name`.
