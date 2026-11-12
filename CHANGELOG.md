@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `@default.header.Name = value` adds a response header to every section that does not set it (usually at file scope, such as `@default.header.Content-Type = application/json`), and `-H 'Name: value'` (`--header`) does the same for every request file. A section's own headers win, then `@default.header`, then `-H`. A default `Content-Type` is used only when the type cannot be guessed from the `< path` file's extension or by sniffing the body with `http.DetectContentType` (which finds types such as `image/png` and `text/html`, but sees JSON as plain text); `/routes` shows it as `defaultContentType`. `@proxy` sections get none.
+
 - A request line may list several methods, such as `GET,HEAD,OPTIONS /health`, or use `*` for any method, instead of one copy of the section per method.
 
 - `@fallback = true` tries a route after every route without it, whatever the load order, so a catch-all `404` or a wide `@proxy` route stays last when `-d` loads files alphabetically.

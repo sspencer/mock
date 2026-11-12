@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -175,5 +177,100 @@ GET /users
 	}
 	if strings.Contains(logText, "method=Users") || strings.Contains(logText, "method=Orders") {
 		t.Errorf("a fallback or @match.chance route shadowed a route:\n%s", logText)
+	}
+}
+
+func TestServerDefaultContentTypeAfterGuessing(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"page.html":         "<p>hi</p>",
+		"logo.blob":         "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR",
+		"page.blob":         "<!DOCTYPE html><p>hi</p>",
+		"data.blob":         `{"id":1}`,
+		"users/1.json":      `{"id":1}`,
+		"users/2.unknownxt": `{"id":2}`,
+	}
+	for name, content := range files {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	methods, err := restclient.Parse(filepath.Join(dir, "api.http"), strings.NewReader(`@default.header.Content-Type = application/json
+
+### Page
+GET /page
+
+< page.html
+
+### Sniffed PNG
+GET /logo
+
+< logo.blob
+
+### Sniffed HTML
+GET /sniffed
+
+< page.blob
+
+### Unknown text
+GET /data
+
+< data.blob
+
+### User
+GET /users/:id
+
+< users/{{$path.id}}.json
+
+### Inline JSON
+GET /inline
+
+{"name":"{{$query.name}}"}
+
+### Inline HTML
+GET /inline.html
+
+<!DOCTYPE html><p>hi</p>
+
+### Own type
+GET /csv
+Content-Type: text/csv
+
+a,b
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	for target, want := range map[string]string{
+		"/page":              "text/html",
+		"/logo":              "image/png",
+		"/sniffed":           "text/html",
+		"/data":              "application/json",
+		"/users/1":           "application/json",
+		"/inline?name=a%22b": "application/json",
+		"/inline.html":       "text/html",
+		"/csv":               "text/csv",
+	} {
+		response := serveRoute(server, "GET", target)
+		if got := response.Header().Get("Content-Type"); !strings.HasPrefix(got, want) {
+			t.Errorf("GET %s Content-Type = %q, want %s", target, got, want)
+		}
+		if target == "/inline?name=a%22b" && response.Body.String() != `{"name":"a\"b"}` {
+			t.Errorf("inline JSON body = %s; the default type should render it in JSON mode", response.Body.String())
+		}
+	}
+
+	// Without a default, unknown files are sniffed as before.
+	plain, err := restclient.Parse(filepath.Join(dir, "plain.http"), strings.NewReader("### Data\nGET /data\n\n< data.blob\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := serveRoute(New(plain, slog.New(slog.NewTextHandler(io.Discard, nil))), "GET", "/data").Header().Get("Content-Type"); !strings.HasPrefix(got, "text/plain") {
+		t.Errorf("no default: Content-Type = %q, want text/plain", got)
 	}
 }

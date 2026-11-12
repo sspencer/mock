@@ -215,3 +215,9 @@ test('formatRoute shows @fallback and @match.chance', () => {
     assert.ok(!formatRoute({ method: 'GET', path: '/x' }).includes('Fallback'));
 });
 
+test('formatRoute shows a default Content-Type', () => {
+    const text = formatRoute({ method: 'GET', path: '/x', headers: { 'X-Id': ['1'] }, defaultContentType: 'application/json' });
+    assert.ok(text.includes('Response headers\nX-Id: 1\nContent-Type: application/json (default, unless guessed from the file extension or body)'));
+    assert.ok(formatRoute({ method: 'GET', path: '/x' }).includes('Response headers\n(automatic)'));
+});
+

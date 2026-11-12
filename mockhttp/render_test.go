@@ -22,7 +22,7 @@ func renderResponse(method restclient.Method, values templateValues) ([]byte, ht
 	if err != nil {
 		return nil, nil, err
 	}
-	headers, err := r.headers(file)
+	headers, err := r.headers(file, body)
 	return body, headers, err
 }
 

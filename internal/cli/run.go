@@ -64,6 +64,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if err != nil {
 		return runError("%v", err)
 	}
+	opts.Headers = http.Header(cfg.Headers)
 	input, err := loadInput(cfg.Args, cfg.Dirs, stdin, opts)
 	if err != nil {
 		return runError("%v", err)

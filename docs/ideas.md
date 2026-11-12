@@ -5,8 +5,9 @@
 Feature enhancements and other ideas for `mock`, collected on 2026-11-10
 (after v0.5.1) by reviewing this project and comparable tools: WireMock,
 Mockoon, Prism, Hoverfly, Mountebank, MockServer, Smocker, json-server and
-MSW. These are suggestions, not a release plan, and nothing here is
-implemented. Check the code before relying on any detail.
+MSW. These are suggestions, not a release plan. Ideas are removed from this
+page once they are implemented; the [docs](README.md) describe those. Check
+the code before relying on any detail.
 
 ## How to read this page
 
@@ -94,7 +95,6 @@ decides whether a route is eligible.
 | `RE-6` | More generators | **S** | `{{$oneOf a b c}}`, `{{$randomFloat min max}}`, `{{$company}}`, `{{$city}}`, `{{$country}}`, `{{$address}}`, `{{$ip}}`, `{{$price}}`, `{{$word}}`, `{{$ulid}}`, and `{{$randomDate from to}}`. `$oneOf` is the most useful: enum fields have no generator today. |
 | `RE-7` | Signed tokens | **M** | `{{$jwt sub=$json.user exp=1h}}` builds a JWT (HS256 with a configured secret, or unsigned), so mocked login endpoints return tokens that client libraries can decode and check for expiry. |
 | `RE-8` | Fixtures in more formats | **M** | `@fixture` reads JSON only. Accept YAML, CSV (an array of row objects) and NDJSON, chosen by extension. CSV in particular suits test data kept in spreadsheets. The fixture editor would stay JSON-only at first. |
-| `RE-9` | Default response headers | **S** | A file-level `@default.header.Content-Type = application/json` (or a `--header` flag) applied to every route that does not set the header. Removes the most repeated line in request files. |
 | `RE-10` | Automatic `ETag` for inline bodies | **S** | `@etag = auto` adds a hash `ETag` and answers `If-None-Match` with `304`. File bodies already get conditional requests through `http.ServeContent`; inline bodies do not. |
 | `RE-11` | More than one callback, with retries | **M** | Allow `@callback.1`, `@callback.2` (webhook sequences such as `payment.pending` then `payment.succeeded`) and `@callback.retries = 3` with backoff when the receiver fails. Today a route has one callback and no retries. |
 | `RE-12` | Response from a directory | **S** | `< ./orders/{{$path.id}}.json` already renders placeholders in file paths; add `@missing = 404` so a missing file answers `404` instead of an error, making "one JSON file per record" a supported pattern. |

@@ -148,7 +148,12 @@ func (r *renderer) file() (bodyFile, bool, error) {
 	return bodyFile{name: name, path: restclient.ResolveFile(r.method.Source, name), template: isTemplate}, true, nil
 }
 
-func (r *renderer) headers(file bodyFile) (http.Header, error) {
+// headers renders the route's response headers. Without a Content-Type
+// header, a "< path" file is typed by its extension; failing that, a route
+// with a default Content-Type (@default.header or -H) sniffs the rendered
+// body and sends the default unless sniffing finds a specific type. Routes
+// with neither are sniffed when the response is written.
+func (r *renderer) headers(file bodyFile, body []byte) (http.Header, error) {
 	headers := r.method.Headers.Clone()
 	if headers == nil {
 		headers = make(http.Header)
@@ -165,13 +170,40 @@ func (r *renderer) headers(file bodyFile) (http.Header, error) {
 			values[i] = expanded
 		}
 	}
-	if headers.Get("Content-Type") != "" || r.method.Body != "" || file.path == "" {
+	if headers.Get("Content-Type") != "" {
 		return headers, nil
 	}
-	if contentType := mime.TypeByExtension(filepath.Ext(file.path)); contentType != "" {
-		headers.Set("Content-Type", contentType)
+	if file.path != "" {
+		if contentType := mime.TypeByExtension(filepath.Ext(file.path)); contentType != "" {
+			headers.Set("Content-Type", contentType)
+			return headers, nil
+		}
 	}
+	if r.method.DefaultContentType == "" {
+		return headers, nil
+	}
+	if sniffed := http.DetectContentType(body); len(body) > 0 && specificContentType(sniffed) {
+		headers.Set("Content-Type", sniffed)
+		return headers, nil
+	}
+	contentType := r.method.DefaultContentType
+	if r.method.Template != "off" {
+		expanded, err := r.text(contentType, false)
+		if err != nil {
+			return nil, err
+		}
+		contentType = expanded
+	}
+	headers.Set("Content-Type", contentType)
 	return headers, nil
+}
+
+// specificContentType reports whether a sniffed type says more than
+// http.DetectContentType's fallbacks for text it cannot place (text/plain,
+// which includes JSON) and for unknown bytes (application/octet-stream).
+func specificContentType(sniffed string) bool {
+	mediaType, _, _ := strings.Cut(sniffed, ";")
+	return mediaType != "text/plain" && mediaType != "application/octet-stream"
 }
 
 // body renders the response body. A templated file path that names a missing
@@ -217,12 +249,16 @@ func (r *renderer) isJSON(path string) bool {
 	return contentType == "application/json" || strings.HasSuffix(contentType, "+json")
 }
 
-// responseContentType is the route's media type: its Content-Type header, else
-// the type of the file extension.
+// responseContentType is the route's media type before its body is read: its
+// Content-Type header, else the type of the file extension, else its default
+// Content-Type.
 func responseContentType(method restclient.Method, path string) string {
 	contentType := method.Headers.Get("Content-Type")
 	if contentType == "" && path != "" {
 		contentType = mime.TypeByExtension(filepath.Ext(path))
+	}
+	if contentType == "" {
+		contentType = method.DefaultContentType
 	}
 	contentType, _, _ = strings.Cut(contentType, ";")
 	return strings.ToLower(strings.TrimSpace(contentType))
