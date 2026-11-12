@@ -65,7 +65,7 @@ func (s *Server) findMethod(r *http.Request, body requestBody) (*restclient.Meth
 	// Routes are immutable once installed; SetMethods swaps the slice, so a
 	// snapshot keeps one request within one configuration revision.
 	s.mu.Lock()
-	methods, hits, revision := s.methods, s.hits, s.config.Revision
+	methods, hits, rolls, revision := s.methods, s.hits, s.rolls, s.config.Revision
 	s.mu.Unlock()
 
 	facts := newRequestFacts(r, body)
@@ -77,9 +77,17 @@ func (s *Server) findMethod(r *http.Request, body requestBody) (*restclient.Meth
 			requestMethods = append(requestMethods, http.MethodGet)
 		}
 		for _, requestMethod := range requestMethods {
-			for i := range methods {
-				method := &methods[i]
-				if values, ok := facts.match(method, requestMethod); ok {
+			// @fallback routes are tried after all the others.
+			for _, fallback := range []bool{false, true} {
+				for i := range methods {
+					method := &methods[i]
+					if method.Fallback != fallback {
+						continue
+					}
+					values, ok := facts.match(method, requestMethod)
+					if !ok || !rollChance(method, rolls[i]) {
+						continue
+					}
 					route := describeRoute(*method, i, revision)
 					route.Hits = hits[i].Add(1)
 					path, _ := matchPath(routePattern(*method), r.URL.EscapedPath())
@@ -91,16 +99,16 @@ func (s *Server) findMethod(r *http.Request, body requestBody) (*restclient.Meth
 	return nil, templateValues{}, MatchInfo{Revision: revision, Candidates: closestRoutes(methods, facts)}, false
 }
 
-// methodAnswers reports whether a route declared for routeMethod can answer a
-// request with requestMethod: the same method, or a GET route for HEAD.
-func methodAnswers(routeMethod, requestMethod string) bool {
-	return routeMethod == requestMethod || requestMethod == http.MethodHead && routeMethod == http.MethodGet
+// methodAnswers reports whether route can answer a request with
+// requestMethod: one of its methods, or a GET route for HEAD.
+func methodAnswers(route restclient.Method, requestMethod string) bool {
+	return route.Accepts(requestMethod) || requestMethod == http.MethodHead && route.Accepts(http.MethodGet)
 }
 
 // match reports whether method accepts the request, treated as requestMethod,
 // and returns the path and query values available to its templates.
 func (f *requestFacts) match(method *restclient.Method, requestMethod string) (map[string]string, bool) {
-	if method.Method != requestMethod || !portMatches(method.Port, f.localPort) {
+	if !method.Accepts(requestMethod) || !portMatches(method.Port, f.localPort) {
 		return nil, false
 	}
 	values, ok := matchPath(routePattern(*method), f.r.URL.EscapedPath())

@@ -129,3 +129,19 @@ func TestRecordNeedsUpstream(t *testing.T) {
 		t.Fatalf("got %+v, %v", cfg, err)
 	}
 }
+
+func TestRecordSkipsRoutesInMethodLists(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "recorded.http")
+	if err := os.WriteFile(file, []byte("### Users\nGET,POST /users\n\n### Any\n* /login\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rec, err := newRecorder(file, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"GET /users", "POST /users", "* /login"} {
+		if !rec.seen[key] {
+			t.Errorf("seen[%q] not set: %v", key, rec.seen)
+		}
+	}
+}

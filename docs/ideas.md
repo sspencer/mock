@@ -79,10 +79,7 @@ decides whether a route is eligible.
 | `MA-3` | Whole-body JSON match | **M** | `@json = {"type": "card", "amount": 100}` accepts a body that contains those members, in any key order and with extra members allowed. Easier to read than several `@json.*` lines. WireMock's `equalToJson` with `ignoreExtraElements`. |
 | `MA-4` | JSON Schema matcher | **L** | `@schema = order.schema.json` accepts a request whose body validates against the schema, so one route can return `400` for anything invalid. Needs a schema library (the first sizable dependency) or a small subset validator. |
 | `MA-5` | Host matcher | **S** | `@match.host = api.example.test` accepts requests by `Host` header, so one port can stand in for several services behind a proxy or `/etc/hosts` entries. The host in a request URL stays ignored unless this is set. |
-| `MA-6` | Several methods on one route | **S** | A request line such as `GET,HEAD,OPTIONS /health` or `* /maintenance`, instead of one copy of the section per method. |
-| `MA-7` | Fallback routes | **S** | `@fallback = true` moves a route after every other route regardless of file order. With `-d` directories the load order is alphabetical, which makes a catch-all `404` or a wide `@proxy` route awkward to place. |
 | `MA-8` | Matching every value of a repeated field | **S** | Matchers read the first value of a repeated query parameter or header. Add `@query.tag[] = ~^(a\|b)$` (all values) or `@query.tag[any]`, and `{{$query.tag[]}}` as a JSON array. |
-| `MA-9` | Probability and weighted routes | **S** | `@match.chance = 20%` makes a route eligible for that share of requests, so an occasional `500` or a rare variant needs no client cooperation. Reproducible with `@seed`. Covers the main use of the removed rotation without bringing it back. |
 | `MA-10` | Route tags | **S** | `@tag = billing, slow` on a section; `--only billing` and `--skip slow` choose what to serve, and the UI and `/routes` can group and filter by tag. |
 
 ## Responses and templating
@@ -225,7 +222,7 @@ reason.
   TLS-terminating proxy in front of it, or use a dev-server proxy for browsers
   (`DO-5`).
 - **Response rotation.** Removed in an earlier release in favor of "first
-  match wins". `ST-1` and `MA-9` cover its uses without it.
+  match wins". `ST-1` and `@match.chance` cover its uses without it.
 - **OpenAPI import.** A converter existed and was deleted. `AP-2` proposes
   checking against a schema, not generating routes from one.
 - **Scripted or exec responses.** A JavaScript or shell handler would turn

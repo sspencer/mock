@@ -56,6 +56,10 @@ type RouteInfo struct {
 	Variables     map[string]string `json:"variables"`
 	Body          string            `json:"body"`
 	BodyTruncated bool              `json:"bodyTruncated"`
+	// Fallback is set for an @fallback = true route, tried after the others.
+	Fallback bool `json:"fallback,omitempty"`
+	// Chance is the @match.chance share, such as "20%", when set.
+	Chance string `json:"chance,omitempty"`
 	// Hits counts the requests this route has answered, carried across
 	// reloads for unchanged routes.
 	Hits uint64 `json:"hits"`
@@ -98,7 +102,7 @@ func describeRoute(method restclient.Method, index int, revision uint64) RouteIn
 	}
 	return RouteInfo{ID: fmt.Sprintf("%d:%d", revision, index), Revision: revision, Name: method.Name, Method: method.Method,
 		Path: (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath(), Query: method.Query.Encode(), Port: method.Port, Source: method.Source, Line: method.Line, Status: method.Status,
-		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), Proxy: method.Proxy, Fixture: method.Fixture, Compress: method.Compress, Callback: describeCallback(method), RateLimit: describeRateLimit(method), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
+		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), Proxy: method.Proxy, Fixture: method.Fixture, Compress: method.Compress, Callback: describeCallback(method), RateLimit: describeRateLimit(method), Fallback: method.Fallback, Chance: describeChance(method), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
 		MatchQuery: cloneValues(method.MatchQuery), MatchPath: cloneOptional(method.MatchPath),
 		MatchBody: method.MatchBody, MatchJSON: cloneOptional(method.MatchJSON), MatchXML: cloneOptional(method.MatchXML), MatchForm: cloneValues(method.MatchForm), MatchCookies: cloneValues(method.MatchCookies),
 		Variables: cloneVariables(method.Variables), Body: body, BodyTruncated: truncated}
@@ -195,7 +199,7 @@ func mismatch(method restclient.Method, facts *requestFacts) RouteMismatch {
 		result.score += 10
 		result.score += abs(len(splitPath(pattern)) - len(splitPath(r.URL.EscapedPath())))
 	}
-	if !methodAnswers(method.Method, r.Method) {
+	if !methodAnswers(method, r.Method) {
 		result.Reasons = append(result.Reasons, fmt.Sprintf("Expected method %s; received %s", method.Method, r.Method))
 		result.score += 4
 	}
@@ -373,7 +377,12 @@ func abs(value int) int {
 func closestRoutes(methods []restclient.Method, facts *requestFacts) []RouteMismatch {
 	candidates := make([]RouteMismatch, 0, len(methods))
 	for _, method := range methods {
-		candidates = append(candidates, mismatch(method, facts))
+		candidate := mismatch(method, facts)
+		if len(candidate.Reasons) == 0 && method.Chance > 0 {
+			// It matched but lost its @match.chance draw.
+			candidate.Reasons = []string{"Skipped by @match.chance = " + describeChance(method) + " for this request"}
+		}
+		candidates = append(candidates, candidate)
 	}
 	slices.SortStableFunc(candidates, func(a, b RouteMismatch) int { return a.score - b.score })
 	if len(candidates) > 5 {

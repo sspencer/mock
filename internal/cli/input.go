@@ -184,11 +184,16 @@ func printMethods(w io.Writer, methods []restclient.Method) {
 }
 
 func printMethodList(w io.Writer, methods []restclient.Method) {
+	// The method column fits the longest method list, such as GET,HEAD,OPTIONS.
+	width := 7
+	for _, method := range methods {
+		width = max(width, len(method.Method))
+	}
 	for _, method := range methods {
 		target := method.Path
 		if query := method.Query.Encode(); query != "" {
 			target += "?" + query
 		}
-		fmt.Fprintf(w, "  %-7s %-30s %s\n", method.Method, target, method.Name)
+		fmt.Fprintf(w, "  %-*s %-30s %s\n", width, method.Method, target, method.Name)
 	}
 }

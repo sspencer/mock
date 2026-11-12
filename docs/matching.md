@@ -297,8 +297,9 @@ routes before general ones, and finish with a catch-all if unmatched requests
 should get something other than a `404`.
 
 A `HEAD` request tries the `HEAD` routes first. If none matches, it is answered
-by the first matching `GET` route, with that route's status and headers
-(including the `Content-Length` its body would have) and no body.
+by the first matching `GET` route (or a route whose method list holds `GET`),
+with that route's status and headers (including the `Content-Length` its body
+would have) and no body.
 
 ```http
 ### [201] Create user
@@ -316,8 +317,10 @@ Content-Type: application/json
 ```
 
 A route that can never answer gets a load-time warning, and `mock validate
--strict` fails on it. That happens when an earlier route has the same method
-and port, its path matches every path the later route's does, and all of its
+-strict` fails on it. That happens when an earlier route (counting
+`@fallback` routes as last) accepts every method the later route does, shares
+its port, has no `@match.chance`, its path
+matches every path the later route's does, and all of its
 matchers are also on the later route. Paths are compared segment by segment: a
 `:param` segment covers any segment (whatever the parameter is called), and a
 trailing `*` covers the rest of the path. So each of these later routes is
@@ -333,6 +336,49 @@ A `@path.name` matcher on the earlier route narrows what it covers:
 `/users/me`. The check errs towards silence, so a route it does not report may
 still be unreachable. Earlier versions of `mock` rotated through duplicate
 routes; they now always return the first.
+### Fallback routes
+
+`@fallback = true` moves a route after every route without it, wherever it is
+in the files. Fallback routes keep their load order among themselves. This
+places a catch-all `404` or a wide `@proxy` route last even when `-d` loads
+files in alphabetical order:
+
+```http
+### [404] Not found
+@fallback = true
+* /*
+Content-Type: application/json
+
+{"error":"no mock for {{$request.path}}"}
+```
+
+At file scope, `@fallback = true` makes every section in that file a fallback.
+
+### Occasional responses
+
+`@match.chance = 20%` lets a route answer only about that share of the requests
+it would otherwise match. The other requests carry on down the route list, so a
+later route answers them as usual. This gives an occasional error or a rare
+variant with no help from the client:
+
+```http
+### [500] Orders sometimes fail
+@match.chance = 10%
+GET /orders
+
+{"error":"internal"}
+
+### Orders
+GET /orders
+
+[{"id":1}]
+```
+
+The draw is random. With `@seed`, the route's draws follow from the seed and
+count of requests that reached it, so a freshly started server sent the same
+requests in the same order picks the same routes each run. A route with
+`@match.chance` never shadows a later route. When nothing answers a request
+because a route lost its draw, the near-miss list in the admin UI says so.
 
 ## Multiple ports
 

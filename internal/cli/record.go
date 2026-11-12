@@ -47,7 +47,13 @@ func newRecorder(path string, mockPort int, logger *slog.Logger) (*recorder, err
 			return nil, fmt.Errorf("cannot record to %s: %w", path, err)
 		}
 		for _, method := range methods {
-			rec.seen[method.Method+" "+method.EscapedPath] = true
+			names := method.Methods()
+			if names == nil {
+				names = []string{restclient.AnyMethod}
+			}
+			for _, name := range names {
+				rec.seen[name+" "+method.EscapedPath] = true
+			}
 		}
 	}
 	// Fail now, not on the first request, when the file can't be written.
@@ -68,7 +74,7 @@ func (rec *recorder) record(event mockhttp.RequestEvent) {
 	key := x.Method + " " + draftRoutePath(path)
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
-	if rec.seen[key] {
+	if rec.seen[key] || rec.seen[restclient.AnyMethod+" "+draftRoutePath(path)] {
 		return
 	}
 	if err := rec.append(draftSection(x, rec.mockPort)); err != nil {
