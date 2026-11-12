@@ -136,3 +136,36 @@ func TestCheckUsageErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestCompareJSONFieldsDeep(t *testing.T) {
+	mock := []byte(`{"id": "7", "user": {"name": "Ada", "address": {"city": "London"}, "tags": [{"k": 1}]}, "note": null, "items": [{"sku": "A", "qty": 1}]}`)
+	real := []byte(`{"id": 7, "user": {"name": "Ada", "email": "a@x", "address": {"city": "London", "zip": "N1"}, "tags": [{"k": "1"}]}, "note": "hi", "items": [{"sku": "A"}]}`)
+	got := compareJSONFields(mock, real, 3)
+	want := []string{
+		"json id: mock has a string, upstream a number",
+		"json items[0]: only in mock: qty",
+		"json user: missing from mock: email",
+		"json user.address: missing from mock: zip",
+		"json user.tags[0].k: mock has a number, upstream a string",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("depth 3:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	shallow := compareJSONFields(mock, real, 1)
+	if strings.Join(shallow, "\n") != "json id: mock has a string, upstream a number" {
+		t.Errorf("depth 1: %q", shallow)
+	}
+	if got := compareJSONFields([]byte(`{"meta": {"a.b": {"x": 1}}}`), []byte(`{"meta": {"a.b": {"x": 1, "y": 2}}}`), 3); len(got) != 1 || got[0] != `json meta["a.b"]: missing from mock: y` {
+		t.Errorf("quoted key: %q", got)
+	}
+}
+
+func TestCompareResponseHeaders(t *testing.T) {
+	mock := &checkResponse{Status: 200, ContentType: "text/plain", headers: http.Header{"Cache-Control": {"no-store"}}}
+	real := &checkResponse{Status: 200, ContentType: "text/plain", headers: http.Header{"Cache-Control": {"max-age=60"}, "X-Request-Id": {"r1"}}}
+	got := compareResponses("GET", mock, real, compareOptions{depth: 3, headers: []string{"cache-control", "X-Request-Id", "Etag"}})
+	want := []string{`header Cache-Control: mock "no-store", upstream "max-age=60"`, `header X-Request-Id: mock (none), upstream "r1"`}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("got %q", got)
+	}
+}
