@@ -42,6 +42,14 @@ The ideas with the best value for their effort, in suggested order:
 
 | ID | Idea | Effort | Why |
 |----|------|--------|-----|
+| [`TE-5`](#testing-and-ci) | Verification endpoint | S | With `mock run` and `POST /routes`, tests in any language can stub; this lets them assert without parsing `/requests` |
+| [`CL-3`](#command-line-and-configuration) | Report every load error | M | Fixing one parse error at a time is the slowest part of writing request files, and editor support needs it |
+| [`MA-2`](#matching-and-routing) | Numeric and length comparisons | M | `amount > 100` and "non-empty array" are common matches that need hard-to-read regexes today |
+| [`ST-5`](#stateful-behavior) | Hit count placeholder | S | Polling and retry responses (`"attempt": 3`) build on the counters `@times` added |
+| [`TE-6`](#testing-and-ci) | Strict report formats | S | JUnit output puts unmatched requests in CI test reports; `mock run` makes this the natural next step |
+| [`DI-4`](#distribution-and-editor-support) | GitHub Action | S | One `uses:` line installs the released binary and wraps a job in `mock run` |
+| [`MA-10`](#matching-and-routing) | Route tags | S | Serve a slice of a large route set and group routes in the UI, which temporary routes and switches make longer |
+| [`AP-8`](#working-with-real-apis) | Upstream request rewriting | S | Forwarding to a real API that needs credentials or a path prefix is the common `--upstream` gap |
 
 ## Stateful behavior
 
