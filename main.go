@@ -24,7 +24,9 @@ func main() {
 	err := cli.Run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr, logger)
 	stop()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
+		if msg := err.Error(); msg != "" {
+			fmt.Fprintln(os.Stderr, msg)
+		}
 		os.Exit(cli.ExitCode(err))
 	}
 }

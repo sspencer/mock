@@ -43,7 +43,6 @@ The ideas with the best value for their effort, in suggested order:
 | ID | Idea | Effort | Why |
 |----|------|--------|-----|
 | [`TE-1`](#testing-and-ci) | `mock run -- command` | M | Start, test, stop and report coverage in one CI step |
-| [`MA-1`](#matching-and-routing) | `mock match` | S | Answers "which route gets this request?" without serving |
 | [`CL-1`](#command-line-and-configuration) | `@import` | M | Shared variables across files; the only "not supported" dialect item users ask for |
 | [`UI-1`](#admin-ui) | Route switches in the UI | M | Turn a route off or add a fault while demonstrating or exploring |
 | [`TE-4`](#testing-and-ci) | Temporary routes through the admin API | M | Opens per-test stubbing to every language, not only Go |
@@ -67,7 +66,6 @@ state only decides whether a route is eligible.
 
 | ID | Idea | Effort | Description |
 |----|------|--------|-------------|
-| `MA-1` | `mock match` | **S** | `mock match api.http GET '/users?role=admin' -H 'X-Tenant: a'` prints the route that would answer, or the near-miss reasons, without starting a server. The near-miss logic and in-process serving (`/resend`, `mock check`) already exist. |
 | `MA-2` | Numeric and length comparisons | **M** | Matcher forms such as `@json.amount = >100`, `@query.limit = <=50` and `@json.items = #>0` (array length). Today this needs a regex. Mountebank and MockServer have comparison predicates. |
 | `MA-3` | Whole-body JSON match | **M** | `@json = {"type": "card", "amount": 100}` accepts a body that contains those members, in any key order and with extra members allowed. Easier to read than several `@json.*` lines. WireMock's `equalToJson` with `ignoreExtraElements`. |
 | `MA-4` | JSON Schema matcher | **L** | `@schema = order.schema.json` accepts a request whose body validates against the schema, so one route can return `400` for anything invalid. Needs a schema library (the first sizable dependency) or a small subset validator. |

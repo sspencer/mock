@@ -60,8 +60,25 @@ func newRequestFacts(r *http.Request, body requestBody) *requestFacts {
 	return &requestFacts{r: r, query: query, queryErr: err, headers: requestEventHeaders(r), localPort: requestLocalPort(r), body: body}
 }
 
-// findMethod returns the first route, in load order, that matches r.
+// findMethod returns the first route, in load order, that matches r, and
+// counts the request against it.
 func (s *Server) findMethod(r *http.Request, body requestBody) (*restclient.Method, templateValues, MatchInfo, bool) {
+	return s.selectRoute(r, body, false)
+}
+
+// Explain reports which route would answer r, or the closest routes when
+// none would, without serving it: no hit is counted, no @times answer is
+// used, and a @match.chance route counts as eligible (its RouteInfo.Chance
+// says it answers only that share). It reads r's body, up to 1 MiB.
+func (s *Server) Explain(r *http.Request) MatchInfo {
+	_, body := readRequestBody(r)
+	_, _, info, _ := s.selectRoute(r, body, true)
+	return info
+}
+
+// selectRoute finds the route for r. With dry set nothing is counted or
+// drawn (see Explain).
+func (s *Server) selectRoute(r *http.Request, body requestBody, dry bool) (*restclient.Method, templateValues, MatchInfo, bool) {
 	// Routes are immutable once installed; SetMethods swaps the slice, so a
 	// snapshot keeps one request within one configuration revision.
 	s.mu.Lock()
@@ -90,11 +107,18 @@ func (s *Server) findMethod(r *http.Request, body requestBody) (*restclient.Meth
 					}
 					path, _ := matchPath(routePattern(*method), r.URL.EscapedPath())
 					tv := templateValues{values: values, path: path, facts: facts}
-					if unavailable(method, tv) != "" || usedUp(method, uses[i]) || !rollChance(method, rolls[i]) || !takeUse(method, uses[i]) {
+					if unavailable(method, tv) != "" || usedUp(method, uses[i]) {
+						continue
+					}
+					if !dry && (!rollChance(method, rolls[i]) || !takeUse(method, uses[i])) {
 						continue
 					}
 					route := describeRoute(*method, i, revision)
-					route.Hits = hits[i].Add(1)
+					if dry {
+						route.Hits = hits[i].Load()
+					} else {
+						route.Hits = hits[i].Add(1)
+					}
 					route.TimesLeft = timesLeft(method, uses[i])
 					return method, tv, MatchInfo{Route: &route, Revision: revision}, true
 				}

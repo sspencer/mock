@@ -291,6 +291,9 @@ Content-Type: application/json
 
 ## Route order
 
+To see which route answers a given request, and why the others don't, run
+[`mock match`](cli.md#which-route-answers-a-request).
+
 `mock` tries routes in load order: top to bottom within a file, and files in
 the order they are given. The first route that matches answers. Put specific
 routes before general ones, and finish with a catch-all if unmatched requests
