@@ -42,7 +42,6 @@ The ideas with the best value for their effort, in suggested order:
 
 | ID | Idea | Effort | Why |
 |----|------|--------|-----|
-| [`TE-1`](#testing-and-ci) | `mock run -- command` | M | Start, test, stop and report coverage in one CI step |
 | [`AP-1`](#working-with-real-apis) | Deeper drift check | M | `mock check` compares only top-level JSON keys today |
 
 ## Stateful behavior
@@ -110,7 +109,6 @@ state only decides whether a route is eligible.
 
 | ID | Idea | Effort | Description |
 |----|------|--------|-------------|
-| `TE-1` | `mock run -- command` | **M** | Start the server on free ports, export `MOCK_URL` (and `MOCK_ADMIN_URL`), run the command, stop, print the strict report and exit with the command's status (or `1` on unmatched requests). One line in CI instead of background jobs and traps. |
 | `TE-2` | Richer `mocktest` assertions | **S** | `AssertCalledWith` (JSON body, header or query expectations), `LastCall`, `WaitFor(call, timeout)` for asynchronous clients, and `AssertAllRoutesCalled` using the existing hit counts. |
 | `TE-3` | Typed routes from Go code | **S** | `srv.Add(t, mocktest.Route{Method: "GET", Path: "/users", Status: 503, JSON: ...})` builds a route from Go values, for tests that compute the response. `Stub(t, ".http text")` covers the text form already. |
 | `TE-5` | Verification endpoint | **S** | `POST /verify` with expectations (`{"call": "POST /orders", "times": 1}`) answers `200` or `422` with a readable failure, so shell and non-Go tests need not parse `/requests`. |

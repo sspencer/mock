@@ -109,9 +109,10 @@ export a HAR file. See [Admin UI and API](docs/admin-ui.md).
 - **Work beside a real API.** Forward unmatched requests upstream, record them
   as routes, import a HAR file, and check your mocks for drift.
   [Working with real APIs](docs/real-apis.md)
-- **Run in tests and CI.** Strict mode fails on unmatched requests and reports
-  route coverage, `mock validate` lints request files, and the `mocktest`
-  package starts a mock inside a Go test. [Testing](docs/testing.md)
+- **Run in tests and CI.** `mock run api.http -- npm test` wraps a test
+  command and fails on unmatched requests, `@times` and temporary routes stub
+  retries and one-off answers, `mock validate` lints request files, and the
+  `mocktest` package starts a mock inside a Go test. [Testing](docs/testing.md)
 - **Serve several ports at once** from one process.
   [Multiple ports](docs/matching.md#multiple-ports)
 - **Reuse REST Client files** and their environments.

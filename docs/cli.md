@@ -10,6 +10,7 @@ cat file.http | mock
 mock validate [-strict] [-json] [-var name=value] [-env NAME [-env-file FILE]] <file.http|dir> [file.http|dir...]
 mock init [-force] [dir]
 mock import [-host HOST] [-path PREFIX] <file.har|->
+mock run [flags] <file.http|-d dir> [file.http...] -- command [args...]
 mock match [-H 'Name: value'] [-d body|@file] [-port N] [-response] [-json] [-var name=value] [-env NAME] <file.http|dir> [file.http|dir...] METHOD URL
 mock check -upstream URL [-all] [-json] [-header 'Name: value'] [-var name=value] [-env NAME [-env-file FILE]] [-timeout 10s] <file.http|dir> [file.http|dir...]
 mock -version
@@ -228,6 +229,7 @@ counted: a `@times` route is shown as answering, with a note, and so is a
 
 ## Other commands
 
+`mock run` is described in [Testing with mock](testing.md#running-a-test-suite-against-mock).
 `mock check` and `mock import` are described in
 [Working with real APIs](real-apis.md): see
 [Checking mocks against the real API](real-apis.md#checking-mocks-against-the-real-api)
