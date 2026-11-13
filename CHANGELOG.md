@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## v0.6.0 - 2026-11-13
+
+A large release for tests and CI and for stateful mocks: `mock run`, `POST /verify`, strict reports and a GitHub Action; scenarios, `@times`, temporary routes and run-time switches; long-tail delays, throttling and new faults; numeric, host and whole-document JSON matchers; `mock match`, `mock routes`, `mock wait` and `mock fmt`; a `.mockrc` project config, shell completions and a man page; and a redesigned admin UI. See the **Breaking** entries for matcher values starting with `>`/`<`, the Go 1.27 requirement and `restclient.ParseDelay`.
 
 - A `.mockrc` file in the working directory holds the flags a project always passes (one flag per line, or request files and directories). Flags on the command line win; repeatable flags add to the file's. `--config FILE` reads another file and `--no-config` reads none. `mock run` reads it too.
 
