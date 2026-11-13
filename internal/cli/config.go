@@ -96,6 +96,9 @@ type config struct {
 	ReadyFile string
 	// H2C serves unencrypted HTTP/2 beside HTTP/1 on the mock ports (--h2c).
 	H2C bool
+	// ConfigFile is the project config file whose flags were used (.mockrc,
+	// or --config FILE), "" when there is none.
+	ConfigFile string
 	// Help holds the usage text when -h or --help was requested.
 	Help string
 
@@ -134,6 +137,9 @@ const usageText = `usage:
   mock match [-H 'Name: value'] [-d body] [-response] [-json] <file.http|dir> [file.http|dir...] METHOD URL
   mock routes [-json] [-port N] [-only TAGS] [-skip TAGS] <file.http|dir> [file.http|dir...]
   mock wait [-timeout 10s] [-token TOKEN] [-q] [-file FILE | URL]
+  mock fmt [-check] <file.http|dir|-> [file.http|dir...]
+  mock completion bash|zsh|fish|powershell
+  mock man
   mock check -upstream URL [-all] [-json] [-depth 3] [-check-header Name] [-header 'Name: value'] [-var name=value] [-env NAME [-env-file FILE]] [-timeout 10s] <file.http|dir> [file.http|dir...]
 
 flags:
@@ -215,6 +221,9 @@ flags:
       --only TAGS      serve only routes with one of these @tag names, such
                        as billing,orders; repeat to add more
       --skip TAGS      leave out routes with any of these @tag names
+      --config FILE    read flags from FILE instead of .mockrc in the working
+                       directory; command-line flags win
+      --no-config      do not read .mockrc
       --version        print version and exit
   -h, --help           print this help and exit
 `

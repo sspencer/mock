@@ -11,7 +11,7 @@ GOBIN := $(shell $(GO) env GOPATH)/bin
 endif
 BINARY := $(GOBIN)/$(APP_NAME)
 
-.PHONY: all build fmt fmt-check vet update clean mod test test-ui test-browser bench verify vulncheck docker run lint dockerize docs docs-serve
+.PHONY: all build fmt fmt-check vet update clean mod test test-ui test-browser bench verify vulncheck docker run lint dockerize docs docs-serve release-files
 
 all: verify build
 
@@ -54,6 +54,20 @@ vulncheck:
 build:
 	mkdir -p "$(GOBIN)"
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o "$(BINARY)" $(APP_MAIN)
+
+# Shell completions and the man page for the release archives, generated
+# from the usage text. GoReleaser runs this before building.
+RELEASE_FILES := build/release
+release-files:
+	rm -rf "$(RELEASE_FILES)"
+	mkdir -p "$(RELEASE_FILES)/completions" "$(RELEASE_FILES)/man"
+	CGO_ENABLED=0 $(GO) build -ldflags "$(LDFLAGS)" -o "$(RELEASE_FILES)/mock" $(APP_MAIN)
+	"$(RELEASE_FILES)/mock" completion bash > "$(RELEASE_FILES)/completions/mock.bash"
+	"$(RELEASE_FILES)/mock" completion zsh > "$(RELEASE_FILES)/completions/_mock"
+	"$(RELEASE_FILES)/mock" completion fish > "$(RELEASE_FILES)/completions/mock.fish"
+	"$(RELEASE_FILES)/mock" completion powershell > "$(RELEASE_FILES)/completions/mock.ps1"
+	"$(RELEASE_FILES)/mock" man > "$(RELEASE_FILES)/man/mock.1"
+	rm "$(RELEASE_FILES)/mock"
 
 fmt:
 	$(GO) fmt $(PKG)

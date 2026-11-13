@@ -111,7 +111,7 @@ export a HAR file. See [Admin UI and API](docs/admin-ui.md).
   [Working with real APIs](docs/real-apis.md)
 - **Run in tests and CI.** `mock run api.http -- npm test` wraps a test
   command and fails on unmatched requests, `@times` and temporary routes stub
-  retries and one-off answers, `mock validate` lints request files, and the
+  retries and one-off answers, `mock validate` lints request files, `mock fmt -check` checks their layout, and the
   `mocktest` package starts a mock inside a Go test. `POST /verify` asserts
   calls from any language, `--strict-report` writes JUnit, and
   `uses: sspencer/mock` sets it all up in GitHub Actions. [Testing](docs/testing.md)

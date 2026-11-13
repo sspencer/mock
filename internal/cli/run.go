@@ -47,7 +47,24 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if len(args) > 0 && args[0] == "init" {
 		return runInit(args[1:], stdout)
 	}
-	cfg, err := parseConfig(args)
+	if len(args) > 0 && args[0] == "fmt" {
+		return runFmt(args[1:], stdin, stdout, stderr)
+	}
+	if len(args) > 0 && args[0] == "completion" {
+		return runCompletion(args[1:], stdout)
+	}
+	if len(args) > 0 && args[0] == "man" {
+		return runMan(args[1:], stdout)
+	}
+	if wantsHelp(args) {
+		fmt.Fprint(stdout, usageText)
+		return nil
+	}
+	pc, args, err := loadProjectConfig(args)
+	if err != nil {
+		return err
+	}
+	cfg, err := parseConfigWith(pc, args)
 	if err != nil {
 		return err
 	}
@@ -236,6 +253,9 @@ func serve(ctx context.Context, cfg config, stdin io.Reader, stdout, stderr io.W
 		if adminHandler != nil && bindsAllInterfaces(cfg.Bind) && cfg.UIToken == "" {
 			fmt.Fprintln(stderr, "warning: bound to all interfaces; admin UI is unauthenticated and request logs may include Authorization headers and bodies; set -t (--ui-token) to require a token")
 		}
+		if cfg.ConfigFile != "" && !jsonLogs {
+			fmt.Fprintf(stdout, "using flags from %s\n", cfg.ConfigFile)
+		}
 		if jsonLogs {
 			announceJSON(logger, cfg, mockListeners, adminListener, watchCloser != nil, input.Methods)
 		} else {
@@ -362,6 +382,9 @@ func tokenNote(token string) string {
 
 // announceJSON writes the startup banner as log records for -l json.
 func announceJSON(logger *slog.Logger, cfg config, mockListeners []net.Listener, adminListener net.Listener, watching bool, methods []restclient.Method) {
+	if cfg.ConfigFile != "" {
+		logger.Info("using flags from config file", "file", cfg.ConfigFile)
+	}
 	for _, ln := range mockListeners {
 		logger.Info("starting mock HTTP server", "addr", boundAddress(cfg.Bind, ln))
 	}

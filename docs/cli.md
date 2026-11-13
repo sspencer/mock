@@ -15,6 +15,9 @@ mock wait [-timeout 10s] [-token TOKEN] [-q] [-file FILE | URL]
 mock match [-H 'Name: value'] [-d body|@file] [-port N] [-response] [-json] [-var name=value] [-env NAME] <file.http|dir> [file.http|dir...] METHOD URL
 mock routes [-json] [-port N] [-only TAGS] [-skip TAGS] [-var name=value] [-env NAME] <file.http|dir> [file.http|dir...]
 mock check -upstream URL [-all] [-json] [-depth 3] [-check-header Name] [-header 'Name: value'] [-var name=value] [-env NAME [-env-file FILE]] [-timeout 10s] <file.http|dir> [file.http|dir...]
+mock fmt [-check] <file.http|dir|-> [file.http|dir...]
+mock completion bash|zsh|fish|powershell
+mock man
 mock -version
 mock -h
 ```
@@ -55,6 +58,8 @@ Flags:
 | `--h2c` | (off) | Also serve HTTP/2 without TLS (h2c, prior knowledge) on the mock ports, beside HTTP/1.1 (see [HTTP/2 without TLS](#http2-without-tls)) |
 | `--only` | | Serve only routes with one of these [`@tag`](matching.md#route-tags) names, such as `billing,orders`. Repeat for more |
 | `--skip` | | Leave out routes with any of these `@tag` names. Repeat for more |
+| `--config FILE` | `.mockrc` | Read flags from `FILE` instead of `.mockrc` in the working directory (see [Project config file](#project-config-file)) |
+| `--no-config` | (off) | Do not read `.mockrc` |
 | `--version` | | Print version and exit |
 | `-h`, `--help` | | Print usage and exit |
 
@@ -346,6 +351,95 @@ HTTP/1.1. Responses and streams behave the same on either protocol. Faults
 that break the connection over HTTP/1.1 (`reset`, `empty`, `garbage`,
 `truncate`) reset only that request's stream over HTTP/2, since the other
 requests on the connection are not at fault.
+
+## Project config file
+
+A `.mockrc` file in the working directory holds the flags a project always
+passes, so `mock` alone starts it the same way every time:
+
+```text
+# .mockrc
+-d mocks
+-p 9000
+--upstream https://api.example.com
+-R
+--journal "logs/mock journal.jsonl"
+-H "X-Mock: true"
+```
+
+Each line holds one flag and its value, written as on the command line, or
+request files and directories (lines that do not start with `-`). Blank lines
+and lines starting with `#` are skipped. Words are split like shell words, so
+quote a value that holds spaces or `#`; `|`, `;` and `&` outside quotes are
+errors.
+
+Flags on the command line win:
+
+- A single-valued flag (`-p`, `-u`, `-l`, ...) given on the command line
+  replaces the config file's value.
+- A repeatable flag (`-d`, `-H`, `-v`, `--only`, `--skip`, ...) adds to the
+  config file's values.
+- Request files listed in the config file are used only when the command line
+  names none.
+
+Relative paths are relative to the working directory, which is where
+`.mockrc` is looked up. mock prints `using flags from .mockrc` at startup (a
+`using flags from config file` record with `-l json`). `mock run` reads the
+config file too, but still serves on free ports unless its own command line
+sets `-p` or `-a`. `--config FILE` reads another file (and fails when it is
+missing); `--no-config` reads none. `mock -h` ignores the config file, so a
+broken one cannot hide the help. The other subcommands do not read it.
+
+## Formatting request files
+
+`mock fmt` rewrites request files in one layout, like `gofmt`:
+
+```sh
+mock fmt api.http mocks/       # rewrite in place; directories are searched for .http files
+mock fmt -check mocks/         # list files that need formatting, exit 1 if any
+mock fmt - < api.http          # format stdin to stdout
+```
+
+It changes layout only:
+
+- line endings become `\n`, trailing spaces go, and every file ends with one
+  newline;
+- runs of blank lines become one; a section starts right after its `###` line
+  and is separated from the next by one blank line;
+- the directives above a request line are ordered in each blank-line-separated
+  group: variables first, then matchers (`@header.*`, `@query.*`, `@json`,
+  `@match.*`, ...), then route controls (`@status`, `@delay`, `@times`,
+  `@callback`, `@default.header.*`, ...), keeping each directive's comments
+  with it and the original order within each kind;
+- method names are upper-cased, and response headers are written as
+  `Name: value`;
+- the body follows the headers after one blank line (further blank lines are
+  part of the body and stay), and trailing blank lines in an inline body are
+  dropped. A body with `@trim = off` is kept byte for byte.
+
+Files that do not parse are reported and left alone. Before writing, `mock
+fmt` parses the result again and refuses if the routes would change in any
+way, so formatting is always safe to run. Exit codes: `0` when all files are
+formatted (or were rewritten), `1` when a file fails to parse, or with `-check`
+when some need formatting, `2` for usage errors. `mock fmt -check` suits CI
+(see [Testing with mock](testing.md)).
+
+## Shell completion and the man page
+
+`mock completion SHELL` writes a completion script for `bash`, `zsh`, `fish`
+or `powershell`, covering subcommands, flags and `.http` files:
+
+```sh
+eval "$(mock completion bash)"                         # bash, in ~/.bashrc
+mock completion zsh > "${fpath[1]}/_mock"              # zsh
+mock completion fish > ~/.config/fish/completions/mock.fish
+mock completion powershell | Out-String | Invoke-Expression   # PowerShell profile
+```
+
+`mock man` writes the manual page in roff (`mock man > mock.1; man ./mock.1`).
+Both are generated from the usage text, so they always match the binary. The
+release archives include them as `completions/` and `man/mock.1`, and the
+Homebrew cask installs them.
 
 ## Other commands
 
