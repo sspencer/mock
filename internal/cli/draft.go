@@ -29,6 +29,8 @@ type exchange struct {
 	// placeholder 200 JSON response.
 	ResponseBody string
 	ResponseOK   bool
+	// host is the request's host, for mock import's -host filter.
+	host string
 }
 
 // This file is the Go port of buildRouteDraft and buildRouteDrafts in

@@ -104,6 +104,26 @@ func sampleValue(value, placeholder string) string {
 	return placeholder
 }
 
+// sampleFieldValues returns the values a sample request sends for one
+// @query or @header matcher: none for "!", else one, except that an
+// all-values count (@query.tag[] = #2) sends that many.
+func sampleFieldValues(key, value, placeholder string) []string {
+	if value == "!" {
+		return nil
+	}
+	if _, all := restclient.AllValues(key); all {
+		if m := restclient.MustMatcher(value); m.Kind == restclient.MatchLength {
+			n := min(sampleLength(m), 10)
+			out := make([]string, n)
+			for i := range out {
+				out[i] = placeholder
+			}
+			return out
+		}
+	}
+	return []string{sampleValue(value, placeholder)}
+}
+
 // buildSampleRequest builds the sample request for method. Path parameters
 // take an exact @path value or a sample; required query parameters, headers
 // and cookies are added; the body comes from @json, then @form, then an
@@ -138,9 +158,10 @@ func buildSampleRequest(method restclient.Method) sampleRequest {
 		query[name] = slices.Clone(values)
 	}
 	for _, name := range slices.Sorted(maps.Keys(method.MatchQuery)) {
+		base, _ := restclient.AllValues(name)
 		for _, value := range method.MatchQuery[name] {
-			if value != "!" {
-				query.Add(name, sampleValue(value, sampleParam(name)))
+			for _, v := range sampleFieldValues(name, value, sampleParam(base)) {
+				query.Add(base, v)
 			}
 		}
 	}
@@ -149,9 +170,10 @@ func buildSampleRequest(method restclient.Method) sampleRequest {
 	}
 
 	for name, values := range method.MatchHeaders {
+		base, _ := restclient.AllValues(name)
 		for _, value := range values {
-			if value != "!" {
-				sample.Headers.Add(name, sampleValue(value, "example"))
+			for _, v := range sampleFieldValues(name, value, "example") {
+				sample.Headers.Add(base, v)
 			}
 		}
 	}

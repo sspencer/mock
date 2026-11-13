@@ -25,6 +25,9 @@ a namespace:
 
 - `{{$path.id}}` reads only the `:id` path parameter.
 - `{{$query.id}}` reads only the `id` query parameter (its first value).
+- `{{$query.tag[]}}` and `{{$header.X-Id[]}}` are every value of a repeated
+  query parameter or header as a JSON array, such as `["red","blue"]` (`[]`
+  when there is none); `tag[]=` parameters count as values of `tag`.
 - `{{$header.X-Request-Id}}` reads a request header (case-insensitive).
 - `{{$cookie.session}}` reads a request cookie (case-sensitive).
 - `{{$env.API_TOKEN}}` reads an environment variable of the `mock` process

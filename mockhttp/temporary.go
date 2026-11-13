@@ -43,14 +43,34 @@ const maxTemporaryRoutesBytes = 1 << 20
 // stops; reloads keep them. They are parsed on their own: command-line
 // variables, environments and default headers do not apply.
 func (s *Server) AddRoutes(source string) (TemporaryRoutes, error) {
-	s.mu.Lock()
-	s.tempSeq++
-	id := fmt.Sprintf("t%d", s.tempSeq)
-	s.mu.Unlock()
+	id := s.nextTempID()
 	methods, err := restclient.Parse(tempSourcePrefix+id+")", strings.NewReader(source))
 	if err != nil {
 		return TemporaryRoutes{}, err
 	}
+	return s.addTemporary(id, methods)
+}
+
+// AddMethods serves already-parsed routes as one temporary group, as
+// AddRoutes does for .http text. It is for callers that build routes in Go
+// (mocktest's Add); each route's Source is replaced by the group's.
+func (s *Server) AddMethods(methods []restclient.Method) (TemporaryRoutes, error) {
+	id := s.nextTempID()
+	methods = append([]restclient.Method(nil), methods...)
+	for i := range methods {
+		methods[i].Source = tempSourcePrefix + id + ")"
+	}
+	return s.addTemporary(id, methods)
+}
+
+func (s *Server) nextTempID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tempSeq++
+	return fmt.Sprintf("t%d", s.tempSeq)
+}
+
+func (s *Server) addTemporary(id string, methods []restclient.Method) (TemporaryRoutes, error) {
 	if len(methods) == 0 {
 		return TemporaryRoutes{}, errors.New("no routes: add at least one ### section with a request line")
 	}

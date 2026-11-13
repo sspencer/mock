@@ -221,12 +221,12 @@ func (f *requestFacts) captures(method *restclient.Method) map[string]string {
 	}
 	for _, name := range slices.Sorted(maps.Keys(method.MatchQuery)) {
 		for _, raw := range method.MatchQuery[name] {
-			add(restclient.MustMatcher(raw), f.query[name])
+			add(restclient.MustMatcher(raw), queryFieldValues(f.query, name))
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(method.MatchHeaders)) {
 		for _, raw := range method.MatchHeaders[name] {
-			add(restclient.MustMatcher(raw), f.headers.Values(name))
+			add(restclient.MustMatcher(raw), headerFieldValues(f.headers, name))
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(method.MatchCookies)) {
@@ -363,8 +363,14 @@ func (v templateValues) lookup(key string) (string, bool) {
 	}
 	var values []string
 	if name, ok := strings.CutPrefix(key, "query."); ok && name != "" {
+		if _, all := restclient.AllValues(name); all {
+			return jsonStrings(queryFieldValues(v.facts.query, name)), true
+		}
 		values = v.facts.query[name]
 	} else if name, ok := strings.CutPrefix(key, "header."); ok && name != "" {
+		if _, all := restclient.AllValues(name); all {
+			return jsonStrings(headerFieldValues(v.facts.headers, name)), true
+		}
 		values = v.facts.headers.Values(name)
 	} else if name, ok := strings.CutPrefix(key, "cookie."); ok && name != "" {
 		values = v.facts.cookieValues(name)
@@ -379,6 +385,16 @@ func (v templateValues) lookup(key string) (string, bool) {
 		return "", false
 	}
 	return values[0], true
+}
+
+// jsonStrings encodes values as a JSON array of strings, for
+// {{$query.name[]}} and {{$header.Name[]}}.
+func jsonStrings(values []string) string {
+	if values == nil {
+		values = []string{}
+	}
+	data, _ := json.Marshal(values)
+	return string(data)
 }
 
 // templateValues are the request values a response template can reference.
@@ -696,9 +712,9 @@ func hostMatches(expected, host string) bool {
 
 func headerMatches(expected http.Header, actual http.Header) bool {
 	for name, expectedValues := range expected {
-		actualValues := actual.Values(name)
+		actualValues := headerFieldValues(actual, name)
 		for _, expectedValue := range expectedValues {
-			if !restclient.MustMatcher(expectedValue).Match(actualValues) {
+			if !matchField(name, restclient.MustMatcher(expectedValue), actualValues) {
 				return false
 			}
 		}
@@ -709,13 +725,41 @@ func headerMatches(expected http.Header, actual http.Header) bool {
 // queryMatcherMatches applies @query.name matchers to the request query.
 func queryMatcherMatches(expected url.Values, actual url.Values) bool {
 	for name, expectedValues := range expected {
+		actualValues := queryFieldValues(actual, name)
 		for _, expectedValue := range expectedValues {
-			if !restclient.MustMatcher(expectedValue).Match(actual[name]) {
+			if !matchField(name, restclient.MustMatcher(expectedValue), actualValues) {
 				return false
 			}
 		}
 	}
 	return true
+}
+
+// matchField applies a @query or @header matcher stored under key: an
+// all-values key (name[]) needs every value to match, others any one.
+func matchField(key string, m restclient.Matcher, values []string) bool {
+	if _, all := restclient.AllValues(key); all {
+		return m.MatchAll(values)
+	}
+	return m.Match(values)
+}
+
+// queryFieldValues returns the values a @query matcher key reads. An
+// all-values key (tag[]) reads both tag and the bracketed tag[] parameters
+// that PHP- and Rails-style clients send.
+func queryFieldValues(query url.Values, key string) []string {
+	base, all := restclient.AllValues(key)
+	if !all {
+		return query[key]
+	}
+	return append(slices.Clone(query[base]), query[base+restclient.AllValuesSuffix]...)
+}
+
+// headerFieldValues returns the values a @header matcher key reads: every
+// line of the header, for an all-values key (Accept[]) as for others.
+func headerFieldValues(headers http.Header, key string) []string {
+	base, _ := restclient.AllValues(key)
+	return headers.Values(base)
 }
 
 // pathMatcherMatches applies @path.name matchers to the decoded path parameters.

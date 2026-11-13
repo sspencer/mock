@@ -118,3 +118,13 @@ func TestBuildSampleRequestHost(t *testing.T) {
 		t.Errorf("no matcher host = %q, want empty", host)
 	}
 }
+
+func TestBuildSampleRequestAllValues(t *testing.T) {
+	sample := buildSampleRequest(parseOne(t, "### Tags\n@query.tag[] = #2\n@header.Accept[] = text/html\nGET /tags\n"))
+	if want := "/tags?tag=example&tag=example"; sample.Target != want {
+		t.Errorf("target = %q, want %q", sample.Target, want)
+	}
+	if got := sample.Headers.Values("Accept"); len(got) != 1 || got[0] != "text/html" {
+		t.Errorf("Accept = %q", got)
+	}
+}

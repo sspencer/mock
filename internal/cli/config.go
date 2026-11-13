@@ -91,6 +91,11 @@ type config struct {
 	// LogFormat is "text" (the default) or "json" (-l). JSON writes one
 	// object per line to stdout, including the startup banner and routes.
 	LogFormat string
+	// ReadyFile is written with the bound addresses as JSON once every port
+	// listens, and removed at shutdown (--ready-file).
+	ReadyFile string
+	// H2C serves unencrypted HTTP/2 beside HTTP/1 on the mock ports (--h2c).
+	H2C bool
 	// Help holds the usage text when -h or --help was requested.
 	Help string
 
@@ -124,10 +129,11 @@ const usageText = `usage:
   cat file.http | mock
   mock validate [-strict] [-json] [-var name=value] [-env NAME [-env-file FILE]] <file.http|dir> [file.http|dir...]
   mock init [-force] [dir]
-  mock import [-host HOST] [-path PREFIX] <file.har|->
+  mock import [-curl] [-host HOST] [-path PREFIX] <file.har|file.sh|->
   mock run [flags] <file.http|-d dir> [file.http...] -- command [args...]
   mock match [-H 'Name: value'] [-d body] [-response] [-json] <file.http|dir> [file.http|dir...] METHOD URL
   mock routes [-json] [-port N] [-only TAGS] [-skip TAGS] <file.http|dir> [file.http|dir...]
+  mock wait [-timeout 10s] [-token TOKEN] [-q] [-file FILE | URL]
   mock check -upstream URL [-all] [-json] [-depth 3] [-check-header Name] [-header 'Name: value'] [-var name=value] [-env NAME [-env-file FILE]] [-timeout 10s] <file.http|dir> [file.http|dir...]
 
 flags:
@@ -200,6 +206,12 @@ flags:
                          3g     delay p50 300ms p99 1s, throttle 96kb/s
   -l, --log-format FMT text (default) or json: one JSON object per line on
                        stdout for startup, routes and each request
+      --ready-file FILE
+                       once every port listens, write the mock and admin
+                       URLs to FILE as JSON (removed at shutdown); see
+                       mock wait
+      --h2c            also serve HTTP/2 without TLS (h2c, prior knowledge)
+                       on the mock ports
       --only TAGS      serve only routes with one of these @tag names, such
                        as billing,orders; repeat to add more
       --skip TAGS      leave out routes with any of these @tag names
@@ -296,6 +308,8 @@ func parseConfig(args []string) (config, error) {
 	}
 	flagSet.Var((*tagsFlag)(&cfg.Tags.Only), "only", "")
 	flagSet.Var((*tagsFlag)(&cfg.Tags.Skip), "skip", "")
+	flagSet.StringVar(&cfg.ReadyFile, "ready-file", "", "")
+	flagSet.BoolVar(&cfg.H2C, "h2c", false, "")
 	flagSet.BoolVar(&cfg.Version, "version", false, "")
 	if err := flagSet.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {

@@ -96,6 +96,8 @@ type RouteInfo struct {
 	Scenario  string `json:"scenario,omitempty"`
 	State     string `json:"state,omitempty"`
 	NextState string `json:"nextState,omitempty"`
+	// ScenarioState is the scenario's current state, in the route list.
+	ScenarioState string `json:"scenarioState,omitempty"`
 	// Tags are the route's @tag names, when it has any.
 	Tags []string `json:"tags,omitempty"`
 	// Hits counts the requests this route has answered, carried across
@@ -267,10 +269,11 @@ func mismatch(method restclient.Method, facts *requestFacts) RouteMismatch {
 		for _, key := range sortedKeys(method.MatchQuery) {
 			for _, expected := range method.MatchQuery[key] {
 				matcher := restclient.MustMatcher(expected)
-				if matcher.Match(actual[key]) {
+				values := queryFieldValues(actual, key)
+				if matchField(key, matcher, values) {
 					continue
 				}
-				result.Reasons = append(result.Reasons, "Query "+key+": "+matcherReason(matcher, actual[key], true))
+				result.Reasons = append(result.Reasons, "Query "+key+": "+fieldReason(key, matcher, values, true))
 				result.score++
 			}
 		}
@@ -287,12 +290,12 @@ func mismatch(method restclient.Method, facts *requestFacts) RouteMismatch {
 	for _, key := range sortedKeys(method.MatchHeaders) {
 		for _, expected := range method.MatchHeaders[key] {
 			matcher := restclient.MustMatcher(expected)
-			actualValues := headers.Values(key)
-			if matcher.Match(actualValues) {
+			actualValues := headerFieldValues(headers, key)
+			if matchField(key, matcher, actualValues) {
 				continue
 			}
 			// Do not repeat request header values (often credentials) in diagnostic summaries.
-			result.Reasons = append(result.Reasons, "Header "+key+": "+matcherReason(matcher, actualValues, false))
+			result.Reasons = append(result.Reasons, "Header "+key+": "+fieldReason(key, matcher, actualValues, false))
 			result.score++
 		}
 	}
@@ -417,6 +420,28 @@ func matcherReason(matcher restclient.Matcher, actual []string, showValues bool)
 	}
 	return "required value does not match"
 }
+
+// fieldReason is matcherReason for a @query or @header matcher key; an
+// all-values key (name[]) says that every value must match, or how many
+// values there were for a count.
+func fieldReason(key string, matcher restclient.Matcher, actual []string, showValues bool) string {
+	if _, all := restclient.AllValues(key); !all {
+		return matcherReason(matcher, actual, showValues)
+	}
+	switch {
+	case matcher.Kind == restclient.MatchLength:
+		return fmt.Sprintf("must have %s values; received %d", strings.TrimPrefix(matcher.Describe(), "a length of "), len(actual))
+	case len(actual) == 0 || matcher.Kind == restclient.MatchAbsent:
+		return matcherReason(matcher, actual, showValues)
+	}
+	for _, value := range actual {
+		if !matcher.Match([]string{value}) {
+			return "one value " + matcherReason(matcher, []string{value}, showValues)
+		}
+	}
+	return matcherReason(matcher, actual, showValues)
+}
+
 func sortedKeys[M ~map[string][]string](values M) []string {
 	keys := make([]string, 0, len(values))
 	for k := range values {

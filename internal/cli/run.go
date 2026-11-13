@@ -41,6 +41,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if len(args) > 0 && args[0] == "routes" {
 		return runRoutes(args[1:], stdout)
 	}
+	if len(args) > 0 && args[0] == "wait" {
+		return runWait(ctx, args[1:], stdout)
+	}
 	if len(args) > 0 && args[0] == "init" {
 		return runInit(args[1:], stdout)
 	}
@@ -63,9 +66,13 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 type serving struct {
 	// MockURL is the base URL of the default mock port (or the first mock
 	// port when no route uses the default), and AdminURL that of the admin
-	// UI, "" with -x.
-	MockURL, AdminURL string
-	Routes            int
+	// UI, "" with -x. MockURLs lists every mock port's base URL. The JSON
+	// form is what --ready-file writes.
+	MockURL  string   `json:"url"`
+	AdminURL string   `json:"adminUrl,omitempty"`
+	MockURLs []string `json:"mock"`
+	Routes   int      `json:"routes"`
+	PID      int      `json:"pid"`
 }
 
 // serve runs the server for a parsed configuration until ctx is done or a
@@ -177,7 +184,7 @@ func serve(ctx context.Context, cfg config, stdin io.Reader, stdout, stderr io.W
 		}
 		handler = mockServer
 		if input.watched() {
-			reloads = &reloader{server: mockServer, input: input, opts: opts, plan: plan, logger: logger, out: routesOut, err: stderr}
+			reloads = &reloader{server: mockServer, input: input, opts: opts, env: cfg.Env, vars: cfg.Vars, plan: plan, logger: logger, out: routesOut, err: stderr}
 			// Holding the lock until the watcher is assigned keeps an early
 			// file event from reloading before the reloader is complete.
 			reloads.mu.Lock()
@@ -199,7 +206,7 @@ func serve(ctx context.Context, cfg config, stdin io.Reader, stdout, stderr io.W
 	var servers []*http.Server
 	listeners := append([]net.Listener(nil), mockListeners...)
 	for range mockListeners {
-		servers = append(servers, newHTTPServer(handler))
+		servers = append(servers, newMockHTTPServer(handler, cfg.H2C))
 	}
 	var adminListener net.Listener
 	if mockServer != nil && !cfg.NoAdmin {
@@ -286,18 +293,28 @@ func serve(ctx context.Context, cfg config, stdin io.Reader, stdout, stderr io.W
 	for i, server := range servers {
 		go func() { errCh <- server.Serve(listeners[i]) }()
 	}
+	ready := serving{Routes: len(input.Methods)}
+	ln := mockListeners[0]
+	for _, candidate := range mockListeners {
+		ready.MockURLs = append(ready.MockURLs, "http://"+clientAddress(cfg.Bind, candidate))
+		if plan != nil && candidate.Addr().(*net.TCPAddr).Port == plan.defaultPort {
+			ln = candidate
+		}
+	}
+	ready.MockURL = "http://" + clientAddress(cfg.Bind, ln)
+	if adminListener != nil {
+		ready.AdminURL = "http://" + clientAddress(cfg.Bind, adminListener)
+	}
+	if cfg.ReadyFile != "" {
+		if err := writeReadyFile(cfg.ReadyFile, ready); err != nil {
+			stopTriggers()
+			closeWatcher()
+			_ = shutdownHTTPServers(servers, 400*time.Millisecond)
+			return runError("%v", err)
+		}
+		defer os.Remove(cfg.ReadyFile)
+	}
 	if cfg.onReady != nil && mockServer != nil {
-		ready := serving{Routes: len(input.Methods)}
-		ln := mockListeners[0]
-		for _, candidate := range mockListeners {
-			if candidate.Addr().(*net.TCPAddr).Port == plan.defaultPort {
-				ln = candidate
-			}
-		}
-		ready.MockURL = "http://" + clientAddress(cfg.Bind, ln)
-		if adminListener != nil {
-			ready.AdminURL = "http://" + clientAddress(cfg.Bind, adminListener)
-		}
 		cfg.onReady(ready)
 	}
 	select {

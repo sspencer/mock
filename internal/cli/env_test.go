@@ -1,11 +1,17 @@
 package cli
 
 import (
+	"io"
+	"log/slog"
 	"maps"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/sspencer/mock/mockhttp"
 )
 
 func writeEnvFiles(t *testing.T, files map[string]string) string {
@@ -111,5 +117,55 @@ func TestParseConfigEnvFlags(t *testing.T) {
 	}
 	if _, err := parseConfig([]string{"-E", "x.json", "api.http"}); ExitCode(err) != 2 {
 		t.Fatalf("-E without -e: %v", err)
+	}
+}
+
+func TestReloadRereadsEnvironment(t *testing.T) {
+	root := t.TempDir()
+	envFile := filepath.Join(root, "http-client.env.json")
+	writeTree(t, root, map[string]string{
+		"api.http":             "### Hello\nGET /hello\n\n{{greeting}}\n",
+		"http-client.env.json": `{"dev": {"greeting": "hi"}}`,
+	})
+	env := envFlags{Name: "dev", File: envFile}
+	opts, err := env.options(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadInput([]string{filepath.Join(root, "api.http")}, nil, nil, opts, tagFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	discard := slog.New(slog.NewTextHandler(io.Discard, nil))
+	r := &reloader{server: mockhttp.New(loaded.Methods, discard), input: loaded, opts: opts, env: env, logger: discard, out: io.Discard, err: io.Discard}
+	r.snapshot = snapshotFiles(r.watchPaths())
+	if !slices.Contains(r.watchPaths(), envFile) {
+		t.Fatalf("watch paths %v leave out %s", r.watchPaths(), envFile)
+	}
+	body := func() string {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		r.server.ServeHTTP(rec, httptest.NewRequest("GET", "/hello", nil))
+		return strings.TrimSpace(rec.Body.String())
+	}
+	if got := body(); got != "hi" {
+		t.Fatalf("body = %q, want hi", got)
+	}
+	writeTree(t, root, map[string]string{"http-client.env.json": `{"dev": {"greeting": "hello again"}}`})
+	r.reload()
+	if got := body(); got != "hello again" {
+		t.Fatalf("body after editing the environment = %q, want %q", got, "hello again")
+	}
+
+	// A broken environment keeps the old routes and reports the error.
+	writeTree(t, root, map[string]string{"http-client.env.json": `{"dev": `})
+	r.reload()
+	if got := body(); got != "hello again" {
+		t.Fatalf("body after a failed reload = %q", got)
+	}
+	rec := httptest.NewRecorder()
+	r.server.ServeState(rec, httptest.NewRequest("GET", "/state", nil))
+	if !strings.Contains(rec.Body.String(), `"error":`) {
+		t.Fatal("a broken environment file should be recorded as a reload error")
 	}
 }

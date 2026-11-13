@@ -578,7 +578,7 @@ h1 {
     width: 100%;
     min-width: 0;
     height: 100%;
-    padding: 0 32px 0 8px;
+    padding: 0 4px 0 8px;
     border: 0;
     outline: 0;
     background: transparent;
@@ -587,6 +587,28 @@ h1 {
 }
 
 .filter-input::placeholder { color: var(--faint); opacity: 1; }
+
+/* Pins the current filter to the suggestions; a filled star when pinned. */
+.pin-filter-button {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    margin-right: 30px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--faint);
+    cursor: pointer;
+}
+.pin-filter-button .icon { margin: 0; }
+.pin-filter-button:hover:not(:disabled) { color: var(--accent); }
+.pin-filter-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pin-filter-button:disabled { visibility: hidden; }
+.pin-filter-button[aria-pressed="true"] { color: var(--accent); }
+.pin-filter-button[aria-pressed="true"] .icon { fill: currentColor; }
 
 .key-hint {
     position: absolute;

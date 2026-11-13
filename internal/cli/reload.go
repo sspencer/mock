@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -49,10 +50,14 @@ func reloadMockFiles(mockServer *mockhttp.Server, input inputSource, opts restcl
 // SIGHUP and polling. After each reload it re-points the watcher at the
 // current dependencies and records their state for polling.
 type reloader struct {
-	mu       sync.Mutex
-	server   *mockhttp.Server
-	input    inputSource
-	opts     restclient.Options
+	mu     sync.Mutex
+	server *mockhttp.Server
+	input  inputSource
+	opts   restclient.Options
+	// env and vars rebuild opts on every reload, so edits to the -e
+	// environment file take effect like edits to request files.
+	env      envFlags
+	vars     varFlag
 	plan     *portPlan
 	logger   *slog.Logger
 	out, err io.Writer
@@ -68,7 +73,19 @@ func (r *reloader) watchPaths() []string {
 	if err != nil {
 		files = r.input.Files
 	}
-	return resolveWatchPaths(files, r.server.Methods())
+	return append(resolveWatchPaths(files, r.server.Methods()), absPaths(r.env.paths())...)
+}
+
+// absPaths makes each path absolute, keeping any that cannot be.
+func absPaths(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if abs, err := filepath.Abs(path); err == nil {
+			path = abs
+		}
+		out = append(out, path)
+	}
+	return out
 }
 
 // reload re-reads the request files now.
@@ -79,7 +96,25 @@ func (r *reloader) reload() {
 }
 
 func (r *reloader) reloadLocked() {
+	if r.env.Name != "" {
+		opts, err := r.env.options(r.vars)
+		if err != nil {
+			r.server.BeginReload()
+			fmt.Fprintln(r.err, err.Error())
+			r.server.ReloadFailed(err)
+			r.rewatch()
+			return
+		}
+		opts.Headers = r.opts.Headers
+		r.opts = opts
+	}
 	reloadMockFiles(r.server, r.input, r.opts, r.plan, r.logger, r.out, r.err)
+	r.rewatch()
+}
+
+// rewatch points the watcher at the current dependencies and records their
+// state for polling.
+func (r *reloader) rewatch() {
 	paths := r.watchPaths()
 	if r.watcher != nil {
 		if err := r.watcher.Reconcile(paths, r.input.Dirs...); err != nil {

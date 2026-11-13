@@ -219,6 +219,38 @@ func (m Matcher) Match(values []string) bool {
 	return false
 }
 
+// AllValuesSuffix ends a @query.name[] or @header.Name[] matcher name: the
+// matcher must accept every value of a repeated field, not just one.
+const AllValuesSuffix = "[]"
+
+// AllValues splits a matcher key into its field name and whether it is an
+// all-values matcher (name[]).
+func AllValues(key string) (string, bool) {
+	return strings.CutSuffix(key, AllValuesSuffix)
+}
+
+// MatchAll is Match for an all-values matcher (@query.name[]): every value
+// must satisfy it on its own, and there must be at least one. A length
+// matcher ("#2", "#>0") counts the values instead, and "!" accepts a field
+// with no non-blank value.
+func (m Matcher) MatchAll(values []string) bool {
+	switch m.Kind {
+	case MatchLength:
+		return m.compare(float64(len(values)))
+	case MatchAbsent:
+		return m.Match(values) && !slices.ContainsFunc(values, func(v string) bool { return strings.TrimSpace(v) != "" })
+	}
+	if len(values) == 0 {
+		return false
+	}
+	for _, value := range values {
+		if !m.Match([]string{value}) {
+			return false
+		}
+	}
+	return true
+}
+
 // MatchLengths is Match for a MatchLength matcher given the lengths of the
 // values directly, such as JSON array sizes: any one may satisfy it.
 func (m Matcher) MatchLengths(lengths []int) bool {

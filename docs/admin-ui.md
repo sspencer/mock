@@ -13,7 +13,7 @@ The UI is served at the root of the admin port (`-a`, default `8081`):
 | `/clear` | `POST` clears stored events |
 | `/reload` | `POST` reloads the request files now and returns the new state (see [Reloading](cli.md#reloading)) |
 | `/state` | `GET` active revision, route count, last successful reload, reload error, and the number of route `switches` in effect |
-| `/routes` | `POST` adds temporary routes and `DELETE /routes/{id}` removes them (see [Temporary routes](#temporary-routes)); `GET` route configuration, including source location, port, matchers, status, delay, `throttle`, `override` (a description of the `/faults` override in effect), `switch` (the route's own override, as set), `fallback`, `chance`, `defaultContentType`, `statusTemplate`, `require`, `missing`, `etag`, `times`, `timesLeft`, `matchHost`, `scenario`, `state`, `nextState`, `tags` and `temporary` when set, body preview, and `hits` (requests answered); `GET /routes?tag=billing` lists only the routes with that `@tag` |
+| `/routes` | `POST` adds temporary routes and `DELETE /routes/{id}` removes them (see [Temporary routes](#temporary-routes)); `GET` route configuration, including source location, port, matchers, status, delay, `throttle`, `override` (a description of the `/faults` override in effect), `switch` (the route's own override, as set), `fallback`, `chance`, `defaultContentType`, `statusTemplate`, `require`, `missing`, `etag`, `times`, `timesLeft`, `matchHost`, `scenario`, `state`, `nextState`, `scenarioState` (the scenario's current state), `tags` and `temporary` when set, body preview, and `hits` (requests answered); `GET /routes?tag=billing` lists only the routes with that `@tag` |
 | `/requests` | `GET` the request log as JSON, optionally filtered (see below) |
 | `/verify` | `POST` checks how often calls were received and answers `200` or `422` (see [Verifying calls](#verifying-calls)) |
 | `/resend` | `POST` answers a request as if a client sent it to the mock port (see [Resending a request](#resending-a-request)) |
@@ -87,6 +87,10 @@ matchers become a sample JSON body (sent with `Content-Type: application/json`),
 Wildcards get `example`. A `*` or `~regex` value becomes
 a sample value (`example` for headers and JSON fields), which may not satisfy
 the regex, and `!` matchers are left out.
+
+A route with an [`@scenario`](matching.md#scenarios) shows the scenario's
+current state beside the state it answers in. **Reset scenario** returns that
+scenario to `started` (`PUT /scenarios`), leaving every other count alone.
 
 UI features: theme toggle, filter, pause stream, clear log,
 HAR export, a Help dialog, and a routes panel that refreshes after hot-reload.
@@ -295,6 +299,12 @@ A `-` in front excludes instead: `post -2xx` shows failed POSTs. Clicking a
 route's hit count in the routes list sets the filter to `route:"Name"`, and
 clicking it again clears the filter. Press `/` to focus the filter.
 
+The current filter is kept in the page URL (`#filter=...`), so a filtered view
+can be bookmarked or sent to someone. Filters you press Enter on (or leave)
+are remembered as recent filters, and the star beside the filter pins one;
+both are offered as suggestions when the filter has focus (pinned first).
+They are stored in the browser's `localStorage`, per admin address.
+
 ### Resizing and mobile navigation
 
 Drag the vertical divider to enlarge the traffic list or inspector. Horizontal
@@ -313,6 +323,10 @@ On narrow screens, selecting traffic or a route opens the inspector; use
   complete text bodies. Incomplete or binary request bodies show an explanation
   instead of producing a misleading replay command. Copied credentials are
   included unless `mock` runs with [`-R`](#credential-redaction).
+- **Copy as…** copies the same request as a `fetch` call, an HTTPie
+  command, Go `net/http` code, or a REST Client request (the request half of
+  an `.http` section, to send from an editor), with the same limits as
+  **Copy cURL**.
 - Matched requests show the fixture name, source file/line, configuration revision,
   and elapsed time. Unmatched requests open **Why didn’t this request match?**
   with up to five nearby routes. Each shows how many requirements failed and
@@ -411,7 +425,9 @@ time is measured, so individual network timing phases remain unknown.
 
 `mock` serves plain HTTP only; put a TLS-terminating proxy in front of it if a
 client needs HTTPS. It is meant to be called by HTTP clients such as curl, test suites, and
-backend services, not by web pages in a browser, so it adds no CORS headers.
+backend services, not by web pages in a browser, so it adds no CORS headers;
+a front end reaches it through its dev server's proxy (see
+[Front-end dev servers](recipes.md#front-end-dev-servers)).
 `OPTIONS` requests are matched against routes like any other method. `HEAD`
 requests fall back to `GET` routes when no `HEAD` route matches (see
 [Route order](matching.md#route-order)), so health and link checkers work without extra

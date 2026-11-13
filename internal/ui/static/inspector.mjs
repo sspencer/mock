@@ -181,6 +181,16 @@ export function sampleFormBody(matchForm) {
     return form.toString();
 }
 
+// The values a sample request sends for one @query or @header matcher: none
+// for "!", else one, except that an all-values count (@query.tag[] = #2)
+// sends that many. sampleFieldValues in internal/cli/sample.go matches this.
+export function sampleFieldValues(key, value, placeholder) {
+    if (value === '!') return [];
+    const cmp = key.endsWith('[]') ? comparison(value) : null;
+    if (cmp?.length) return Array(Math.min(sampleLength(cmp), 10)).fill(placeholder);
+    return [sampleFor(value) ?? placeholder];
+}
+
 export function buildRouteCurl(route, origin) {
     const matchPath = route.matchPath || {};
     const path = String(route.path)
@@ -191,9 +201,10 @@ export function buildRouteCurl(route, origin) {
             slash + (name in matchPath && isSampleExact(matchPath[name]) ? matchPath[name].split('/').map(encodeURIComponent).join('/') : 'example'));
     // Required @query.* parameters are appended to the declared query as written.
     const extra = new URLSearchParams();
-    for (const [name, values] of Object.entries(route.matchQuery || {})) {
+    for (const [key, values] of Object.entries(route.matchQuery || {})) {
+        const name = key.replace(/\[\]$/, '');
         for (const value of values) {
-            if (value !== '!') extra.append(name, sampleFor(value) ?? sampleParam(name));
+            for (const v of sampleFieldValues(key, value, sampleParam(name))) extra.append(name, v);
         }
     }
     const queryText = [route.query, extra.toString()].filter(Boolean).join('&');
@@ -203,9 +214,10 @@ export function buildRouteCurl(route, origin) {
     const method = sampleMethod(route.method);
     if (method === 'HEAD') parts.push('--head');
     else if (method !== 'GET') parts.push('--request', method);
-    for (const [name, values] of Object.entries(route.matchHeaders || {})) {
+    for (const [key, values] of Object.entries(route.matchHeaders || {})) {
+        const name = key.replace(/\[\]$/, '');
         for (const value of values) {
-            if (value !== '!') parts.push('--header', shellQuote(`${name}: ${sampleFor(value) ?? 'example'}`));
+            for (const v of sampleFieldValues(key, value, 'example')) parts.push('--header', shellQuote(`${name}: ${v}`));
         }
     }
     // A @match.host route answers only for its host; curl sends it as Host.
@@ -277,7 +289,7 @@ export function formatRoute(route, sampleCurl = '') {
         route.override ? `Fault override: ${route.override} (POST /faults; DELETE /faults clears it)` : '',
         route.chance ? `Chance: answers ${route.chance} of matching requests` : '',
         route.require ? `Requires: ${route.require} (else later routes answer)` : '',
-        route.scenario ? `Scenario: ${route.scenario}${route.state ? ` · answers in state ${route.state}` : ''}${route.nextState ? ` · then moves to ${route.nextState}` : ''}` : '',
+        route.scenario ? `Scenario: ${route.scenario}${route.scenarioState ? ` · now in state ${route.scenarioState}` : ''}${route.state ? ` · answers in state ${route.state}` : ''}${route.nextState ? ` · then moves to ${route.nextState}` : ''}` : '',
         route.times ? `Times: answers ${route.times === 1 ? 'once' : `${route.times} times`}, ${route.timesLeft ?? route.times} left (POST /reset starts over)` : '',
         route.missing ? `Missing body file: ${route.missing === 'next' ? 'later routes answer' : `answers ${route.missing}`}` : '',
         route.etag ? 'ETag: automatic, with 304 for a matching If-None-Match' : '',
@@ -293,4 +305,13 @@ export function formatRoute(route, sampleCurl = '') {
         route.body || (route.file ? '(read from file when requested)' : '(empty body)'),
         route.bodyTruncated ? '[Template preview truncated after 65536 bytes]' : '',
     ].filter(Boolean).join('\n\n');
+}
+
+// scenarioResetPayload is the PUT /scenarios body that returns a route's
+// scenario to its start, or null when the route has no scenario or the
+// scenario is already there.
+export function scenarioResetPayload(route) {
+    if (!route?.scenario) return null;
+    if (!route.scenarioState || route.scenarioState === 'started') return null;
+    return { name: route.scenario, state: 'started' };
 }

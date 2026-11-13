@@ -66,7 +66,9 @@
                 </div>
                 <label class="filter-control">
                     <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
-                    <input id="filterInput" class="filter-input" type="search" placeholder="Filter: 4xx, unmatched, POST, route:Name, text" aria-label="Filter requests by status class, method, route, match state or text" />
+                    <input id="filterInput" class="filter-input" type="search" list="filterSuggestions" placeholder="Filter: 4xx, unmatched, POST, route:Name, text" aria-label="Filter requests by status class, method, route, match state or text" />
+                    <datalist id="filterSuggestions"></datalist>
+                    <button id="pinFilterButton" class="pin-filter-button" type="button" aria-pressed="false" aria-label="Pin filter" title="Pin this filter to the suggestions" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.8L12 16.9l-5.25 2.7 1-5.8L3.5 9.7l5.9-.9z"/></svg></button>
                     <span class="key-hint" aria-hidden="true">/</span>
                 </label>
                 <p id="clearError" class="clear-error" role="alert" hidden></p>
@@ -135,6 +137,13 @@
                             </span>
                             <button id="copyRequestBody" class="clear-button" type="button" disabled>Copy body</button>
                             <button id="copyCurlButton" class="clear-button" type="button" disabled>Copy cURL</button>
+                            <select id="copyAsSelect" class="route-group-select copy-as-select" aria-label="Copy the request in another format" disabled>
+                                <option value="">Copy as…</option>
+                                <option value="fetch">fetch</option>
+                                <option value="httpie">HTTPie</option>
+                                <option value="go">Go net/http</option>
+                                <option value="http">REST Client</option>
+                            </select>
                             <button id="copyRouteDraftButton" class="clear-button" type="button" title="Copy a draft .http section that would answer this request" hidden>Copy as route</button>
                             <button id="resendButton" class="clear-button" type="button" title="Edit and send this request again through the admin server" aria-controls="resendForm" aria-expanded="false" hidden>Resend</button>
                             <button id="compareButton" class="clear-button" type="button" hidden>Compare…</button>
@@ -185,6 +194,7 @@
                     <h2 id="routeTitle" tabindex="-1">Route</h2>
                     <div class="detail-actions">
                         <button id="switchButton" class="clear-button" type="button" title="Turn this route off, force its status, or add a delay or fault while mock runs" aria-controls="switchForm" aria-expanded="false">Switches</button>
+                        <button id="resetScenarioButton" class="clear-button" type="button" title="Return this route's scenario to the started state" hidden>Reset scenario</button>
                         <button id="editFixtureButton" class="clear-button" type="button" hidden>Edit fixture</button>
                         <button id="copyRouteCurlButton" class="clear-button" type="button" disabled>Copy cURL</button>
                     </div>
@@ -282,7 +292,7 @@
             </div>
             <div>
                 <dt>Filter</dt>
-                <dd>Shows only requests that match every term you type. <code>2xx</code> to <code>5xx</code> match a status class, <code>matched</code> and <code>unmatched</code> whether a route answered, a method name such as <code>post</code> that method, and <code>route:Name</code> (or <code>route:"Two words"</code>) the requests a route answered, <code>tag:name</code> the requests routes with that <code>@tag</code> answered, and <code>near:Name</code> the unmatched requests that route nearly answered. Other terms search the method, URL, status and labels. Put <code>-</code> before a term to exclude it, as in <code>-2xx</code>. Clicking a route's hit count filters to its requests; click again to clear.</dd>
+                <dd>Shows only requests that match every term you type. <code>2xx</code> to <code>5xx</code> match a status class, <code>matched</code> and <code>unmatched</code> whether a route answered, a method name such as <code>post</code> that method, and <code>route:Name</code> (or <code>route:"Two words"</code>) the requests a route answered, <code>tag:name</code> the requests routes with that <code>@tag</code> answered, and <code>near:Name</code> the unmatched requests that route nearly answered. Other terms search the method, URL, status and labels. Put <code>-</code> before a term to exclude it, as in <code>-2xx</code>. Clicking a route's hit count filters to its requests; click again to clear. The filter is kept in the page URL, so a filtered view can be bookmarked; recent filters and those pinned with the star are offered as suggestions.</dd>
             </div>
             <div>
                 <dt>Keyboard</dt>
@@ -305,7 +315,7 @@
                 <dd>Collapses the routes list to give the request log more vertical space. The choice is remembered in this browser.</dd>
             </div>
             <div><dt>Resize panels</dt><dd>Drag a divider to resize adjacent panels. Focus a divider and use arrow keys (Shift for larger steps), Home or End. Double-click restores its default size. Sizes are remembered.</dd></div>
-            <div><dt>Inspect &amp; copy</dt><dd>Pretty formats valid JSON; Raw preserves captured content. Copy body copies the captured text (or base64 for binary data). Copy cURL creates a shell-quoted command for complete text requests. Captured credentials are included unless mock runs with -R (--redact), which masks them before they are logged.</dd></div>
+            <div><dt>Inspect &amp; copy</dt><dd>Pretty formats valid JSON; Raw preserves captured content. Copy body copies the captured text (or base64 for binary data). Copy cURL creates a shell-quoted command for complete text requests; Copy as… gives the same request as fetch, HTTPie, Go net/http or a REST Client request. Captured credentials are included unless mock runs with -R (--redact), which masks them before they are logged.</dd></div>
             <div><dt>Route diagnostics</dt><dd>The number beside each route is how many requests it has answered. Select a route to inspect its requirements and response template, plus a sample cURL command for the mock server. Copy cURL copies it; path parameters such as <code>:id</code> are filled with sample values. Request details identify the route that answered (the first one that matched). Unmatched requests list nearby routes with each failed requirement highlighted; Inspect route selects one, and Similar misses filters to the other unmatched requests it nearly answered. Copy as route copies a draft <code>.http</code> section that answers the request, to paste into a request file; for a request a route answered, the draft reuses its response and is a starting point for a more specific variant, which must go above that route to match first. Resend opens an editor with the request's method, path, headers and body; Send replays it through the admin server, as if a client had sent it to the mock port, and selects the new request, labeled <code>resent</code>. Compare… picks a request; select another and choose Compare with #N to see both side by side: method, path, status, the route that answered, query parameters, headers, and a line diff of the bodies (JSON is compared with sorted keys). Only differences hides what is the same; Swap exchanges the sides. Copy unmatched as routes, above the traffic list, copies one draft section per distinct method and path among all unmatched requests in the log (proxied ones use the upstream response).</dd></div>
             <div><dt>Reload status</dt><dd>Failed reloads retain active routes and show an error banner only when needed. On narrow screens, use Back to traffic &amp; routes to return from the inspector.</dd></div>
         </dl>

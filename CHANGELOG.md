@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- `mock wait` blocks until a running `mock` answers on its admin port (exit `1` after `-timeout`, `10s` by default), and `--ready-file mock.json` writes the bound addresses (`url`, `adminUrl`, `mock`, `routes`, `pid`) once every port is listening and removes the file at shutdown. `mock wait -file mock.json` waits for it and prints the mock URL, so scripts can use random ports without `sleep`.
+
+- `@query.tag[] = ~(red|green|blue)` and `@header.X-Id[] = ...` require every value of a repeated query parameter or header to match (a length matcher such as `#2` counts the values), and `{{$query.tag[]}}` inserts every value as a JSON array. `tag[]=` parameters count as values of `tag`.
+
+- The admin UI's route inspector shows a scenario's current state, with a **Reset scenario** button; `GET /routes` has `scenarioState`.
+
+- With `-e`, editing the environment file reloads with its new values; a broken file keeps the previous routes, like a broken request file.
+
+- `mocktest`'s `Add(t, mocktest.Route{...})` serves routes built from Go values (method, path, status, headers, a body or a value marshaled as JSON, header, query and JSON matchers, delay, times) until the test ends. `mockhttp.Server.AddMethods` adds parsed routes as a temporary group.
+
+- The admin UI's **Copy as…** menu copies a request as a `fetch` call, an HTTPie command, Go `net/http` code or a REST Client request.
+
+- The admin UI keeps the traffic filter in the page URL (`#filter=...`), remembers recent filters and lets you pin filters, offered as suggestions.
+
+- `--h2c` also serves HTTP/2 without TLS (prior knowledge) on the mock ports.
+
+- `mock import -curl` drafts `.http` sections from curl commands (pasted from docs or a browser's **Copy as cURL**), with shell quoting, line continuations and the common request options.
+
+- A recipe for running `mock` behind the Vite, Next.js and webpack dev-server proxies, which is how a browser front end reaches it without CORS.
+
 - `@json = {"type": "card", "amount": 100}` matches a JSON body that contains the whole document: extra members and any key order are allowed, arrays are compared element by element, and values are compared as JSON (`100` matches `100.0`, not `"100"`). It combines with `@json.field` matchers, and a near miss names the first difference.
 
 - `mock routes api.http` prints the route table without serving it: method, path, port, status, name, source line, tags and matchers, in the order routes are tried. `-json` prints the routes as `GET /routes` describes them; `-only`/`-skip`, `-port`, `-var` and `-env` work as they do for `mock`.

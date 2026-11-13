@@ -97,8 +97,12 @@ func TestScenarioReasonAndRouteInfo(t *testing.T) {
 		t.Errorf("reasons = %q, want %q", reasons, want)
 	}
 	route := s.Routes()[0]
-	if route.Scenario != "order" || route.State != "paid" || route.NextState != "shipped" {
+	if route.Scenario != "order" || route.State != "paid" || route.NextState != "shipped" || route.ScenarioState != "started" {
 		t.Errorf("route = %+v", route)
+	}
+	s.SetScenario("order", "paid")
+	if got := s.Routes()[0].ScenarioState; got != "paid" {
+		t.Errorf("ScenarioState after SetScenario = %q, want paid", got)
 	}
 }
 
