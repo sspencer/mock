@@ -196,6 +196,25 @@ func TestSignup(t *testing.T) {
 
   Later stubs win over earlier ones. Other languages use
   [`POST /routes`](admin-ui.md#temporary-routes) on the admin port.
+- `Add(t, routes...)` does the same for routes built from Go values, for a
+  test that computes its response; it returns the routes' names for
+  `AssertCalled`:
+
+  ```go
+  api.Add(t, mocktest.Route{
+      Method: "GET", Path: "/users/:id", Status: 503,
+      JSON:        map[string]any{"error": "down", "retryAt": retryAt},
+      MatchHeader: map[string]string{"Authorization": "*"},
+  })
+  ```
+
+  `Route` has `Name`, `Method` (default `GET`), `Path` (with `:name`
+  parameters, a trailing `*` and an optional `?query`), `Status`, response
+  `Headers`, `Body` or `JSON` (marshaled, with `Content-Type:
+  application/json` unless `Headers` sets one), `MatchHeader` and
+  `MatchQuery` ([matcher values](matching.md#matcher-values)), `MatchJSON`
+  (as `@json`), `Delay` and `Times`. The body is sent as is; set
+  `Template: true` to render it as a template, so `{{$path.id}}` works.
 - `Reset()` starts [`@times`](matching.md#routes-that-answer-a-few-times)
   and `{{$hits}}` counts, rate limits and chance draws over, and removes run-time overrides
   and temporary routes,

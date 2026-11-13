@@ -1,4 +1,4 @@
-import { formatMessage, bodyNotice, buildCurl, buildRouteCurl, formatRoute, hitsLabel, methodClass } from './inspector.mjs';
+import { formatMessage, bodyNotice, buildCurl, buildRouteCurl, formatRoute, hitsLabel, methodClass, scenarioResetPayload } from './inspector.mjs';
 import { buildRouteDraft, buildRouteDrafts } from './draft.mjs';
 import { resendDraft, buildResend } from './resend.mjs';
 import { attachSplitter, alignedTrafficHeight } from './layout.mjs';
@@ -11,6 +11,8 @@ import { noSelection, selectRequest, selectRoute, selectCompare, selectedRequest
 import { compareEvents, differenceCount } from './compare.mjs';
 import { countNodes, editableFixture, formatFixture, losslessIssue, maxTreeNodes, parseFixture } from './fixture.mjs';
 import { renderFixtureTree } from './fixturetree.mjs';
+import { buildRequestAs } from './copyas.mjs';
+import { MAX_PINNED, MAX_RECENT, PINNED_KEY, RECENT_KEY, filterFromHash, hashWithFilter, readList, remember, suggestions, togglePin } from './savedfilters.mjs';
 import { switchBadge, switchFields, switchPayload } from './switches.mjs';
 import { parseRouteSheet, renderRouteSheet } from './routesheet.mjs';
 import { highlightMessage, tokenClass } from './highlight.mjs';
@@ -40,6 +42,8 @@ const helpButton = document.getElementById('helpButton');
 const helpDialog = document.getElementById('helpDialog');
 const helpCloseButton = document.getElementById('helpCloseButton');
 const filterInput = document.getElementById('filterInput');
+const pinFilterButton = document.getElementById('pinFilterButton');
+const filterSuggestions = document.getElementById('filterSuggestions');
 const routesList = document.getElementById('routesList');
 const refreshRoutesButton = document.getElementById('refreshRoutesButton');
 const routesToggleButton = document.getElementById('routesToggleButton');
@@ -55,6 +59,7 @@ const requestTitle = document.getElementById('requestTitle');
 const routeTitle = document.getElementById('routeTitle');
 const routeSummary = document.getElementById('routeSummary');
 const copyRouteCurlButton = document.getElementById('copyRouteCurlButton');
+const resetScenarioButton = document.getElementById('resetScenarioButton');
 const switchButton = document.getElementById('switchButton');
 const switchForm = document.getElementById('switchForm');
 const switchOff = document.getElementById('switchOff');
@@ -89,9 +94,10 @@ const fixtureTree = document.getElementById('fixtureTree');
 const fixtureText = document.getElementById('fixtureText');
 const copyNotice = document.getElementById('copyNotice');
 const copyCurlButton = document.getElementById('copyCurlButton');
+const copyAsSelect = document.getElementById('copyAsSelect');
 if (MOCK_CONFIG.redact) {
     // -R masked credentials before they reached the log, so copies and exports carry no secrets.
-    for (const button of [exportButton, copyCurlButton]) button.title = 'Credentials are redacted (-R)';
+    for (const button of [exportButton, copyCurlButton, copyAsSelect]) button.title = 'Credentials are redacted (-R)';
 }
 const copyRouteDraftButton = document.getElementById('copyRouteDraftButton');
 const resendButton = document.getElementById('resendButton');
@@ -445,9 +451,69 @@ helpDialog.addEventListener('click', (event) => {
 function setFilter(text) {
     filterText = text.trim().toLowerCase();
     filterParsed = filterTerms(filterText);
+    recordFilterInURL(text);
+    updatePinButton();
     renderTable();
 }
 filterInput.addEventListener('input', () => setFilter(filterInput.value));
+
+// ---------- Saved filters ----------
+//
+// Recent and pinned filters live in localStorage and are offered in the
+// filter's suggestion list; the current filter is the URL's #filter=.
+let recentFilters = readList(preferences.get(RECENT_KEY), MAX_RECENT);
+let pinnedFilters = readList(preferences.get(PINNED_KEY), MAX_PINNED);
+
+function recordFilterInURL(text) {
+    const hash = hashWithFilter(location.hash, text);
+    if (hash === (location.hash || '') || typeof history === 'undefined') return;
+    try { history.replaceState(history.state, '', `${location.pathname}${location.search}${hash}`); } catch { /* The URL is a convenience. */ }
+}
+
+function updatePinButton() {
+    const text = filterInput.value.trim();
+    const pinned = pinnedFilters.includes(text);
+    pinFilterButton.disabled = !text;
+    pinFilterButton.setAttribute('aria-pressed', String(pinned));
+    pinFilterButton.title = pinned ? 'Unpin this filter' : 'Pin this filter to the suggestions';
+}
+
+function renderFilterSuggestions() {
+    filterSuggestions.replaceChildren(...suggestions(pinnedFilters, recentFilters).map(({ value, label }) => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.label = label;
+        return option;
+    }));
+}
+
+filterInput.addEventListener('change', () => {
+    recentFilters = remember(recentFilters, filterInput.value);
+    preferences.set(RECENT_KEY, JSON.stringify(recentFilters));
+    renderFilterSuggestions();
+});
+pinFilterButton.addEventListener('click', () => {
+    pinnedFilters = togglePin(pinnedFilters, filterInput.value);
+    preferences.set(PINNED_KEY, JSON.stringify(pinnedFilters));
+    updatePinButton();
+    renderFilterSuggestions();
+});
+window.addEventListener?.('hashchange', () => {
+    const text = filterFromHash(location.hash);
+    if (text === filterInput.value.trim()) return;
+    filterInput.value = text;
+    setFilter(text);
+});
+{
+    // A bookmarked or shared view opens with its filter. The log is still
+    // empty, so there is nothing to render yet.
+    const text = filterFromHash(location.hash);
+    filterInput.value = text;
+    filterText = text.toLowerCase();
+    filterParsed = filterTerms(filterText);
+    updatePinButton();
+    renderFilterSuggestions();
+}
 
 document.addEventListener('keydown', (event) => {
     const typing = event.target.matches('input, textarea, [contenteditable="true"]');
@@ -654,6 +720,7 @@ function resetInspector() {
     copyGeneration++;
     matchSummary.textContent = '';
     copyCurlButton.disabled = true;
+    copyAsSelect.disabled = true;
     copyRouteDraftButton.hidden = true;
     resendButton.hidden = true;
     compareButton.hidden = true;
@@ -691,6 +758,8 @@ function renderInspector() {
         routeDetails.textContent = routeText;
         routeDetails.replaceChildren(...renderRouteSheet(parseRouteSheet(routeText)));
         copyRouteCurlButton.disabled = !routePort(route);
+        resetScenarioButton.hidden = !route.scenario;
+        resetScenarioButton.disabled = stale || !scenarioResetPayload(route);
         const editing = isEditingFixture(route);
         const switching = isSwitchOpen(route) && !stale;
         switchButton.disabled = stale;
@@ -731,6 +800,7 @@ function renderInspector() {
         mismatchPanel.dataset.event = String(event.id);
     }
     copyCurlButton.disabled = false;
+    copyAsSelect.disabled = false;
     for (const kind of ['request', 'response']) {
         const message = event[kind];
         setDetailText(document.getElementById(`${kind}Details`), formatMessage(message, pretty[kind], kind === 'request'));
@@ -767,6 +837,13 @@ for (const kind of ['request', 'response']) {
 }
 copyCurlButton.addEventListener('click', () => {
     try { copyText(buildCurl(eventsById.get(selectedRequestId(selection))?.request)); }
+    catch (error) { copyNotice.textContent = error.message; }
+});
+copyAsSelect.addEventListener('change', () => {
+    const format = copyAsSelect.value;
+    copyAsSelect.value = '';
+    if (!format) return;
+    try { copyText(buildRequestAs(format, eventsById.get(selectedRequestId(selection))?.request)); }
     catch (error) { copyNotice.textContent = error.message; }
 });
 copyRouteDraftButton.addEventListener('click', () => {
@@ -1067,6 +1144,18 @@ switchClear.addEventListener('click', async () => {
         switchStatusText.textContent = 'Switched back on: the route answers as its file says.';
     } catch (err) {
         switchStatusText.textContent = `Not changed: ${err.message}`;
+    }
+});
+
+resetScenarioButton.addEventListener('click', async () => {
+    const payload = scenarioResetPayload(selectedRoute(selection));
+    if (!payload) return;
+    resetScenarioButton.disabled = true;
+    try {
+        await sendSwitch('PUT', 'scenarios', payload);
+    } catch (error) {
+        console.error('Failed to reset the scenario:', error);
+        renderInspector();
     }
 });
 

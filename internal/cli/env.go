@@ -42,6 +42,23 @@ func (e envFlags) options(vars varFlag) (restclient.Options, error) {
 	return restclient.Options{Vars: vars, Defaults: defaults}, nil
 }
 
+// paths lists the files the selected environment may be read from, for the
+// reload watcher: -E's file (with its private sibling), or every default
+// location. Nil without -e.
+func (e envFlags) paths() []string {
+	if e.Name == "" {
+		return nil
+	}
+	if e.File == "" {
+		return []string{envFileName, privateEnvFileName, vscodeSettingsPath}
+	}
+	paths := []string{e.File}
+	if filepath.Base(e.File) == envFileName {
+		paths = append(paths, filepath.Join(filepath.Dir(e.File), privateEnvFileName))
+	}
+	return paths
+}
+
 // check reports a usage error for -E without -e.
 func (e envFlags) check(short, long string) error {
 	if e.File != "" && e.Name == "" {

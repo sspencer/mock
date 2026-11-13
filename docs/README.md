@@ -7,7 +7,7 @@ New here? Start with the [project README](../README.md), then
 
 - [Getting started](getting-started.md): `mock init`, the example APIs, and scripts that fill the admin UI.
 - [Install](install.md): Go install, release binaries, building from source, Docker.
-- [Recipes](recipes.md): GraphQL, content negotiation, per-test responses, readiness checks.
+- [Recipes](recipes.md): GraphQL, content negotiation, per-test responses, readiness checks, front-end dev-server proxies.
 - [Example gallery](examples.md): ready-made mocks for OAuth, pagination, uploads, webhooks and payments.
 
 ## Writing routes

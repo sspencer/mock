@@ -292,6 +292,16 @@ func jsonMatcherName(name string) bool {
 	return err == nil
 }
 
+// allValuesMatcherName reports whether name is @query.name[] or
+// @header.Name[], a matcher every value of a repeated field must satisfy.
+func allValuesMatcherName(name string) bool {
+	base, ok := AllValues(name)
+	if !ok || !(strings.HasPrefix(base, "query.") || strings.HasPrefix(base, "header.")) {
+		return false
+	}
+	return variableNamePattern.MatchString(base)
+}
+
 // definition is one "@name = value" line. The value is trimmed and unescaped
 // but still holds any {{name}} references.
 type definition struct {
@@ -755,7 +765,7 @@ func parseDefinition(line, source string, lineNumber int) (definition, error) {
 	case strings.ContainsFunc(name, unicode.IsSpace):
 		return definition{}, parseErrorf(source, lineNumber,
 			"invalid variable name %q (names cannot contain spaces)", name)
-	case !variableNamePattern.MatchString(name) && !jsonMatcherName(name):
+	case !variableNamePattern.MatchString(name) && !jsonMatcherName(name) && !allValuesMatcherName(name):
 		return definition{}, parseErrorf(source, lineNumber,
 			"invalid variable name %q (use letters, digits, '_', '.', '-', starting with a letter or '_')", name)
 	}
@@ -1015,7 +1025,7 @@ func parseSection(pending pendingSection, fileDefs []definition, opts Options, s
 				`section %q has an invalid response header line %s (header name is required before ":")`,
 				method.Name, quoteSnippet(line))
 		}
-		if !ValidHeaderName(headerName) || !ValidHeaderValue(value) {
+		if base, _ := AllValues(headerName); !ValidHeaderName(base) || !ValidHeaderValue(value) {
 			return method, parseErrorf(source, lineAt(i), "invalid response header %q", headerName)
 		}
 		method.Headers.Add(headerName, strings.TrimSpace(value))
@@ -1191,11 +1201,18 @@ func applyControlVariable(method *Method, def definition, source string) error {
 			return parseErrorf(def.in(source), def.line,
 				`section %q: @header. requires a header name (example: "@header.Authorization = Bearer token")`, method.Name)
 		}
-		if !ValidHeaderName(headerName) || !ValidHeaderValue(value) {
+		if base, _ := AllValues(headerName); !ValidHeaderName(base) || !ValidHeaderValue(value) {
 			return parseErrorf(def.in(source), def.line, "invalid request header matcher %q", headerName)
 		}
 		if err := parseMatcherValue(method, def, value, source); err != nil {
 			return err
+		}
+		if base, all := AllValues(headerName); all {
+			// Kept apart from base's own matchers by the suffix, which
+			// http.Header.Add would not canonicalize.
+			key := http.CanonicalHeaderKey(base) + AllValuesSuffix
+			method.MatchHeaders[key] = append(method.MatchHeaders[key], value)
+			return nil
 		}
 		method.MatchHeaders.Add(headerName, value)
 		return nil
@@ -1950,8 +1967,9 @@ var PlaceholderPattern = regexp.MustCompile(`\{\{([%$]?)(` + PlaceholderName + `
 
 // PlaceholderName is the regexp for a placeholder name such as user.name,
 // meta["user.id"] or users[id=$path.id].name: dot-separated fields,
-// ["quoted"] keys and [key=value] array selectors.
-const PlaceholderName = `[A-Za-z_](?:[A-Za-z0-9_.-]|\["[^"\s{}]+"\]|\[[A-Za-z0-9_-]+=[^\]\s{}"]+\])*`
+// ["quoted"] keys and [key=value] array selectors, with an optional trailing
+// [] for every value of a repeated field ($query.tag[]).
+const PlaceholderName = `[A-Za-z_](?:[A-Za-z0-9_.-]|\["[^"\s{}]+"\]|\[[A-Za-z0-9_-]+=[^\]\s{}"]+\])*(?:\[\])?`
 
 // Expand replaces placeholders in input. {{name}} and {{%name}} (percent-encoded)
 // resolve from vars, whose values may themselves hold placeholders; a variable

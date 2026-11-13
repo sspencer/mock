@@ -257,6 +257,9 @@ func (s *Server) routeInfos(tag string) []RouteInfo {
 		route.Override = s.describeOverride(method)
 		route.Switch = s.ownSwitch(method)
 		route.TimesLeft = timesLeft(&method, s.uses[i])
+		if method.Scenario != "" {
+			route.ScenarioState = s.scenarioState(method.Scenario)
+		}
 		routes = append(routes, route)
 	}
 	return routes

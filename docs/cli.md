@@ -9,8 +9,9 @@ mock [flags] <directory>
 cat file.http | mock
 mock validate [-strict] [-json] [-var name=value] [-env NAME [-env-file FILE]] <file.http|dir> [file.http|dir...]
 mock init [-force] [dir]
-mock import [-host HOST] [-path PREFIX] <file.har|->
+mock import [-curl] [-host HOST] [-path PREFIX] <file.har|file.sh|->
 mock run [flags] <file.http|-d dir> [file.http...] -- command [args...]
+mock wait [-timeout 10s] [-token TOKEN] [-q] [-file FILE | URL]
 mock match [-H 'Name: value'] [-d body|@file] [-port N] [-response] [-json] [-var name=value] [-env NAME] <file.http|dir> [file.http|dir...] METHOD URL
 mock routes [-json] [-port N] [-only TAGS] [-skip TAGS] [-var name=value] [-env NAME] <file.http|dir> [file.http|dir...]
 mock check -upstream URL [-all] [-json] [-depth 3] [-check-header Name] [-header 'Name: value'] [-var name=value] [-env NAME [-env-file FILE]] [-timeout 10s] <file.http|dir> [file.http|dir...]
@@ -50,6 +51,8 @@ Flags:
 | `-T`, `--throttle` | (off) | Send the body of every route that has no `@throttle` of its own at this rate, such as `32kb/s` |
 | `-P`, `--profile` | (off) | A bad network in one word: `slow`, `flaky` or `3g`, a preset `-w`/`-f`/`-T` combination (see [Latency and faults for every route](responses.md#latency-and-faults-for-every-route)) |
 | `-l`, `--log-format` | `text` | `text` or `json`. With `json`, stdout carries only JSON lines (see [JSON logs](#json-logs)) |
+| `--ready-file` | | Once every port is bound, write the addresses as JSON to this file, and remove it at shutdown (see [Waiting for mock](#waiting-for-mock)) |
+| `--h2c` | (off) | Also serve HTTP/2 without TLS (h2c, prior knowledge) on the mock ports, beside HTTP/1.1 (see [HTTP/2 without TLS](#http2-without-tls)) |
 | `--only` | | Serve only routes with one of these [`@tag`](matching.md#route-tags) names, such as `billing,orders`. Repeat for more |
 | `--skip` | | Leave out routes with any of these `@tag` names. Repeat for more |
 | `--version` | | Print version and exit |
@@ -139,6 +142,11 @@ another directory can miss them. Three other ways to reload:
   ```sh
   curl -s -X POST -H 'X-Requested-With: curl' http://127.0.0.1:8081/reload
   ```
+
+With `-e`, the environment file (`-E`, or `http-client.env.json` with its
+`http-client.private.env.json` and `.vscode/settings.json`) is watched too:
+editing it reloads with the new values. A broken environment file fails the
+reload like a broken request file, keeping the previous routes.
 
 A reload from any trigger re-reads every file, and only one runs at a time.
 With routes read from stdin there is nothing to reload: `-i` is rejected and
@@ -290,11 +298,61 @@ the same errors.
 | `-only TAGS`, `-skip TAGS` | List only routes with one of these `@tag` names, or leave them out, as `mock --only` and `--skip` serve them |
 | `-var`, `-env`, `-env-file` | Set variables as `mock -v` and `-e` do |
 
+## Waiting for mock
+
+`mock wait` blocks until a running `mock` answers, for scripts that start it
+in the background:
+
+```sh
+mock api.http &
+mock wait                        # the admin port: MOCK_UI_PORT, else 8081
+mock wait http://127.0.0.1:9091  # another admin address
+```
+
+It polls the admin `/state` endpoint every 100ms, exits `0` (printing `ready`)
+once it answers, and exits `1` when `-timeout` (default `10s`) runs out. With
+`-t`, pass the token as `-token` or `MOCK_UI_TOKEN`. `-q` prints nothing.
+
+`--ready-file FILE` makes `mock` write what it bound once every port is
+listening (atomically, so a reader never sees half a file), and remove the
+file when it stops:
+
+```json
+{
+  "url": "http://127.0.0.1:53124",
+  "adminUrl": "http://127.0.0.1:53125",
+  "mock": ["http://127.0.0.1:53124"],
+  "routes": 12,
+  "pid": 4242
+}
+```
+
+`mock wait -file FILE` waits for that file, then for its `adminUrl` (or only
+for the file with `-x`), and prints `url`. With random ports it is the way
+to learn them:
+
+```sh
+mock -p 0 -a 0 --ready-file mock.json api.http &
+export API_URL=$(mock wait -file mock.json)
+```
+
+## HTTP/2 without TLS
+
+`--h2c` serves HTTP/2 over plain TCP beside HTTP/1.1 on every mock port, for
+clients that speak HTTP/2 with prior knowledge (`curl --http2-prior-knowledge`,
+gRPC-style clients, Go's `http.Protocols` with `UnencryptedHTTP2`). The
+`Upgrade: h2c` handshake from HTTP/1.1 is not supported. The admin port stays
+HTTP/1.1. Responses and streams behave the same on either protocol. Faults
+that break the connection over HTTP/1.1 (`reset`, `empty`, `garbage`,
+`truncate`) reset only that request's stream over HTTP/2, since the other
+requests on the connection are not at fault.
+
 ## Other commands
 
 `mock run` is described in [Testing with mock](testing.md#running-a-test-suite-against-mock).
 `mock check` and `mock import` are described in
 [Working with real APIs](real-apis.md): see
 [Checking mocks against the real API](real-apis.md#checking-mocks-against-the-real-api)
-and [Importing traffic from a HAR file](real-apis.md#importing-traffic-from-a-har-file).
+and [Importing traffic from a HAR file](real-apis.md#importing-traffic-from-a-har-file)
+(`mock import -curl` reads curl commands).
 `mock init` is covered in [Getting started](getting-started.md).

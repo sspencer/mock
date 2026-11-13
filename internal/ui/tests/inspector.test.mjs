@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sampleFormBody, sampleJSONBody, buildCurl, buildRouteCurl, formatMessage, formatRoute, bodyNotice, sampleParam, describeMatcher, isSampleExact, sampleFor, comparison, jsonPathSegments, sampleMethod, methodClass } from '../static/inspector.mjs';
+import { sampleFormBody, sampleJSONBody, buildCurl, buildRouteCurl, formatMessage, formatRoute, bodyNotice, sampleParam, describeMatcher, isSampleExact, sampleFor, comparison, jsonPathSegments, sampleMethod, methodClass, scenarioResetPayload } from '../static/inspector.mjs';
 import { attachSplitter, clampPercent, alignedTrafficHeight } from '../static/layout.mjs';
 
 const message = {
@@ -271,4 +271,18 @@ test('Route cURL and sheet carry the @match.host host', () => {
     assert.equal(buildRouteCurl({ method: 'GET', path: '/x', matchHost: '!' }, origin), "curl 'http://localhost:8080/x'");
     assert.ok(formatRoute({ method: 'GET', path: '/x', matchHost: 'billing.example.test' }).includes('Host: billing.example.test'));
     assert.ok(!formatRoute({ method: 'GET', path: '/x' }).includes('Host:'));
+});
+
+test('all-values matchers send the field name, repeated for a count', () => {
+    const route = { method: 'GET', path: '/tags', matchQuery: { 'tag[]': ['#2'] }, matchHeaders: { 'Accept[]': ['text/html'] } };
+    assert.equal(buildRouteCurl(route, 'http://localhost:8080'),
+        "curl --header 'Accept: text/html' 'http://localhost:8080/tags?tag=example&tag=example'");
+});
+
+test('route sheet shows the scenario state and offers a reset only away from started', () => {
+    const route = { method: 'POST', path: '/checkout', name: 'pay', revision: 1, status: 200, scenario: 'checkout', state: 'cart', nextState: 'paid', scenarioState: 'cart' };
+    assert.match(formatRoute(route), /Scenario: checkout · now in state cart · answers in state cart · then moves to paid/);
+    assert.deepEqual(scenarioResetPayload(route), { name: 'checkout', state: 'started' });
+    assert.equal(scenarioResetPayload({ ...route, scenarioState: 'started' }), null);
+    assert.equal(scenarioResetPayload({ method: 'GET', path: '/' }), null);
 });

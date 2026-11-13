@@ -14,7 +14,7 @@ import (
 	"unicode/utf8"
 )
 
-const importUsage = "usage: mock import [-host HOST] [-path PREFIX] <file.har|->"
+const importUsage = "usage: mock import [-curl] [-host HOST] [-path PREFIX] <file.har|file.sh|->"
 
 // harFile is the part of a HAR 1.2 file that mock import reads.
 type harFile struct {
@@ -61,14 +61,16 @@ func harHeaders(list []harHeader) http.Header {
 	return headers
 }
 
-// runImport converts a HAR file into .http sections on stdout: one per
-// distinct method and path, drafted like the admin UI's Copy as route with
-// the captured response.
+// runImport converts a HAR file, or with -curl curl commands, into .http
+// sections on stdout: one per distinct method and path, drafted like the
+// admin UI's Copy as route with the captured response (a placeholder for
+// curl, which captures none).
 func runImport(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	flagSet := flag.NewFlagSet("mock import", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
 	host := flagSet.String("host", "", "")
 	prefix := flagSet.String("path", "", "")
+	curl := flagSet.Bool("curl", false, "")
 	if err := flagSet.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			fmt.Fprintln(stdout, importUsage)
@@ -90,11 +92,19 @@ func runImport(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return runError("%v", err)
 	}
-	var har harFile
-	if err := json.Unmarshal(data, &har); err != nil {
-		return runError("%s: not a HAR file: %v", name, err)
+	var exchanges []exchange
+	var skipped int
+	if *curl {
+		if exchanges, skipped, err = curlExchanges(string(data), *host, *prefix); err != nil {
+			return runError("%s: %v", name, err)
+		}
+	} else {
+		var har harFile
+		if err := json.Unmarshal(data, &har); err != nil {
+			return runError("%s: not a HAR file: %v (use -curl for curl commands)", name, err)
+		}
+		exchanges, skipped = harExchanges(har.Log.Entries, *host, *prefix)
 	}
-	exchanges, skipped := harExchanges(har.Log.Entries, *host, *prefix)
 	if len(exchanges) == 0 {
 		return runError("%s: no requests to import (%d skipped)", name, skipped)
 	}
@@ -156,6 +166,7 @@ func harExchange(entry harEntry, host, prefix string) (exchange, bool) {
 		RequestHeaders:  requestHeaders,
 		Status:          response.Status,
 		ResponseHeaders: harHeaders(response.Headers),
+		host:            u.Host,
 	}
 	if request.PostData != nil {
 		x.RequestBody = request.PostData.Text

@@ -108,7 +108,8 @@ A regex must match the whole value; it is anchored at both ends, so
 `~[0-9]+` rejects `12a`. Write `~.*token.*` to match anywhere in the value. Start the
 pattern with `(?i)` for a case-insensitive match: `~(?i)bearer .+`.
 When a header or query parameter is repeated, exact and regex matchers accept
-any one of the values. An invalid or empty regex is a load error. `\\` in a
+any one of the values (add `[]` to the name to test every value; see
+[Every value of a repeated field](#every-value-of-a-repeated-field)). An invalid or empty regex is a load error. `\\` in a
 variable value is an escaped backslash, so write `\\\\` for a literal backslash in
 a pattern; other escapes such as `\d` pass through unchanged. To match a value
 that literally is `*`, or starts with `!` or `~`, use a regex such as `~\*` or
@@ -240,6 +241,38 @@ GET /search
 
 The bad-id route catches every id the numeric route above it did not take,
 because the first matching route wins.
+
+### Every value of a repeated field
+
+A query parameter or header can be sent more than once (`?tag=a&tag=b`). A
+plain matcher accepts the request when any one value matches. Add `[]` to the
+name to require something of every value instead:
+
+```http
+### Known tags only
+@query.tag[] = ~(red|green|blue)
+GET /items
+
+### Two tags exactly
+@query.tag[] = #2
+GET /pairs
+
+### Numeric ids
+@header.X-Id[] = ~[0-9]+
+GET /batch
+```
+
+- An exact, regex, comparison or `!text` matcher must accept each value on its
+  own, and at least one value must be sent.
+- A length matcher (`#2`, `#>0`, `#<=10`) counts the values.
+- `*` needs at least one non-blank value, and `!` needs none.
+- For a query, `tag[]=a&tag[]=b` (the PHP and Rails spelling) counts as
+  values of `tag` too.
+
+A near-miss reason names the value that failed, such as `Query tag[]: one
+value does not match pattern "(red|green|blue)"; received ["pink"]`. In a
+response, [`{{$query.tag[]}}`](placeholders.md#placeholders) is every value as
+a JSON array.
 
 ### Body matching
 

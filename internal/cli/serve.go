@@ -14,6 +14,18 @@ func newHTTPServer(handler http.Handler) *http.Server {
 	return &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, WriteTimeout: 30 * time.Second}
 }
 
+// newMockHTTPServer is newHTTPServer for a mock port; with h2c it also
+// accepts unencrypted HTTP/2 (prior knowledge, no Upgrade).
+func newMockHTTPServer(handler http.Handler, h2c bool) *http.Server {
+	server := newHTTPServer(handler)
+	if h2c {
+		server.Protocols = new(http.Protocols)
+		server.Protocols.SetHTTP1(true)
+		server.Protocols.SetUnencryptedHTTP2(true)
+	}
+	return server
+}
+
 func shutdownHTTPServers(servers []*http.Server, grace time.Duration) error {
 	var errs []error
 	for _, server := range servers {

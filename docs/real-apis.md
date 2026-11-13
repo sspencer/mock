@@ -225,9 +225,32 @@ mean something in routes (`*`, a leading `:`, `{`, `}`) are escaped.
 
 | Flag | Description |
 |------|-------------|
+| `-curl` | Read curl commands instead of a HAR file (see [Importing curl commands](#importing-curl-commands)) |
 | `-host HOST` | Import only requests to this host (`api.example.com`, or with a port) |
 | `-path PREFIX` | Import only request paths starting with this prefix, such as `/api/` |
 
 CORS preflight requests and non-HTTP entries are skipped. Pass `-` to read the
 HAR from stdin. A summary of imported and skipped requests goes to stderr. The
 exit code is `1` when nothing could be imported.
+
+### Importing curl commands
+
+`mock import -curl` reads curl commands, as API documentation, a README or a
+browser's **Copy as cURL** gives them, and drafts a section for each request:
+
+```sh
+mock import -curl requests.sh > api.http
+pbpaste | mock import -curl - >> api.http
+```
+
+The text is split the way a shell would: `'...'`, `"..."` and `$'...'`
+quoting, backslash line continuations, `#` comments, and commands separated by
+newlines, `;`, `&&` or `|`. A copied prompt (`$ curl ...`) is fine; other
+commands are ignored. Each command's URL, `-X`, `-H`, `-d`/`--data-raw`/
+`--data-binary`/`--data-urlencode` (with `@file`), `--json`, `-G`, `-u`,
+`-b`, `-A`, `-e` and `-I` are read; options that only affect the transfer
+(`-s`, `-L`, `-o`, `--compressed`, ...) are skipped. Curl commands carry no
+response, so every section answers with a placeholder `200` and `{}` for you
+to fill in; the request part (required query parameters, `Authorization`, JSON
+or form fields) is drafted as for a HAR file. `-host` and `-path` filter the
+same way.
