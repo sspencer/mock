@@ -52,6 +52,15 @@ func TestMockRun(t *testing.T) {
 	if out, err := run("/users /nope", "0"); ExitCode(err) != 1 || !strings.Contains(out, "1x GET /nope") {
 		t.Errorf("unmatched: %v\n%s", err, out)
 	}
+	// --strict=unused and --strict-report pass through mock run.
+	report := filepath.Join(t.TempDir(), "strict.xml")
+	t.Setenv("MOCK_RUN_HELPER", "1")
+	t.Setenv("MOCK_RUN_PATHS", "/nope")
+	t.Setenv("MOCK_RUN_EXIT", "0")
+	err := Run(context.Background(), []string{"run", "--strict=unused", "--strict-report", report, file, "--", os.Args[0], "-test.run=^TestMockRunHelper$"}, strings.NewReader(""), io.Discard, io.Discard, nil)
+	if data, _ := os.ReadFile(report); ExitCode(err) != 1 || !strings.Contains(err.Error(), "1 route never matched") || !strings.Contains(string(data), `<testcase name="GET /nope"`) {
+		t.Errorf("strict report: %v\n%s", err, data)
+	}
 	if _, err := run("/users", "3"); ExitCode(err) != 3 || !strings.Contains(err.Error(), "exited with status 3") {
 		t.Errorf("failing command: %v", err)
 	}
@@ -60,7 +69,7 @@ func TestMockRun(t *testing.T) {
 			t.Errorf("%v: error = %v, want a usage error", args, err)
 		}
 	}
-	err := Run(context.Background(), []string{"run", file, "--", "no-such-command-for-mock-run"}, strings.NewReader(""), io.Discard, io.Discard, nil)
+	err = Run(context.Background(), []string{"run", file, "--", "no-such-command-for-mock-run"}, strings.NewReader(""), io.Discard, io.Discard, nil)
 	if ExitCode(err) != 1 || !strings.Contains(err.Error(), "cannot run") {
 		t.Errorf("missing command: %v", err)
 	}

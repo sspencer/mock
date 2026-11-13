@@ -29,7 +29,8 @@ strict: 1 of 6 routes never matched a request
 - If any request was unmatched, `mock` exits `1`. Requests forwarded with
   `--upstream` count as unmatched too, and are marked `(proxied)`.
 - Routes that never matched are listed but do not change the exit code. They
-  usually mean a stale fixture or a test that no longer runs.
+  usually mean a stale fixture or a test that no longer runs. With
+  `--strict=unused`, they fail the run too.
 - When every request matched and every route was used, `mock` prints one line
   saying so.
 - `--strict` needs request files; it cannot be combined with a directory
@@ -47,6 +48,26 @@ wait "$mock_pid"   # fails the job if any request went unmatched
 
 [`mock run`](#running-a-test-suite-against-mock) does the same in one line:
 `mock run fixtures.http -- npm test`.
+
+### Strict reports for CI
+
+`--strict-report FILE` also writes the report to a file that CI systems read,
+and turns on `--strict`. The file name picks the format:
+
+```sh
+mock run --strict-report mock-junit.xml api.http -- npm test
+mock run --strict=unused --strict-report strict.json api.http -- pytest
+```
+
+- `.xml` writes JUnit XML. The `mock requests` suite has a failed test case
+  for each unmatched method and path (one passing case when every request
+  matched), and the `mock routes` suite a case for each route, with its file
+  and line. A route that never matched is skipped, or failed with
+  `--strict=unused`.
+- `.json` writes `passed`, `failUnused`, `unmatchedTotal`, `unmatched` (method,
+  path, count and `proxied`), `routes` (each with its `hits`) and `unused`.
+- The file is written at shutdown, before the report on stderr, and replaced
+  if it exists.
 
 ## Running a test suite against mock
 
@@ -73,7 +94,39 @@ mock run -d mocks -- pytest -x
   output reads cleanly; load warnings still show. Ctrl-C stops the command
   (with an interrupt, then a kill after five seconds) and `mock`.
 - From the command, [`POST /routes`](admin-ui.md#temporary-routes) and
-  `POST /reset` on `MOCK_ADMIN_URL` stub and reset routes between tests.
+  `POST /reset` on `MOCK_ADMIN_URL` stub and reset routes between tests, and
+  [`POST /verify`](admin-ui.md#verifying-calls) asserts the calls a test
+  made.
+
+## GitHub Actions
+
+This repository is also a GitHub Action. It installs a released `mock` binary
+on Linux, macOS or Windows runners (checking its SHA-256 against the
+release's `checksums.txt`), adds it to `PATH`, and can wrap a test command in
+`mock run`:
+
+```yaml
+- uses: sspencer/mock@v0.6.0
+  with:
+    args: -d mocks --strict=unused
+    run: npm test
+    strict-report: mock-junit.xml
+```
+
+| Input | Default | Meaning |
+|-------|---------|---------|
+| `version` | the action's tag, such as `v0.6.0`, else `latest` | The release to install |
+| `run` | | A command to run with `mock run`, through `bash`; empty installs `mock` only |
+| `args` | | `mock` flags and request files for `mock run`, split on spaces |
+| `strict-report` | | With `run`, also write the [strict report](#strict-reports-for-ci) to this file |
+| `token` | `github.token` | Used to look up the latest release without hitting API rate limits |
+
+The step fails like `mock run` does: with the command's status, or `1` when
+it passed but a request went unmatched (or a route never matched, with
+`--strict=unused`). The `version` output is the installed tag. Without `run`,
+later steps can call `mock` directly, for example
+`mock validate -strict mocks` or `mock run mocks/api.http -- ./test.sh`. A
+JUnit report can go to any step or action that publishes test results.
 
 ## Using mock in Go tests
 
@@ -123,10 +176,11 @@ func TestSignup(t *testing.T) {
   Later stubs win over earlier ones. Other languages use
   [`POST /routes`](admin-ui.md#temporary-routes) on the admin port.
 - `Reset()` starts [`@times`](matching.md#routes-that-answer-a-few-times)
-  counts, rate limits and chance draws over, and removes run-time overrides
+  and `{{$hits}}` counts, rate limits and chance draws over, and removes run-time overrides
   and temporary routes,
   so a test can reuse one server; other languages `POST /reset` to the admin
   port.
 
-From other languages, read the same data from [`/requests`](admin-ui.md#reading-the-request-log)
-on the admin port.
+From other languages, [`POST /verify`](admin-ui.md#verifying-calls) makes the
+same assertions on the admin port, and [`/requests`](admin-ui.md#reading-the-request-log)
+returns the request log.

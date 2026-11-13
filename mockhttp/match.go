@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/sspencer/mock/restclient"
 )
@@ -82,7 +83,7 @@ func (s *Server) selectRoute(r *http.Request, body requestBody, dry bool) (*rest
 	// Routes are immutable once installed; SetMethods swaps the slice, so a
 	// snapshot keeps one request within one configuration revision.
 	s.mu.Lock()
-	methods, hits, rolls, uses, revision := s.methods, s.hits, s.rolls, s.uses, s.config.Revision
+	methods, hits, rolls, uses, answers, revision := s.methods, s.hits, s.rolls, s.uses, s.answers, s.config.Revision
 	s.mu.Unlock()
 
 	facts := newRequestFacts(r, body)
@@ -116,8 +117,10 @@ func (s *Server) selectRoute(r *http.Request, body requestBody, dry bool) (*rest
 					route := describeRoute(*method, i, revision)
 					if dry {
 						route.Hits = hits[i].Load()
+						tv.hits = answers[i].Load() + 1
 					} else {
 						route.Hits = hits[i].Add(1)
+						tv.hits = answers[i].Add(1)
 					}
 					route.TimesLeft = timesLeft(method, uses[i])
 					return method, tv, MatchInfo{Route: &route, Revision: revision}, true
@@ -380,6 +383,9 @@ type templateValues struct {
 	// path holds only the path parameters, for $path.name.
 	path  map[string]string
 	facts *requestFacts
+	// hits is the route's answer count since the last reset, including this
+	// request, for $hits.
+	hits uint64
 }
 
 func routePattern(method restclient.Method) string {
@@ -402,8 +408,38 @@ func (f *requestFacts) bodyValues() []string {
 }
 
 func (f *requestFacts) jsonMatches(path, expected string) bool {
+	matcher := restclient.MustMatcher(expected)
+	if matcher.Kind == restclient.MatchLength {
+		// Count elements of the decoded value, so a string that looks like
+		// an array is still measured in characters.
+		root, err := f.jsonDocument()
+		return err == nil && matcher.MatchLengths(jsonLengths(selectJSONNodes(root, path)))
+	}
 	values, err := f.jsonValues(path)
-	return err == nil && restclient.MustMatcher(expected).MatchAny(values)
+	return err == nil && matcher.MatchAny(values)
+}
+
+// jsonLengths is the length of each selected JSON value: an array's
+// elements, an object's members, a string's characters, or the text of a
+// number or boolean. Null and missing values have none.
+func jsonLengths(nodes []any) []int {
+	var lengths []int
+	for _, node := range nodes {
+		switch node := node.(type) {
+		case nil:
+		case []any:
+			lengths = append(lengths, len(node))
+		case map[string]any:
+			lengths = append(lengths, len(node))
+		case string:
+			lengths = append(lengths, utf8.RuneCountInString(node))
+		default:
+			if text, ok := jsonText(node); ok {
+				lengths = append(lengths, utf8.RuneCountInString(text))
+			}
+		}
+	}
+	return lengths
 }
 
 // jsonValues looks up a dot-separated field path in the JSON body. Numeric

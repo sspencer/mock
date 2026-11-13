@@ -134,3 +134,39 @@ func TestNoUpstreamStillAnswers404(t *testing.T) {
 		t.Fatalf("got %d, match %+v", w.Code, s.events[0].Match)
 	}
 }
+
+func TestUpstreamOptionsRewriteForwardedRequests(t *testing.T) {
+	var uri, auth, extra string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		uri, auth, extra = r.URL.RequestURI(), r.Header.Get("Authorization"), r.Header.Get("X-Extra")
+	}))
+	defer upstream.Close()
+
+	s := proxyTestServer(t, "### Mocked\nGET /mocked\n\nmock")
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer real")
+	headers.Add("X-Extra", "1")
+	s.SetUpstreamWith(mustURL(t, upstream.URL+"/v2"), UpstreamOptions{Headers: headers, StripPrefix: "/api/"})
+
+	for _, tt := range []struct{ path, want string }{
+		{"/api/users?x=1", "/v2/users?x=1"},
+		{"/api", "/v2/"},
+		{"/apiary/bees", "/v2/apiary/bees"},
+		{"/api/a%2Fb", "/v2/a%2Fb"},
+		{"/other", "/v2/other"},
+	} {
+		req := httptest.NewRequest("GET", "http://localhost:8080"+tt.path, nil)
+		req.Header.Set("Authorization", "Bearer client")
+		s.ServeHTTP(httptest.NewRecorder(), req)
+		if uri != tt.want {
+			t.Errorf("%s forwarded as %s, want %s", tt.path, uri, tt.want)
+		}
+	}
+	if auth != "Bearer real" || extra != "1" {
+		t.Errorf("upstream headers: Authorization %q, X-Extra %q", auth, extra)
+	}
+	event := s.events[len(s.events)-1]
+	if got := event.Request.Headers["Authorization"]; len(got) != 1 || got[0] != "Bearer client" {
+		t.Errorf("logged request headers = %v, want the client's", event.Request.Headers)
+	}
+}

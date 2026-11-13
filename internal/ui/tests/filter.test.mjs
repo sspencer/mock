@@ -28,6 +28,15 @@ test('route terms match the answering route by name', () => {
     assert.deepEqual(filterTerms('route:"open'), [{ negate: false, prefix: 'route', value: 'open' }]);
 });
 
+test('tag terms match a tag of the answering route', () => {
+    const tagged = { match: { route: { name: 'A', tags: ['Billing', 'slow'] } } };
+    assert.ok(show('tag:billing', ev('GET', 200, tagged)));
+    assert.ok(show('-tag:fast', ev('GET', 200, tagged)));
+    assert.ok(!show('tag:bill', ev('GET', 200, tagged)));
+    assert.ok(!show('tag:slow', ev('GET', 404)));
+    assert.deepEqual(filterTerms('tag:'), []);
+});
+
 test('other terms search the text', () => {
     assert.ok(show('users proxied', ev('GET', 200), 'get /users 200 proxied'));
     assert.ok(!show('orders', ev('GET', 200), 'get /users 200'));

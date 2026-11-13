@@ -46,13 +46,22 @@ type config struct {
 	Redact bool
 	Args   []string
 	// Upstream receives requests no route matches (-u); nil answers 404.
-	Upstream *url.URL
+	// UpstreamHeaders are set on each forwarded request (--upstream-header)
+	// and UpstreamStrip is removed from the front of its path
+	// (--upstream-strip).
+	Upstream        *url.URL
+	UpstreamHeaders headerFlag
+	UpstreamStrip   string
 	// Record is the file that requests --upstream answered are appended to
 	// as draft sections (-r).
 	Record string
 	// Strict reports unmatched requests and unused routes at shutdown and
-	// fails the run when any request went unmatched (-s).
-	Strict bool
+	// fails the run when any request went unmatched (-s). StrictUnused
+	// (--strict=unused) also fails it when a route never matched, and
+	// StrictReport is a file to write the report to as JSON or JUnit XML.
+	Strict       bool
+	StrictUnused bool
+	StrictReport string
 	// Vars override or supply @name variables in every request file (-v).
 	Vars varFlag
 	// Headers are response headers for every route that sets no header of
@@ -63,6 +72,8 @@ type config struct {
 	Env envFlags
 	// Dirs are directories whose .http files are all loaded and watched (-d).
 	Dirs listFlag
+	// Tags chooses routes by @tag (--only, --skip).
+	Tags tagFilter
 	// Poll, when set, checks the request files for changes on this interval
 	// in addition to file events (-i).
 	Poll time.Duration
@@ -96,7 +107,7 @@ var networkProfiles = map[string]networkProfile{
 // minPollInterval keeps -i from turning into a busy loop.
 const minPollInterval = 100 * time.Millisecond
 
-// usageText is printed by -h. Every flag has a short and a long name; Go's
+// usageText is printed by -h. Most flags have a short and a long name; Go's
 // flag package accepts either with one or two dashes.
 const usageText = `usage:
   mock [flags] <file.http> [file.http...]
@@ -127,11 +138,21 @@ flags:
                        (default 127.0.0.1, or MOCK_BIND)
   -u, --upstream URL   forward requests no route matches to this http or
                        https URL and return its response
+      --upstream-header 'NAME: VALUE'
+                       with -u, set this header on every forwarded request,
+                       such as credentials; repeat for more headers
+      --upstream-strip PREFIX
+                       with -u, remove PREFIX, such as /api, from the start
+                       of forwarded request paths
   -r, --record FILE    with -u, append a draft section to FILE for each
                        method and path the upstream answered
   -s, --strict         at shutdown, list requests no route matched and routes
                        that never matched, and exit 1 if any request was
-                       unmatched
+                       unmatched; --strict=unused also exits 1 if a route
+                       never matched
+      --strict-report FILE
+                       with -s (implied), also write the report to FILE:
+                       JUnit XML for .xml, JSON for .json
   -v, --var NAME=VALUE set @NAME in every request file, overriding its
                        definitions; repeat for more variables
   -H, --header 'NAME: VALUE'
@@ -163,6 +184,9 @@ flags:
                          3g     delay p50 300ms p99 1s, throttle 96kb/s
   -l, --log-format FMT text (default) or json: one JSON object per line on
                        stdout for startup, routes and each request
+      --only TAGS      serve only routes with one of these @tag names, such
+                       as billing,orders; repeat to add more
+      --skip TAGS      leave out routes with any of these @tag names
       --version        print version and exit
   -h, --help           print this help and exit
 `
@@ -207,12 +231,15 @@ func parseConfig(args []string) (config, error) {
 	for _, name := range []string{"u", "upstream"} {
 		flagSet.StringVar(&upstream, name, "", "")
 	}
+	flagSet.Var(&cfg.UpstreamHeaders, "upstream-header", "")
+	flagSet.StringVar(&cfg.UpstreamStrip, "upstream-strip", "", "")
 	for _, name := range []string{"r", "record"} {
 		flagSet.StringVar(&cfg.Record, name, "", "")
 	}
 	for _, name := range []string{"s", "strict"} {
-		flagSet.BoolVar(&cfg.Strict, name, false, "")
+		flagSet.Var(&strictFlag{&cfg}, name, "")
 	}
+	flagSet.StringVar(&cfg.StrictReport, "strict-report", "", "")
 	for _, name := range []string{"v", "var"} {
 		flagSet.Var(&cfg.Vars, name, "")
 	}
@@ -247,6 +274,8 @@ func parseConfig(args []string) (config, error) {
 	for _, name := range []string{"l", "log-format"} {
 		flagSet.StringVar(&cfg.LogFormat, name, "text", "")
 	}
+	flagSet.Var((*tagsFlag)(&cfg.Tags.Only), "only", "")
+	flagSet.Var((*tagsFlag)(&cfg.Tags.Skip), "skip", "")
 	flagSet.BoolVar(&cfg.Version, "version", false, "")
 	if err := flagSet.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -259,6 +288,18 @@ func parseConfig(args []string) (config, error) {
 		if cfg.Upstream, err = parseUpstream(upstream); err != nil {
 			return config{}, err
 		}
+	}
+	if (len(cfg.UpstreamHeaders) > 0 || cfg.UpstreamStrip != "") && cfg.Upstream == nil {
+		return config{}, usageError("--upstream-header and --upstream-strip need -u (--upstream)")
+	}
+	if cfg.UpstreamStrip != "" && (!strings.HasPrefix(cfg.UpstreamStrip, "/") || strings.ContainsAny(cfg.UpstreamStrip, "?#")) {
+		return config{}, usageError("--upstream-strip must be a path prefix such as /api, not %q", cfg.UpstreamStrip)
+	}
+	if cfg.StrictReport != "" {
+		if strictReportFormat(cfg.StrictReport) == "" {
+			return config{}, usageError("--strict-report must name a .xml (JUnit) or .json file, not %q", cfg.StrictReport)
+		}
+		cfg.Strict = true
 	}
 	if cfg.Record != "" && cfg.Upstream == nil {
 		return config{}, usageError("-r (--record) needs -u (--upstream): only forwarded requests are recorded")
@@ -347,6 +388,49 @@ func (v *varFlag) Set(raw string) error {
 		*v = varFlag{}
 	}
 	(*v)[name] = value
+	return nil
+}
+
+// strictFlag is -s (--strict): a boolean flag that also takes "unused".
+type strictFlag struct{ cfg *config }
+
+func (f *strictFlag) IsBoolFlag() bool { return true }
+
+func (f *strictFlag) String() string {
+	if f.cfg != nil && f.cfg.StrictUnused {
+		return "unused"
+	}
+	if f.cfg != nil && f.cfg.Strict {
+		return "true"
+	}
+	return "false"
+}
+
+func (f *strictFlag) Set(raw string) error {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "unused":
+		f.cfg.Strict, f.cfg.StrictUnused = true, true
+	default:
+		on, err := strconv.ParseBool(raw)
+		if err != nil {
+			return fmt.Errorf("%q: use -s, --strict=unused or --strict=false", raw)
+		}
+		f.cfg.Strict, f.cfg.StrictUnused = on, false
+	}
+	return nil
+}
+
+// tagsFlag collects repeated comma-separated tag lists (--only, --skip).
+type tagsFlag []string
+
+func (t *tagsFlag) String() string { return strings.Join(*t, ",") }
+
+func (t *tagsFlag) Set(raw string) error {
+	tags, err := restclient.ParseTags(raw)
+	if err != nil {
+		return err
+	}
+	*t = append(*t, tags...)
 	return nil
 }
 

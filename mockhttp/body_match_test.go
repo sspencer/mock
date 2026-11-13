@@ -426,3 +426,47 @@ none
 		t.Errorf("malformed multipart: %q", got)
 	}
 }
+
+func TestComparisonAndLengthMatching(t *testing.T) {
+	s := newTestServer(t, `### Big order
+@json.amount = >100
+@json.items = #>0
+@json.note = #<=5
+POST /orders
+
+big
+
+### Paged
+@query.limit = <=50
+@header.X-Retry = >=1
+GET /orders
+
+paged
+
+### Any
+* /*
+
+other
+`)
+	for _, tt := range []struct {
+		method, target, body string
+		headers              []string
+		want                 string
+	}{
+		{"POST", "/orders", `{"amount": 150, "items": [1], "note": "hi"}`, nil, "big"},
+		{"POST", "/orders", `{"amount": "150.5", "items": [1, 2], "note": "hello"}`, nil, "big"},
+		{"POST", "/orders", `{"amount": 100, "items": [1], "note": "hi"}`, nil, "other"},
+		{"POST", "/orders", `{"amount": 150, "items": [], "note": "hi"}`, nil, "other"},
+		{"POST", "/orders", `{"amount": 150, "items": "[1]", "note": "hi"}`, nil, "big"},
+		{"POST", "/orders", `{"amount": 150, "items": [1], "note": "too long"}`, nil, "other"},
+		{"POST", "/orders", `{"amount": 150, "note": "hi"}`, nil, "other"},
+		{"GET", "/orders?limit=50", "", []string{"X-Retry", "2"}, "paged"},
+		{"GET", "/orders?limit=51", "", []string{"X-Retry", "2"}, "other"},
+		{"GET", "/orders?limit=ten", "", []string{"X-Retry", "2"}, "other"},
+		{"GET", "/orders?limit=5", "", nil, "other"},
+	} {
+		if _, body := serveRequest(t, s, tt.method, tt.target, "application/json", tt.body, tt.headers...); body != tt.want {
+			t.Errorf("%s %s %s: got %q, want %q", tt.method, tt.target, tt.body, body, tt.want)
+		}
+	}
+}

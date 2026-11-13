@@ -39,17 +39,63 @@ func (s *Server) via() string {
 // its response, instead of answering 404. The request path is appended to
 // target's path. A nil target restores 404s.
 func (s *Server) SetUpstream(target *url.URL) {
+	s.SetUpstreamWith(target, UpstreamOptions{})
+}
+
+// UpstreamOptions change the requests SetUpstreamWith forwards.
+type UpstreamOptions struct {
+	// Headers are set on every forwarded request, replacing the client's
+	// values of the same name, such as credentials the client does not have.
+	// They are not shown in the request log.
+	Headers http.Header
+	// StripPrefix is removed from the start of the request path before it is
+	// appended to the target's path, when the path starts with it at a
+	// segment boundary: "/api" turns /api/users into /users.
+	StripPrefix string
+}
+
+// SetUpstreamWith is SetUpstream with options for the forwarded requests.
+func (s *Server) SetUpstreamWith(target *url.URL, opts UpstreamOptions) {
 	if target == nil {
 		s.upstream.Store(nil)
 		return
 	}
 	target = &url.URL{Scheme: target.Scheme, Host: target.Host, Path: target.Path, RawPath: target.RawPath}
+	headers := opts.Headers.Clone()
+	strip := strings.TrimSuffix(opts.StripPrefix, "/")
 	s.upstream.Store(&upstreamProxy{
 		target: target,
 		proxy: s.reverseProxy(target.String(), func(pr *httputil.ProxyRequest) {
+			if strip != "" {
+				stripPathPrefix(pr.Out.URL, strip)
+			}
 			pr.SetURL(target) // Also sends the upstream's own Host header.
+			for name, values := range headers {
+				pr.Out.Header[name] = append([]string(nil), values...)
+			}
 		}),
 	})
+}
+
+// stripPathPrefix removes prefix from u's path when the path is the prefix
+// or continues it with a slash.
+func stripPathPrefix(u *url.URL, prefix string) {
+	escaped := u.EscapedPath()
+	rest, ok := strings.CutPrefix(escaped, prefix)
+	if !ok || rest != "" && !strings.HasPrefix(rest, "/") {
+		return
+	}
+	if rest == "" {
+		rest = "/"
+	}
+	path, err := url.PathUnescape(rest)
+	if err != nil {
+		return
+	}
+	u.Path, u.RawPath = path, ""
+	if u.EscapedPath() != rest {
+		u.RawPath = rest
+	}
 }
 
 // reverseProxy builds a proxy that applies route, then adds the forwarding

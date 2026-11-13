@@ -111,3 +111,21 @@ func TestFileDependenciesSkipTemplatedPaths(t *testing.T) {
 		t.Fatalf("dependencies = %q", got)
 	}
 }
+
+func TestTags(t *testing.T) {
+	methods, err := Parse("tags.http", strings.NewReader("@tag = billing\n\n### Invoices\nGET /invoices\n\nok\n\n### Slow report\n@tag = Reports, slow, reports\nGET /report\n\nok\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(methods[0].Tags, []string{"billing"}) || !slices.Equal(methods[1].Tags, []string{"Reports", "slow"}) {
+		t.Fatalf("tags = %v / %v", methods[0].Tags, methods[1].Tags)
+	}
+	if !methods[1].HasTag("reports") || methods[1].HasTag("billing") {
+		t.Errorf("HasTag ignores case and a section tag replaces the file one")
+	}
+	for _, bad := range []string{"", "a b", "billing,", "-x"} {
+		if _, err := Parse("bad.http", strings.NewReader("### A\n@tag = "+bad+"\nGET /a\n")); err == nil || !strings.Contains(err.Error(), "@tag") {
+			t.Errorf("@tag = %q: err = %v, want a @tag error", bad, err)
+		}
+	}
+}

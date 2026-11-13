@@ -80,3 +80,16 @@ func TestRouteInspectionPreservesEncodedLiteralPaths(t *testing.T) {
 		t.Fatalf("inspector changed path semantics: %s", info.Path)
 	}
 }
+
+func TestRoutesTagFilter(t *testing.T) {
+	s := newTestServer(t, "### A\n@tag = billing\nGET /a\n\n### B\nGET /b\n")
+	rec := httptest.NewRecorder()
+	s.ServeRoutes(rec, httptest.NewRequest("GET", "/routes?tag=BILLING", nil))
+	var routes []RouteInfo
+	if err := json.Unmarshal(rec.Body.Bytes(), &routes); err != nil {
+		t.Fatal(err)
+	}
+	if len(routes) != 1 || routes[0].Name != "A" || len(routes[0].Tags) != 1 || routes[0].Tags[0] != "billing" {
+		t.Fatalf("routes = %+v", routes)
+	}
+}

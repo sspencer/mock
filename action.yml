@@ -1,0 +1,102 @@
+# A GitHub Action that installs a released mock binary and, optionally, runs
+# a command against it with mock run:
+#
+#   - uses: sspencer/mock@v0.6.0
+#     with:
+#       args: -d mocks
+#       run: npm test
+#
+# docs/testing.md#github-actions describes the inputs.
+name: Setup mock
+description: Install the mock HTTP mock server and optionally run a test command against it with mock run.
+author: sspencer
+branding:
+  icon: server
+  color: purple
+
+inputs:
+  version:
+    description: The release to install, such as v0.6.0, or "latest". Defaults to the action's own tag when it is a release tag, else the latest release.
+    required: false
+    default: ""
+  run:
+    description: A command to run with mock run (with MOCK_URL and MOCK_ADMIN_URL set). Leave empty to only install mock.
+    required: false
+    default: ""
+  args:
+    description: mock flags and request files for mock run, such as "-d mocks --strict=unused". Split on spaces.
+    required: false
+    default: ""
+  strict-report:
+    description: With run, also write the strict report to this file (.xml for JUnit, .json for JSON).
+    required: false
+    default: ""
+  token:
+    description: Token for looking up the latest release, to avoid API rate limits.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  version:
+    description: The installed release tag.
+    value: ${{ steps.install.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - id: install
+      shell: bash
+      env:
+        MOCK_VERSION: ${{ inputs.version }}
+        ACTION_REF: ${{ github.action_ref }}
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        set -euo pipefail
+        repo=sspencer/mock
+        version="$MOCK_VERSION"
+        if [ -z "$version" ] && [[ "$ACTION_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          version="$ACTION_REF"
+        fi
+        if [ -z "$version" ] || [ "$version" = latest ]; then
+          auth=()
+          if [ -n "$GH_TOKEN" ]; then auth=(-H "Authorization: Bearer $GH_TOKEN"); fi
+          version=$(curl -fsSL ${auth[@]+"${auth[@]}"} "https://api.github.com/repos/$repo/releases/latest" | jq -r '.tag_name // empty')
+          if [ -z "$version" ]; then echo "::error::cannot find the latest mock release"; exit 1; fi
+        fi
+        case "$RUNNER_OS" in
+          Linux) os=linux ext=tar.gz ;;
+          macOS) os=darwin ext=tar.gz ;;
+          Windows) os=windows ext=zip ;;
+          *) echo "::error::mock has no release for $RUNNER_OS"; exit 1 ;;
+        esac
+        case "$RUNNER_ARCH" in
+          X64) arch=amd64 ;;
+          ARM64) arch=arm64 ;;
+          *) echo "::error::mock has no release for $RUNNER_ARCH"; exit 1 ;;
+        esac
+        archive="mock_${version}_${os}_${arch}.${ext}"
+        dir="$RUNNER_TEMP/mock-$version"
+        mkdir -p "$dir"
+        cd "$dir"
+        base="https://github.com/$repo/releases/download/$version"
+        curl -fsSLO "$base/$archive"
+        curl -fsSL "$base/checksums.txt" -o checksums.txt
+        want=$(awk -v f="$archive" '$2 == f { print $1 }' checksums.txt)
+        if command -v sha256sum >/dev/null; then got=$(sha256sum "$archive" | cut -d' ' -f1); else got=$(shasum -a 256 "$archive" | cut -d' ' -f1); fi
+        if [ -z "$want" ] || [ "$want" != "$got" ]; then echo "::error::checksum mismatch for $archive"; exit 1; fi
+        if [ "$ext" = zip ]; then unzip -oq "$archive"; else tar -xzf "$archive"; fi
+        echo "$dir" >> "$GITHUB_PATH"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        "$dir/mock" -version
+
+    - if: inputs.run != ''
+      shell: bash
+      env:
+        MOCK_ARGS: ${{ inputs.args }}
+        MOCK_RUN: ${{ inputs.run }}
+        MOCK_STRICT_REPORT: ${{ inputs.strict-report }}
+      run: |
+        set -euo pipefail
+        read -r -a args <<< "$MOCK_ARGS" || true
+        if [ -n "$MOCK_STRICT_REPORT" ]; then args=(--strict-report "$MOCK_STRICT_REPORT" ${args[@]+"${args[@]}"}); fi
+        mock run ${args[@]+"${args[@]}"} -- bash -eo pipefail -c "$MOCK_RUN"

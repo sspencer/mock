@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"maps"
+	"math"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -36,16 +37,66 @@ func sampleParam(name string) string {
 }
 
 // sampleExact reports whether a matcher value is used as written: anything
-// but "*" (present), "!..." (absent or negated) and "~regex".
+// but "*" (present), "!..." (absent or negated), "~regex", and comparisons
+// such as ">100" and "#>0".
 func sampleExact(value string) bool {
-	return value != "*" && !strings.HasPrefix(value, "!") && !strings.HasPrefix(value, "~")
+	if value == "*" || strings.HasPrefix(value, "!") || strings.HasPrefix(value, "~") {
+		return false
+	}
+	kind := restclient.MustMatcher(value).Kind
+	return kind != restclient.MatchCompare && kind != restclient.MatchLength
 }
 
-// sampleValue is the value a sample request sends for a matcher: the value
-// itself when exact, else placeholder. A placeholder may not satisfy a regex.
-func sampleValue(value, placeholder string) string {
+// sampleFor is the value a sample request sends for a matcher, when one can
+// be worked out: an exact value itself, a number that satisfies a
+// comparison (">100" gives 101), or text of a length that satisfies a
+// length matcher ("#>2" gives "xxx").
+func sampleFor(value string) (string, bool) {
 	if sampleExact(value) {
-		return value
+		return value, true
+	}
+	m := restclient.MustMatcher(value)
+	switch m.Kind {
+	case restclient.MatchCompare:
+		return strconv.FormatFloat(sampleNumber(m), 'f', -1, 64), true
+	case restclient.MatchLength:
+		return strings.Repeat("x", sampleLength(m)), true
+	}
+	return "", false
+}
+
+// sampleNumber is a number that satisfies a comparison matcher.
+func sampleNumber(m restclient.Matcher) float64 {
+	n := m.Operand
+	switch m.Op {
+	case ">":
+		return math.Floor(n) + 1
+	case "<":
+		return math.Ceil(n) - 1
+	}
+	return n
+}
+
+// sampleLength is a length that satisfies a length matcher.
+func sampleLength(m restclient.Matcher) int {
+	n := int(m.Operand)
+	switch m.Op {
+	case ">":
+		return n + 1
+	case "<":
+		return min(1, max(n-1, 0))
+	case "<=":
+		return min(1, n)
+	}
+	return n
+}
+
+// sampleValue is the value a sample request sends for a matcher: sampleFor's
+// value when there is one, else placeholder. A placeholder may not satisfy a
+// regex.
+func sampleValue(value, placeholder string) string {
+	if sample, ok := sampleFor(value); ok {
+		return sample
 	}
 	return placeholder
 }
@@ -60,8 +111,8 @@ func buildSampleRequest(method restclient.Method) sampleRequest {
 	segments := strings.Split(method.EscapedPath, "/")
 	for i, segment := range segments {
 		if name, ok := strings.CutPrefix(segment, ":"); ok && name != "" {
-			if value, ok := method.MatchPath[name]; ok && sampleExact(value) {
-				segments[i] = url.PathEscape(value)
+			if sample, ok := sampleFor(method.MatchPath[name]); ok && method.MatchPath[name] != "" {
+				segments[i] = url.PathEscape(sample)
 			} else {
 				segments[i] = sampleParam(name)
 			}
@@ -145,8 +196,9 @@ func sampleFormBody(matchForm url.Values) string {
 var errSampleConflict = errors.New("conflicting @json paths")
 
 // sampleJSONBody builds a JSON body from @json matchers. Exact values are
-// JSON literals when they parse (42, true) and strings otherwise; "*" and
-// regex values become "example"; "!" fields are left out. Digit segments
+// JSON literals when they parse (42, true) and strings otherwise, ">100"
+// gives 101, "#>1" an array of two "example" strings; "*" and regex values
+// become "example"; "!" fields are left out. Digit segments
 // make arrays and a "*" segment puts the value first. It returns "" when
 // there is nothing to send or the paths conflict.
 func sampleJSONBody(matchJSON map[string]string) string {
@@ -161,9 +213,15 @@ func sampleJSONBody(matchJSON map[string]string) string {
 			return ""
 		}
 		var literal any = "example"
-		if sampleExact(value) {
-			if json.Unmarshal([]byte(value), &literal) != nil {
-				literal = value
+		if m := restclient.MustMatcher(value); m.Kind == restclient.MatchLength {
+			items := make([]any, sampleLength(m))
+			for i := range items {
+				items[i] = "example"
+			}
+			literal = items
+		} else if sample, ok := sampleFor(value); ok {
+			if json.Unmarshal([]byte(sample), &literal) != nil {
+				literal = sample
 			}
 		}
 		if root, err = setJSONPath(root, segments, literal); err != nil {

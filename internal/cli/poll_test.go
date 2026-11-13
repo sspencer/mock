@@ -17,7 +17,7 @@ import (
 
 func newTestReloader(t *testing.T, input inputSource) *reloader {
 	t.Helper()
-	loaded, err := loadInput(input.Files, input.Dirs, nil, restclient.Options{})
+	loaded, err := loadInput(input.Files, input.Dirs, nil, restclient.Options{}, tagFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}

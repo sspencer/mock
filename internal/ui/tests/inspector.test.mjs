@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sampleFormBody, sampleJSONBody, buildCurl, buildRouteCurl, formatMessage, formatRoute, bodyNotice, sampleParam, describeMatcher, isSampleExact, jsonPathSegments, sampleMethod, methodClass } from '../static/inspector.mjs';
+import { sampleFormBody, sampleJSONBody, buildCurl, buildRouteCurl, formatMessage, formatRoute, bodyNotice, sampleParam, describeMatcher, isSampleExact, sampleFor, comparison, jsonPathSegments, sampleMethod, methodClass } from '../static/inspector.mjs';
 import { attachSplitter, clampPercent, alignedTrafficHeight } from '../static/layout.mjs';
 
 const message = {
@@ -234,4 +234,18 @@ test('formatRoute shows @throttle and a run-time fault override', () => {
     const text = formatRoute({ method: 'GET', path: '/x', status: 200, delay: 'p50 80ms p99 900ms', throttle: '32kb/s', override: 'fault reset 50% (all routes)' });
     assert.ok(text.includes('Response: 200 · delay p50 80ms p99 900ms · throttle 32kb/s'));
     assert.ok(text.includes('Fault override: fault reset 50% (all routes)'));
+});
+
+test('comparison matchers get satisfying sample values, like sample.go', () => {
+    const cases = { '>100': '101', '>=100': '100', '<0.5': '0', '<=50': '50', '>1.5': '2', '#>2': 'xxx', '#3': 'xxx', '#<5': 'x', '#<=0': '', exact: 'exact' };
+    for (const [value, want] of Object.entries(cases)) assert.equal(sampleFor(value), want, value);
+    assert.equal(sampleFor('~x+'), null);
+    assert.equal(comparison('#fff'), null);
+    assert.equal(comparison('>abc'), null);
+    assert.ok(!isSampleExact('>=1'));
+    assert.equal(sampleJSONBody({ amount: '>100', items: '#>1', code: '#fff' }), '{"amount":101,"items":["example","example"],"code":"#fff"}');
+    assert.equal(describeMatcher('#>0'), '#>0 (a length of more than 0)');
+    assert.equal(describeMatcher('<=50'), '<=50 (a number at most 50)');
+    const curl = buildRouteCurl({ method: 'GET', path: '/a', matchQuery: { limit: ['<=50'] }, matchHeaders: { 'X-Count': ['>=2'] } }, 'http://localhost:8080');
+    assert.ok(curl.includes("'http://localhost:8080/a?limit=50'") && curl.includes("'X-Count: 2'"), curl);
 });

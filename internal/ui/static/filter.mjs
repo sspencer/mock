@@ -6,6 +6,7 @@
 //   GET, post, ...       an HTTP method (case-insensitive)
 //   route:NAME           answered by the route with this name; quote a name
 //                        with spaces: route:"User detail"
+//   tag:NAME             answered by a route with this @tag
 //   anything else        text in the method, URL, status, badge or fault
 //
 // Terms are case-insensitive. "-term" negates a term, such as -2xx.
@@ -21,7 +22,7 @@ export function filterTerms(text) {
         terms.push({ negate: negate === '-', prefix: (prefix || '').toLowerCase(), value: (quoted ?? plain ?? '').toLowerCase() });
     }
     // "route:" alone is a prefix with nothing after it yet; ignore it while typing.
-    return terms.filter(term => term.prefix ? term.value : term.value !== 'route:');
+    return terms.filter(term => term.prefix ? term.value : term.value !== 'route:' && term.value !== 'tag:');
 }
 
 // routeFilter returns the filter text that shows one route's requests.
@@ -35,6 +36,7 @@ const statusClass = (status) => status >= 100 && status < 600 ? `${Math.floor(st
 function termMatches(term, event, haystack) {
     const { prefix, value } = term;
     if (prefix === 'route') return (event.match?.route?.name || '').toLowerCase() === value && !event.callback;
+    if (prefix === 'tag') return (event.match?.route?.tags || []).some(tag => tag.toLowerCase() === value) && !event.callback;
     if (prefix) return haystack.includes(`${prefix}:${value}`);
     if (/^[1-5]xx$/.test(value)) return statusClass(Number(event.response?.status)) === value;
     if (value === 'unmatched') return !event.match?.route && !event.callback;

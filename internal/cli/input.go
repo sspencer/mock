@@ -19,6 +19,47 @@ type inputSource struct {
 	// Files are the request files given as arguments, and Dirs the --dir
 	// directories whose .http files are loaded after them.
 	Files, Dirs []string
+	// Tags chooses which routes to serve (--only, --skip).
+	Tags tagFilter
+}
+
+// tagFilter chooses routes by @tag: with Only set, a route needs one of
+// those tags; a route with any Skip tag is left out.
+type tagFilter struct {
+	Only, Skip []string
+}
+
+func (f tagFilter) active() bool { return len(f.Only) > 0 || len(f.Skip) > 0 }
+
+func (f tagFilter) keeps(method restclient.Method) bool {
+	if slices.ContainsFunc(f.Skip, method.HasTag) {
+		return false
+	}
+	return len(f.Only) == 0 || slices.ContainsFunc(f.Only, method.HasTag)
+}
+
+// apply returns the routes the filter keeps, and an error when it keeps
+// none of a non-empty set.
+func (f tagFilter) apply(methods []restclient.Method) ([]restclient.Method, error) {
+	if !f.active() || len(methods) == 0 {
+		return methods, nil
+	}
+	kept := slices.DeleteFunc(slices.Clone(methods), func(m restclient.Method) bool { return !f.keeps(m) })
+	if len(kept) == 0 {
+		return nil, fmt.Errorf("--only and --skip left none of the %d routes to serve (%s)", len(methods), f.describe())
+	}
+	return kept, nil
+}
+
+func (f tagFilter) describe() string {
+	var parts []string
+	if len(f.Only) > 0 {
+		parts = append(parts, "only "+strings.Join(f.Only, ", "))
+	}
+	if len(f.Skip) > 0 {
+		parts = append(parts, "skip "+strings.Join(f.Skip, ", "))
+	}
+	return strings.Join(parts, "; ")
 }
 
 // watched reports whether the input came from files that can be watched.
@@ -73,7 +114,7 @@ func (s inputSource) describe() string {
 	return strings.Join(names, ", ")
 }
 
-func loadInput(args, dirs []string, stdin io.Reader, opts restclient.Options) (inputSource, error) {
+func loadInput(args, dirs []string, stdin io.Reader, opts restclient.Options, tags tagFilter) (inputSource, error) {
 	for _, dir := range dirs {
 		info, err := os.Stat(dir)
 		if err != nil {
@@ -101,7 +142,7 @@ func loadInput(args, dirs []string, stdin io.Reader, opts restclient.Options) (i
 			return inputSource{}, fmt.Errorf("cannot mix static directory %q with other request inputs", arg)
 		}
 	}
-	src := inputSource{Files: append([]string(nil), args...), Dirs: append([]string(nil), dirs...)}
+	src := inputSource{Files: append([]string(nil), args...), Dirs: append([]string(nil), dirs...), Tags: tags}
 	methods, err := src.load(stdin, opts)
 	if err != nil {
 		return inputSource{}, err
@@ -110,19 +151,24 @@ func loadInput(args, dirs []string, stdin io.Reader, opts restclient.Options) (i
 	return src, nil
 }
 
-// load parses the request files, or stdin when there are none.
+// load parses the request files, or stdin when there are none, and keeps
+// the routes the tag filter chooses.
 func (s inputSource) load(stdin io.Reader, opts restclient.Options) ([]restclient.Method, error) {
+	var methods []restclient.Method
+	var err error
 	if !s.watched() {
-		return opts.Parse("<stdin>", stdin)
+		methods, err = opts.Parse("<stdin>", stdin)
+	} else {
+		var files []string
+		if files, err = s.requestFiles(); err != nil || len(files) == 0 {
+			return nil, err
+		}
+		methods, err = opts.Load(files)
 	}
-	files, err := s.requestFiles()
 	if err != nil {
 		return nil, err
 	}
-	if len(files) == 0 {
-		return nil, nil
-	}
-	return opts.Load(files)
+	return s.Tags.apply(methods)
 }
 
 func validateMethods(methods []restclient.Method, source string) error {

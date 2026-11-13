@@ -158,3 +158,31 @@ func TestExplainHasNoSideEffects(t *testing.T) {
 		t.Errorf("unmatched Explain = %+v", info)
 	}
 }
+
+func TestHitsPlaceholderCountsAnswersSinceReset(t *testing.T) {
+	s := newTestServer(t, "### Poll\nGET /jobs/:id\n\n{\"attempt\": {{$hits}}, \"hits\": \"{{$hits}}\"}\n\n### Other\nGET /other\n\n{{$hits}}\n")
+	for want := 1; want <= 3; want++ {
+		_, body := serveRequest(t, s, "GET", "/jobs/7", "", "")
+		if expected := `{"attempt": ` + string(rune('0'+want)) + `, "hits": "` + string(rune('0'+want)) + `"}`; body != expected {
+			t.Fatalf("request %d body = %q, want %q", want, body, expected)
+		}
+	}
+	if _, body := serveRequest(t, s, "GET", "/other", "", ""); body != "1" {
+		t.Errorf("other route = %q, want its own count", body)
+	}
+	// A query parameter named hits does not override the count.
+	if _, body := serveRequest(t, s, "GET", "/other?hits=9", "", ""); body != "2" {
+		t.Errorf("with ?hits= = %q, want 2", body)
+	}
+	s.SetMethods(s.Methods())
+	if _, body := serveRequest(t, s, "GET", "/other", "", ""); body != "3" {
+		t.Errorf("after reload = %q, want the count kept", body)
+	}
+	s.Reset()
+	if _, body := serveRequest(t, s, "GET", "/jobs/7", "", ""); !strings.Contains(body, `"attempt": 1`) {
+		t.Errorf("after reset = %q, want the count restarted", body)
+	}
+	if hits := s.Coverage().Routes[0].Hits; hits != 4 {
+		t.Errorf("coverage hits = %d, want 4 (reset keeps them)", hits)
+	}
+}

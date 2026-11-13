@@ -1,6 +1,7 @@
 package restclient
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -915,5 +916,69 @@ https://example.com/status HTTP/1.1
 	}
 	if got := methods[1].Comments; len(got) != 1 || got[0] != "unnamed section" {
 		t.Errorf("comments %q", got)
+	}
+}
+
+func TestParseReportsEveryError(t *testing.T) {
+	source := `@bad name = 1
+not a request
+still junk
+
+@ok = 1
+
+### First
+@delay = soon
+GET /a
+
+### Good
+GET /b
+
+### [abc
+GET /c
+
+### Third
+@times = 0
+GET /d
+`
+	methods, err := Parse("multi.http", strings.NewReader(source))
+	if err == nil || methods != nil {
+		t.Fatalf("Parse() = %v, %v; want errors and no methods", methods, err)
+	}
+	var lines []int
+	for _, e := range Errors(err) {
+		parseErr, ok := errors.AsType[*ParseError](e)
+		if !ok || parseErr.Source != "multi.http" {
+			t.Fatalf("error %v is not a ParseError for multi.http", e)
+		}
+		lines = append(lines, parseErr.Line)
+	}
+	if want := []int{1, 2, 8, 18}; !slices.Equal(lines, want) {
+		t.Errorf("error lines = %v, want %v\n%v", lines, want, err)
+	}
+	if !strings.Contains(err.Error(), "multi.http:8: ") || strings.Count(err.Error(), "\n") != len(lines)-1 {
+		t.Errorf("Error() = %q, want one line per problem", err)
+	}
+}
+
+func TestLoadReportsErrorsFromEveryFile(t *testing.T) {
+	dir := t.TempDir()
+	a, b := filepath.Join(dir, "a.http"), filepath.Join(dir, "b.http")
+	if err := os.WriteFile(a, []byte("### A\n@times = x\nGET /a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(b, []byte("### B\n@fallback = maybe\nGET /b\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load([]string{a, filepath.Join(dir, "missing.http"), b})
+	if errs := Errors(err); len(errs) != 3 || !strings.HasPrefix(errs[0].Error(), a+":2:") || !strings.HasPrefix(errs[2].Error(), b+":2:") {
+		t.Fatalf("Load() errors = %v", errs)
+	}
+	var many strings.Builder
+	for i := range maxReportedErrors + 5 {
+		fmt.Fprintf(&many, "### S%d\n@times = x\nGET /s\n\n", i)
+	}
+	_, err = Parse("many.http", strings.NewReader(many.String()))
+	if errs := Errors(err); len(errs) != maxReportedErrors+1 || errs[maxReportedErrors].Error() != "... and 5 more errors" {
+		t.Errorf("capped errors: %d, last %v", len(errs), errs[len(errs)-1])
 	}
 }

@@ -147,6 +147,19 @@ type Method struct {
 	// route accepts, between 0 (exclusive) and 1. 0 means no @match.chance,
 	// so the route accepts every matching request.
 	Chance float64
+	// Tags are the @tag names, such as billing and slow, that --only and
+	// --skip choose routes by. Compare them with HasTag.
+	Tags []string
+}
+
+// HasTag reports whether the route has the tag, ignoring case.
+func (m Method) HasTag(tag string) bool {
+	for _, t := range m.Tags {
+		if strings.EqualFold(t, tag) {
+			return true
+		}
+	}
+	return false
 }
 
 // AnyMethod is the request line method that accepts every request method.
@@ -411,53 +424,95 @@ func Parse(source string, r io.Reader) ([]Method, error) {
 }
 
 // Load parses the request files in order with these options.
+// Every file is read, and the error joins the problems of all of them (see
+// Errors); when it is not nil the methods are incomplete.
 func (o Options) Load(paths []string) ([]Method, error) {
 	var methods []Method
+	var errs []error
 	for _, path := range paths {
 		file, err := os.Open(path)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", path, err)
+			errs = append(errs, fmt.Errorf("%s: %w", path, err))
+			continue
 		}
 
 		parsed, err := o.Parse(path, file)
 		closeErr := file.Close()
 		if err != nil {
-			return nil, err
+			errs = append(errs, err)
+			continue
 		}
 		if closeErr != nil {
-			return nil, fmt.Errorf("%s: %w", path, closeErr)
+			errs = append(errs, fmt.Errorf("%s: %w", path, closeErr))
+			continue
 		}
 		methods = append(methods, parsed...)
+	}
+	if err := joinErrors(errs); err != nil {
+		return nil, err
 	}
 	return methods, nil
 }
 
-// Parse parses one request file with these options.
+// maxReportedErrors caps how many problems one load reports.
+const maxReportedErrors = 50
+
+// joinErrors joins errs, flattened and capped at maxReportedErrors, or
+// returns nil when there are none.
+func joinErrors(errs []error) error {
+	var flat []error
+	for _, err := range errs {
+		flat = append(flat, Errors(err)...)
+	}
+	switch {
+	case len(flat) == 0:
+		return nil
+	case len(flat) == 1:
+		return flat[0]
+	case len(flat) > maxReportedErrors:
+		rest := len(flat) - maxReportedErrors
+		flat = append(flat[:maxReportedErrors], fmt.Errorf("... and %d more errors", rest))
+	}
+	return errors.Join(flat...)
+}
+
+// Parse parses one request file with these options. A section with a
+// problem is skipped and parsing goes on at the next ###, so the error joins
+// every problem in the file (see Errors); when it is not nil the methods are
+// incomplete.
 func (o Options) Parse(source string, r io.Reader) ([]Method, error) {
-	sections, fileDefs, err := scanFile(source, r)
+	sections, fileDefs, scanErrs, err := scanFile(source, r)
 	if err != nil {
 		return nil, err
 	}
-	fileDefs, imports, err := expandImports(source, fileDefs, []string{importKey(source)})
+	errs := scanErrs
+	expanded, imports, err := expandImports(source, fileDefs, []string{importKey(source)})
 	if err != nil {
-		return nil, err
+		errs = append(errs, err)
+	} else {
+		fileDefs = expanded
 	}
 	var methods []Method
 	for _, pending := range sections {
 		method, err := parseSection(pending, fileDefs, o, source)
 		if err != nil {
-			return nil, err
+			errs = append(errs, err)
+			continue
 		}
 		method.Imports = imports
 		methods = append(methods, method)
+	}
+	if err := joinErrors(errs); err != nil {
+		return nil, err
 	}
 	return methods, nil
 }
 
 // scanFile splits a request file into its ### sections and its file-scoped
 // definitions (above the first ###, or in sections that hold only
-// definitions).
-func scanFile(source string, r io.Reader) ([]pendingSection, []definition, error) {
+// definitions). Problems in a section or a definition are returned in errs,
+// and that section or definition is left out; err is a failure to read.
+func scanFile(source string, r io.Reader) (sections []pendingSection, fileDefs []definition, errs []error, err error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	// ending is the terminator of the line just scanned ("\n", "\r\n" or ""
@@ -471,10 +526,12 @@ func scanFile(source string, r io.Reader) ([]pendingSection, []definition, error
 		return advance, token, err
 	})
 
-	var sections []pendingSection
-	var fileDefs []definition
 	var current *Method
 	var currentUnnamed bool
+	// skipping is set after a problem before the first ###, so the lines
+	// that follow it do not each report one; a blank line or ### ends it.
+	// skipSection skips a section whose ### line is bad, up to the next ###.
+	var skipping, skipSection bool
 	// leading holds the comment lines directly above a request before the
 	// first ###, which become part of its unnamed section.
 	var leading, leadingEndings []string
@@ -486,22 +543,23 @@ func scanFile(source string, r io.Reader) ([]pendingSection, []definition, error
 	var sectionNameLine int
 	lineNumber := 0
 
-	flush := func() error {
+	flush := func() {
 		if current == nil {
-			return nil
+			return
 		}
 		lines := append([]string(nil), section...)
 		endings := append([]string(nil), sectionEndings...)
 		lineAt := func(index int) int { return bodyStartLine + index }
 		found, err := scanDirectives(lines, lineAt, source, current.Name)
 		if err != nil {
-			return err
+			errs = append(errs, err)
+			return
 		}
 		if found.next == len(lines) && len(found.defs) > 0 {
 			// A section holding only variable definitions has no request; its
 			// variables are file-scoped.
 			fileDefs = append(fileDefs, found.defs...)
-			return nil
+			return
 		}
 		sections = append(sections, pendingSection{
 			method:        *current,
@@ -512,23 +570,25 @@ func scanFile(source string, r io.Reader) ([]pendingSection, []definition, error
 			nameLine:      sectionNameLine,
 			unnamed:       currentUnnamed,
 		})
-		return nil
 	}
 
 	for scanner.Scan() {
 		lineNumber++
 		line := scanner.Text()
 		if after, ok := strings.CutPrefix(line, "###"); ok {
-			if err := flush(); err != nil {
-				return nil, nil, err
-			}
+			flush()
+			skipping, skipSection = false, false
 			name, statusTemplate := strings.TrimSpace(after), ""
 			if match := sectionStatusTemplatePattern.FindStringSubmatch(name); match != nil {
 				name, statusTemplate = name[len(match[0]):], match[1]
 			}
 			name, status, err := parseSectionName(name)
 			if err != nil {
-				return nil, nil, parseErrorf(source, lineNumber, "%v", err)
+				// Skip the section's lines up to the next ###.
+				errs = append(errs, parseErrorf(source, lineNumber, "%v", err))
+				current, skipSection = nil, true
+				section, sectionEndings = section[:0], sectionEndings[:0]
+				continue
 			}
 			currentUnnamed = name == ""
 			if currentUnnamed {
@@ -543,16 +603,24 @@ func scanFile(source string, r io.Reader) ([]pendingSection, []definition, error
 			continue
 		}
 		if current == nil {
+			if skipSection {
+				continue
+			}
 			trimmed := strings.TrimSpace(line)
 			if trimmed == "" {
 				leading, leadingEndings = leading[:0], leadingEndings[:0]
+				skipping = false
+				continue
+			}
+			if skipping {
 				continue
 			}
 			if strings.HasPrefix(trimmed, "@") {
 				leading, leadingEndings = leading[:0], leadingEndings[:0]
 				def, err := parseDefinition(trimmed, source, lineNumber)
 				if err != nil {
-					return nil, nil, err
+					errs = append(errs, err)
+					continue
 				}
 				fileDefs = append(fileDefs, def)
 				continue
@@ -571,8 +639,10 @@ func scanFile(source string, r io.Reader) ([]pendingSection, []definition, error
 				sectionNameLine, bodyStartLine = lineNumber-len(leading), lineNumber-len(leading)
 				continue
 			}
-			return nil, nil, parseErrorf(source, lineNumber,
-				"content before first ### section: %s (start each mock with ### Name, or define a file variable with @name = value)", quoteSnippet(trimmed))
+			errs = append(errs, parseErrorf(source, lineNumber,
+				"content before first ### section: %s (start each mock with ### Name, or define a file variable with @name = value)", quoteSnippet(trimmed)))
+			skipping = true
+			continue
 		}
 		if len(section) == 0 {
 			bodyStartLine = lineNumber
@@ -583,15 +653,13 @@ func scanFile(source string, r io.Reader) ([]pendingSection, []definition, error
 	if err := scanner.Err(); err != nil {
 		// Scanner errors (e.g. token too long) are not always line-precise.
 		if lineNumber > 0 {
-			return nil, nil, parseErrorf(source, lineNumber, "failed to read file: %v", err)
+			return nil, nil, nil, parseErrorf(source, lineNumber, "failed to read file: %v", err)
 		}
-		return nil, nil, fmt.Errorf("%s: failed to read file: %w", source, err)
+		return nil, nil, nil, fmt.Errorf("%s: failed to read file: %w", source, err)
 	}
-	if err := flush(); err != nil {
-		return nil, nil, err
-	}
+	flush()
 
-	return sections, fileDefs, nil
+	return sections, fileDefs, errs, nil
 }
 
 // sectionStatusPattern matches a leading "[code]" in a ### section name.
@@ -1229,6 +1297,12 @@ func applyControlVariable(method *Method, def definition, source string) error {
 		}
 	case "import":
 		return parseErrorf(def.in(source), def.line, `section %q: @import goes at file scope, above the first ### or in a section of only definitions`, method.Name)
+	case "tag":
+		tags, err := ParseTags(value)
+		if err != nil {
+			return parseErrorf(def.in(source), def.line, "section %q: @tag %v", method.Name, err)
+		}
+		method.Tags = tags
 	case "times":
 		times, err := strconv.Atoi(strings.TrimSpace(value))
 		if err != nil || times < 1 {
@@ -1397,6 +1471,25 @@ func ParseRequire(raw string) (string, error) {
 		return "", errors.New(`must be one $reference, such as "$fixture.users[id=$path.id]" or "$json.user.id"`)
 	}
 	return match[1], nil
+}
+
+// tagPattern is a tag name: letters, digits, _, . and -.
+var tagPattern = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]*$`)
+
+// ParseTags parses a comma-separated tag list such as "billing, slow", as
+// @tag, --only and --skip take it. Repeated tags are dropped.
+func ParseTags(raw string) ([]string, error) {
+	var tags []string
+	for field := range strings.SplitSeq(raw, ",") {
+		tag := strings.TrimSpace(field)
+		if !tagPattern.MatchString(tag) {
+			return nil, fmt.Errorf(`must be tag names separated by commas, such as "billing, slow" (letters, digits, _, . and -), got %q`, tag)
+		}
+		if !slices.ContainsFunc(tags, func(t string) bool { return strings.EqualFold(t, tag) }) {
+			tags = append(tags, tag)
+		}
+	}
+	return tags, nil
 }
 
 // ParseChance parses a @match.chance value, a percentage above 0% and at
@@ -1698,11 +1791,39 @@ func parsePort(raw string) (int, error) {
 }
 
 func parseErrorf(source string, line int, format string, args ...any) error {
-	msg := fmt.Sprintf(format, args...)
-	if line > 0 {
-		return fmt.Errorf("%s:%d: %s", source, line, msg)
+	return &ParseError{Source: source, Line: line, Message: fmt.Sprintf(format, args...)}
+}
+
+// ParseError is one problem in a request file. Its text is
+// "file:line: message", or "file: message" without a line.
+type ParseError struct {
+	Source  string
+	Line    int
+	Message string
+}
+
+func (e *ParseError) Error() string {
+	if e.Line > 0 {
+		return fmt.Sprintf("%s:%d: %s", e.Source, e.Line, e.Message)
 	}
-	return fmt.Errorf("%s: %s", source, msg)
+	return fmt.Sprintf("%s: %s", e.Source, e.Message)
+}
+
+// Errors returns the separate problems in an error from Parse or Load, which
+// report every section that fails rather than only the first: the joined
+// errors, or err itself.
+func Errors(err error) []error {
+	if err == nil {
+		return nil
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		var out []error
+		for _, e := range joined.Unwrap() {
+			out = append(out, Errors(e)...)
+		}
+		return out
+	}
+	return []error{err}
 }
 
 func quoteSnippet(s string) string {
@@ -1758,6 +1879,7 @@ var controlVariables = map[string]struct{}{
 	"missing":        {},
 	"etag":           {},
 	"times":          {},
+	"tag":            {},
 	"import":         {},
 	"jwt.secret":     {},
 	"throttle":       {},

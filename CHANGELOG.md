@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **Breaking:** matcher values starting with `>`, `>=`, `<` or `<=` followed by a number, or `#` followed by a length comparison, are now comparisons instead of exact matches. Write `~>100` to match the text `>100`.
+
+- Numeric and length matchers: `@json.amount = >100`, `@query.limit = <=50`, `@header.X-Retry = >=1`, and `@json.items = #>0` (the elements of a JSON array, the members of an object, or the characters of other values; `#3` is exactly 3). `mock check` and the admin UI's sample requests send values that satisfy them.
+
+- `{{$hits}}` inserts how many requests the route has answered, for retry and polling responses such as `{"attempt": {{$hits}}}`. `POST /reset` starts it over; a reload that keeps the route keeps it.
+
+- `@tag = billing, slow` names routes, and `--only` and `--skip` choose which to serve (again on every reload). The admin UI's route list shows tags, `tag:billing` filters the traffic, and `GET /routes?tag=billing` lists only those routes.
+
+- `POST /verify` on the admin port checks how often calls were received (`{"call": "POST /orders", "times": 1}`, `atLeast`, `atMost`, or `{"allMatched": true}`; one object or an array) and answers `200` or `422` with each result and a readable failure listing the requests received, or plain text with `Accept: text/plain`. `mocktest`'s call matching moved to `mockhttp.Server.Calls`.
+
+- `--strict-report FILE` writes the strict report as JUnit XML (`.xml`) or JSON (`.json`) for CI, and `--strict=unused` also fails the run when a route never matched. Both work with `mock run`.
+
+- `--upstream-header 'Name: value'` sets headers such as credentials on forwarded requests (they are not shown in the request log), and `--upstream-strip /api` removes a path prefix before forwarding. `mockhttp.Server.SetUpstreamWith` takes the same options.
+
+- `mock validate`, startup and reloads report every error in every request file (up to 50) instead of stopping at the first: a section with an error is skipped and parsing carries on at the next `###`. `mock validate -json` gives each error its own diagnostic with `source` and `line`, and `restclient.Errors` and `restclient.ParseError` expose them to Go callers.
+
+- A GitHub Action: `uses: sspencer/mock@v0.6.0` installs the release binary (checksum verified) on Linux, macOS or Windows runners and, with `run:`, wraps a test command in `mock run`, with `args` and `strict-report` inputs.
+
 - A new, more colorful look for the admin UI: a violet band over two floating panels, with every surface tinted violet in both themes. The traffic log is a line map (each request a lamp lit by its status, hollow when no route answered, popping onto the line as it arrives), each HTTP method has a color plate, and the selected row is run over with a yellow highlighter. Request and response text is colored: header names and JSON keys violet, strings green, numbers orange, and the start line in its method or status color. A selected route is shown as a sheet (method and path, a table of settings, then requirements and response) instead of a block of text. The typeface is Overpass, embedded in the binary (about 50 KB). Summary lines read as sentences, and the request count reads `12 of 1000`. Behavior and shortcuts are unchanged.
 - Fixed the admin UI's Resend form spilling over the response when it was taller than the request section; it now scrolls.
 

@@ -30,8 +30,11 @@ Flags:
 | `-R`, `--redact` | | Mask credentials in the request log, the admin UI, copies and exports (see [Credential redaction](admin-ui.md#credential-redaction)) |
 | `-b`, `--bind` | `127.0.0.1`, or `MOCK_BIND` | Bind address. Use `0.0.0.0` to listen on all interfaces |
 | `-u`, `--upstream` | (off) | Forward requests no route matches to this `http` or `https` URL and return its response (see [Passing unmatched requests to a real API](real-apis.md#passing-unmatched-requests-to-a-real-api)) |
+| `--upstream-header` | | With `-u`, `NAME: VALUE`: set this header on every forwarded request, such as credentials. Repeat for more headers (see [Credentials and path prefixes](real-apis.md#credentials-and-path-prefixes)) |
+| `--upstream-strip` | | With `-u`, remove this prefix, such as `/api`, from the start of forwarded request paths |
 | `-r`, `--record` | (off) | With `-u`, append a draft `.http` section to this file for each method and path the upstream answered (see [Recording forwarded requests](real-apis.md#recording-forwarded-requests)) |
-| `-s`, `--strict` | (off) | At shutdown, list requests no route matched and routes that never matched, and exit `1` if any request was unmatched (see [Strict mode and route coverage](testing.md#strict-mode-and-route-coverage)) |
+| `-s`, `--strict` | (off) | At shutdown, list requests no route matched and routes that never matched, and exit `1` if any request was unmatched; `--strict=unused` also exits `1` if a route never matched (see [Strict mode and route coverage](testing.md#strict-mode-and-route-coverage)) |
+| `--strict-report` | | Turn on `-s` and also write the report to this file: JUnit XML for `.xml`, JSON for `.json` (see [Strict reports for CI](testing.md#strict-reports-for-ci)) |
 | `-H`, `--header` | | `NAME: VALUE`: add this response header to every route that sets no header of that name and no `@default.header` for it. Repeat for more headers (see [Default response headers](request-files.md#default-response-headers)) |
 | `-v`, `--var` | | `NAME=VALUE`: set the `@NAME` variable in every request file, overriding its definitions. Repeat for more variables (see [Variables from the command line](request-files.md#variables-from-the-command-line)) |
 | `-e`, `--env` | | Use this REST Client environment for `{{NAME}}` references no `@NAME` defines (see [REST Client environments](request-files.md#rest-client-environments)) |
@@ -43,10 +46,12 @@ Flags:
 | `-T`, `--throttle` | (off) | Send the body of every route that has no `@throttle` of its own at this rate, such as `32kb/s` |
 | `-P`, `--profile` | (off) | A bad network in one word: `slow`, `flaky` or `3g`, a preset `-w`/`-f`/`-T` combination (see [Latency and faults for every route](responses.md#latency-and-faults-for-every-route)) |
 | `-l`, `--log-format` | `text` | `text` or `json`. With `json`, stdout carries only JSON lines (see [JSON logs](#json-logs)) |
+| `--only` | | Serve only routes with one of these [`@tag`](matching.md#route-tags) names, such as `billing,orders`. Repeat for more |
+| `--skip` | | Leave out routes with any of these `@tag` names. Repeat for more |
 | `--version` | | Print version and exit |
 | `-h`, `--help` | | Print usage and exit |
 
-Every flag has a short and a long name. Flags take one or two dashes
+Most flags have a short and a long name. Flags take one or two dashes
 (`-port` and `--port` are the same), and short flags cannot be combined
 (write `-x -b 0.0.0.0`, not `-xb`).
 
@@ -155,6 +160,13 @@ same things `mock` checks at startup: syntax errors, invalid `@delay` or `@port`
 values, a URL port that conflicts with `@port`, invalid placeholder arguments, unresolved placeholders, unused variables,
 request headers used as response headers, routes that can never match, and
 JSON bodies that do not parse.
+
+A section with an error does not stop the check: `mock` skips that section,
+carries on at the next `###`, and reports every error in every file (up to
+50), so one run shows everything to fix. Warnings are checked once the files
+load without errors. With `-json`, each error is its own diagnostic with its
+`source` and `line`. Starting `mock`, or a reload, lists the same errors
+and serves nothing new until they are fixed.
 
 A route whose `Content-Type` is JSON (`application/json` or `+json`, or a
 `< file.json` with no `Content-Type`) has its body rendered once without a

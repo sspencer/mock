@@ -181,15 +181,20 @@ func clearRequestAllowed(r *http.Request) bool {
 	return strings.EqualFold(strings.TrimSpace(ct), "application/json")
 }
 
-// ServeRoutes handles GET of the currently configured mock routes.
+// ServeRoutes handles GET of the currently configured mock routes, or with
+// ?tag=name only the routes with that @tag.
 func (s *Server) ServeRoutes(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		s.serveRoutesWrite(w, r)
 		return
 	}
+	tag := r.URL.Query().Get("tag")
 	s.mu.Lock()
 	routes := make([]RouteInfo, 0, len(s.methods))
 	for i, method := range s.methods {
+		if tag != "" && !method.HasTag(tag) {
+			continue
+		}
 		route := describeRoute(method, i, s.config.Revision)
 		route.Hits = s.hits[i].Load()
 		route.Override = s.describeOverride(method)

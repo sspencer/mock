@@ -59,7 +59,7 @@ func TestLoadInputDirsAfterFiles(t *testing.T) {
 		"dir/a.http": route("Dir A", "/a"),
 		"first.http": route("First", "/first"),
 	})
-	input, err := loadInput([]string{filepath.Join(root, "first.http")}, []string{filepath.Join(root, "dir")}, nil, restclient.Options{})
+	input, err := loadInput([]string{filepath.Join(root, "first.http")}, []string{filepath.Join(root, "dir")}, nil, restclient.Options{}, tagFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,11 +74,11 @@ func TestLoadInputDirsAfterFiles(t *testing.T) {
 		t.Fatalf("--dir should load request files, got %+v", input)
 	}
 
-	if _, err := loadInput(nil, []string{filepath.Join(root, "first.http")}, nil, restclient.Options{}); err == nil || !strings.Contains(err.Error(), "not a directory") {
+	if _, err := loadInput(nil, []string{filepath.Join(root, "first.http")}, nil, restclient.Options{}, tagFilter{}); err == nil || !strings.Contains(err.Error(), "not a directory") {
 		t.Fatalf("--dir on a file error = %v", err)
 	}
 	empty := t.TempDir()
-	input, err = loadInput(nil, []string{empty}, nil, restclient.Options{})
+	input, err = loadInput(nil, []string{empty}, nil, restclient.Options{}, tagFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestLoadInputDirsAfterFiles(t *testing.T) {
 func TestReloadPicksUpNewFilesInDir(t *testing.T) {
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{"a.http": route("A", "/a")})
-	input, err := loadInput(nil, []string{root}, nil, restclient.Options{})
+	input, err := loadInput(nil, []string{root}, nil, restclient.Options{}, tagFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}

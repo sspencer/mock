@@ -375,6 +375,7 @@ in the file, or in a section, where it replaces the file value.
 | `@fixture` | JSON, CSV or NDJSON file path | none | Data file that `{{$fixture.path}}` placeholders read. See [Fixture data](placeholders.md#fixture-data). |
 | `@callback` | `METHOD URL` | none | Send a request after responding, with `@callback.delay`, `@callback.header.Name` and `@callback.body`. `@callback.1`, `@callback.2` ... send more, in order, and `@callback.retries` retries failures. See [Webhook callbacks](responses.md#webhook-callbacks). |
 | `@proxy` | `http` or `https` URL | none | Forward the requests this section matches to the URL instead of answering. See [Per-route proxying](real-apis.md#per-route-proxying). |
+| `@tag` | tag names separated by commas, such as `billing, slow` | none | Name the section for `--only` and `--skip`, the admin UI and `/routes?tag=`. See [Route tags](matching.md#route-tags). |
 | `@fallback` | `true` or `false` | `false` | Try the section after every section without it, whatever the load order. See [Fallback routes](matching.md#fallback-routes). |
 | `@match.chance` | a percentage above `0%`, such as `20%` | `100%` | Let the section answer only that share of the requests it matches; the rest go on to later routes. Reproducible with `@seed`. See [Occasional responses](matching.md#occasional-responses). |
 | `@default.header.Name` | header value, which may hold placeholders | none | Add the response header to every section in scope that does not set it. See [Default response headers](#default-response-headers). |

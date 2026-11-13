@@ -26,6 +26,9 @@ Or run the published image, for Linux on `amd64` and `arm64` (more under
 docker run --rm -p 8080:8080 -p 8081:8081 ghcr.io/sspencer/mock
 ```
 
+In GitHub Actions, `uses: sspencer/mock@v0.6.0` installs the release binary
+(see [GitHub Actions](testing.md#github-actions)).
+
 This binary is named `mock`. If you already have another `mock` on your `PATH`,
 the new one will shadow it or be shadowed, depending on install order.
 

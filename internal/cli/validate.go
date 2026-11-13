@@ -102,7 +102,7 @@ func runValidate(args []string, stdout io.Writer) error {
 	}
 	methods, err := loadValidationMethods(fs.Args(), opts)
 	if err != nil {
-		report.Diagnostics = append(report.Diagnostics, diagnostic{Level: "error", Message: err.Error()})
+		report.Diagnostics = append(report.Diagnostics, errorDiagnostics(err)...)
 	} else {
 		report.Routes = len(methods)
 		logger := slog.New(diagnosticCollector{diagnostics: &found})
@@ -138,6 +138,20 @@ func runValidate(args []string, stdout io.Writer) error {
 		return &exitError{code: 1, msg: fmt.Sprintf("validation failed: %d errors, %d warnings", errs, warnings)}
 	}
 	return nil
+}
+
+// errorDiagnostics turns a load error into one diagnostic per problem, with
+// the file and line of each parse error.
+func errorDiagnostics(err error) []diagnostic {
+	var out []diagnostic
+	for _, e := range restclient.Errors(err) {
+		if parseErr, ok := errors.AsType[*restclient.ParseError](e); ok {
+			out = append(out, diagnostic{Level: "error", Message: parseErr.Message, Source: parseErr.Source, Line: parseErr.Line})
+			continue
+		}
+		out = append(out, diagnostic{Level: "error", Message: e.Error()})
+	}
+	return out
 }
 
 // loadValidationMethods loads the request files; a directory argument stands
