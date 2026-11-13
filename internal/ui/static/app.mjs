@@ -4,6 +4,8 @@ import { resendDraft, buildResend } from './resend.mjs';
 import { attachSplitter, alignedTrafficHeight } from './layout.mjs';
 import { buildHAR } from './har.mjs';
 import { filterTerms, matchesFilter, routeFilter } from './filter.mjs';
+import { candidateRoute, failedLabel, reasonParts } from './nearmiss.mjs';
+import { GROUPINGS, groupRoutes, routeCountLabel, routeMatchesSearch } from './routelist.mjs';
 import { TrafficStream, requestHost, eventBadge } from './traffic.mjs';
 import { noSelection, selectRequest, selectRoute, selectCompare, selectedRequestId, selectedRoute, afterEventsChanged, afterRoutesLoaded } from './selection.mjs';
 import { compareEvents, differenceCount } from './compare.mjs';
@@ -13,8 +15,8 @@ import { switchBadge, switchFields, switchPayload } from './switches.mjs';
 import { parseRouteSheet, renderRouteSheet } from './routesheet.mjs';
 import { highlightMessage, tokenClass } from './highlight.mjs';
 
-const MAX_EVENTS = 1000;
 const MOCK_CONFIG = JSON.parse(document.getElementById("mock-config").textContent);
+const MAX_EVENTS = MOCK_CONFIG.logSize || 1000;
 // The UI is served on its own port; sample requests target the route's mock port (or the default
 // mock port) on the host the UI was reached by.
 const mockOrigin = (port) => `http://${location.hostname}:${port}`;
@@ -45,6 +47,8 @@ const routesToggleLabel = document.getElementById('routesToggleLabel');
 const requestPanel = document.querySelector('.request-panel');
 const requestCount = document.getElementById('requestCount');
 const routeCount = document.getElementById('routeCount');
+const routeSearch = document.getElementById('routeSearch');
+const routeGroup = document.getElementById('routeGroup');
 const streamStatus = document.getElementById('streamStatus');
 const workspace = document.getElementById('workspace');
 const requestTitle = document.getElementById('requestTitle');
@@ -182,6 +186,19 @@ if (savedTheme === 'dark') {
     setTheme('dark');
 }
 setRoutesCollapsed(preferences.get('routesCollapsed') === 'true');
+routeGroup.value = GROUPINGS.includes(preferences.get('routeGroup')) ? preferences.get('routeGroup') : '';
+routeSearch.addEventListener('input', renderRoutes);
+routeSearch.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && routeSearch.value) {
+        event.stopPropagation();
+        routeSearch.value = '';
+        renderRoutes();
+    }
+});
+routeGroup.addEventListener('change', () => {
+    preferences.set('routeGroup', routeGroup.value);
+    renderRoutes();
+});
 
 themeToggle.addEventListener('click', () => {
     if (document.documentElement.getAttribute('data-theme') === 'dark') {
@@ -443,6 +460,7 @@ document.addEventListener('keydown', (event) => {
 let loadingState = false;
 let loadingRoutes = false;
 let lastRoutesJSON = null;
+let configuredRoutes = [];
 
 refreshRoutesButton.addEventListener('click', loadRoutes);
 routesToggleButton.addEventListener('click', () => {
@@ -706,15 +724,11 @@ function renderInspector() {
     if (!route) {
         const candidates = match?.candidates || [];
         if (!candidates.length) mismatchDetails.textContent = 'No routes are configured for this request.';
-        for (const candidate of candidates) {
-            const heading = document.createElement('p');
-            heading.textContent = `${candidate.method} ${candidate.port ? `:${candidate.port}` : ''}${candidate.path} — ${candidate.name} (${candidate.source}:${candidate.line})`;
-            const reasons = document.createElement('ul');
-            for (const reason of candidate.reasons) {
-                const item = document.createElement('li'); item.textContent = reason; reasons.append(item);
-            }
-            mismatchDetails.append(heading, reasons);
-        }
+        for (const candidate of candidates) mismatchDetails.append(nearMissCard(candidate));
+        // Open the explanation for unmatched requests; it is why you look.
+        // Only when a new event is shown, so closing it sticks across refreshes.
+        if (mismatchPanel.dataset.event !== String(event.id)) mismatchPanel.open = candidates.length > 0;
+        mismatchPanel.dataset.event = String(event.id);
     }
     copyCurlButton.disabled = false;
     for (const kind of ['request', 'response']) {
@@ -1275,6 +1289,169 @@ function renderEmptyState(message) {
     cell.textContent = message || 'No requests yet. Send one to the mock port and it shows up here.';
 }
 
+// nearMissCard shows one route that nearly answered an unmatched request:
+// the route, each failed requirement highlighted, and buttons to inspect the
+// route or list the other requests it nearly answered.
+function nearMissCard(candidate) {
+    const card = document.createElement('section');
+    card.className = 'near-miss';
+    const heading = document.createElement('p');
+    heading.className = 'near-miss-route';
+    const method = document.createElement('span');
+    method.className = methodClass(candidate.method);
+    method.textContent = candidate.method;
+    const path = document.createElement('span');
+    path.className = 'route-path';
+    path.textContent = `${candidate.port ? `:${candidate.port}` : ''}${candidate.path}`;
+    const name = document.createElement('span');
+    name.className = 'near-miss-name';
+    name.textContent = `${candidate.name} (${candidate.source}:${candidate.line})`;
+    heading.append(method, path, name);
+    const count = document.createElement('p');
+    count.className = 'near-miss-count';
+    count.textContent = failedLabel(candidate);
+    const reasons = document.createElement('ul');
+    for (const reason of candidate.reasons || []) {
+        const { subject, detail } = reasonParts(reason);
+        const item = document.createElement('li');
+        if (subject) {
+            const mark = document.createElement('mark');
+            mark.textContent = subject;
+            item.append(mark, ' ');
+        }
+        item.append(detail);
+        reasons.append(item);
+    }
+    const actions = document.createElement('p');
+    actions.className = 'near-miss-actions';
+    const route = candidateRoute(configuredRoutes, candidate);
+    if (route) {
+        const inspect = document.createElement('button');
+        inspect.type = 'button';
+        inspect.className = 'clear-button';
+        inspect.textContent = 'Inspect route';
+        inspect.title = `Show ${candidate.name} in the inspector`;
+        inspect.addEventListener('click', () => inspectRoute(route));
+        actions.append(inspect);
+    }
+    const similar = document.createElement('button');
+    similar.type = 'button';
+    similar.className = 'clear-button';
+    similar.textContent = 'Similar misses';
+    similar.title = `Show the unmatched requests ${candidate.name} nearly answered`;
+    similar.addEventListener('click', () => {
+        filterInput.value = routeFilter(candidate.name, 'near');
+        setFilter(filterInput.value);
+    });
+    actions.append(similar);
+    card.append(heading, count, reasons, actions);
+    return card;
+}
+
+// inspectRoute selects a configured route, as clicking it in the list does.
+function inspectRoute(route) {
+    selection = selectRoute(route);
+    for (const item of routesList.querySelectorAll('.route-button')) item.setAttribute('aria-pressed', 'false');
+    for (const row of getDataRows()) row.classList.remove('selected');
+    syncRowTabindex();
+    showInspector();
+    renderInspector();
+    focusInspectorOnMobile();
+}
+
+// renderRoutes draws the routes list from configuredRoutes, narrowed by the
+// search box and split into groups by the grouping menu.
+function renderRoutes() {
+    const routes = configuredRoutes;
+    const shown = routes.filter(route => routeMatchesSearch(route, routeSearch.value));
+    routeCount.textContent = routeCountLabel(shown.length, routes.length);
+    routeCount.setAttribute('aria-label', shown.length === routes.length ? `${routes.length} configured routes` : `${shown.length} of ${routes.length} configured routes shown`);
+    routesList.replaceChildren();
+    if (!shown.length) {
+        const li = document.createElement('li');
+        li.className = 'empty-state';
+        li.textContent = routes.length ? 'No routes match the search' : 'No routes configured';
+        routesList.appendChild(li);
+        return;
+    }
+    for (const group of groupRoutes(shown, routeGroup.value)) {
+        if (group.label) {
+            const heading = document.createElement('li');
+            heading.className = 'route-group';
+            heading.setAttribute('role', 'presentation');
+            heading.textContent = `${group.label} · ${group.routes.length}`;
+            routesList.appendChild(heading);
+        }
+        for (const route of group.routes) routesList.appendChild(routeItem(route));
+    }
+}
+
+// routeItem is one route's row: the route button and its hit count.
+// Routes are labeled with their port only when they are served on more than one.
+function routeItem(route) {
+    const li = document.createElement('li');
+    const method = document.createElement('span');
+    method.className = methodClass(route.method);
+    method.textContent = route.method;
+    const path = document.createElement('span');
+    path.className = 'route-path';
+    const routePath = `${multiPort && route.port ? `:${route.port}` : ''}${route.path}${route.query ? '?' + route.query : ''}`;
+    path.textContent = routePath;
+    path.title = routePath;
+    const name = document.createElement('span');
+    name.className = 'route-name';
+    name.textContent = route.name || '';
+    if (route.name) {
+        name.title = route.name;
+    }
+    const tags = (route.tags || []).map(tag => {
+        const chip = document.createElement('span');
+        chip.className = 'route-tag';
+        chip.textContent = tag;
+        chip.title = `Tag ${tag}: filter the traffic with tag:${tag}`;
+        return chip;
+    });
+    const badge = switchBadge(route);
+    const switched = document.createElement('span');
+    if (badge) {
+        switched.className = 'route-switch';
+        switched.textContent = badge.text;
+        switched.title = badge.title;
+    }
+    // The hit count is its own button: it filters the traffic to the
+    // requests this route answered (again to clear the filter).
+    const hits = document.createElement('button');
+    hits.type = 'button';
+    hits.className = 'route-hits';
+    hits.classList.toggle('unused', !route.hits);
+    hits.textContent = String(route.hits || 0);
+    hits.title = `Matched ${hitsLabel(route.hits)}. Show only these requests`;
+    hits.setAttribute('aria-label', `Show the requests ${route.name} answered (${hitsLabel(route.hits)})`);
+    hits.addEventListener('click', () => {
+        const text = routeFilter(route.name);
+        filterInput.value = filterInput.value.trim() === text ? '' : text;
+        setFilter(filterInput.value);
+    });
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'route-button';
+    button.setAttribute('aria-label', `${route.method} ${routePath}: ${route.name}${tags.length ? `, tagged ${route.tags.join(', ')}` : ''}${badge ? `, switched ${badge.text}` : ''}, matched ${hitsLabel(route.hits)}`);
+    button.setAttribute('aria-pressed', String(selectedRoute(selection)?.id === route.id));
+    button.append(method, path, ...(badge ? [switched] : []), name, ...tags);
+    button.addEventListener('click', () => {
+        selection = selectRoute(route);
+        returnFocus = button;
+        for (const item of routesList.querySelectorAll('.route-button')) item.setAttribute('aria-pressed', String(item === button));
+        for (const row of getDataRows()) row.classList.remove('selected');
+        syncRowTabindex();
+        showInspector();
+        renderInspector();
+        focusInspectorOnMobile();
+    });
+    li.append(button, hits);
+    return li;
+}
+
 async function loadRoutes() {
     if (loadingRoutes) return;
     loadingRoutes = true;
@@ -1287,86 +1464,14 @@ async function loadRoutes() {
         const routesJSON = JSON.stringify(routes);
         if (routesJSON === lastRoutesJSON) return;
         lastRoutesJSON = routesJSON;
+        configuredRoutes = routes;
         if (selection.kind === 'route') {
             // Saving a fixture reloads the routes; keep the edited route selected.
             const route = selection.route;
             selection = afterRoutesLoaded(selection, routes, fixtureEdit?.key === fixtureKey(route) ? route : null);
             renderInspector();
         }
-        routeCount.textContent = String(routes.length);
-        routeCount.setAttribute('aria-label', `${routes.length} configured routes`);
-        routesList.replaceChildren();
-        if (!routes.length) {
-            const li = document.createElement('li');
-            li.className = 'empty-state';
-            li.textContent = 'No routes configured';
-            routesList.appendChild(li);
-            return;
-        }
-        // Label routes with their port only when they are served on more than one.
-        for (const route of routes) {
-            const li = document.createElement('li');
-            const method = document.createElement('span');
-            method.className = methodClass(route.method);
-            method.textContent = route.method;
-            const path = document.createElement('span');
-            path.className = 'route-path';
-            const routePath = `${multiPort && route.port ? `:${route.port}` : ''}${route.path}${route.query ? '?' + route.query : ''}`;
-            path.textContent = routePath;
-            path.title = routePath;
-            const name = document.createElement('span');
-            name.className = 'route-name';
-            name.textContent = route.name || '';
-            if (route.name) {
-                name.title = route.name;
-            }
-            const tags = (route.tags || []).map(tag => {
-                const chip = document.createElement('span');
-                chip.className = 'route-tag';
-                chip.textContent = tag;
-                chip.title = `Tag ${tag}: filter the traffic with tag:${tag}`;
-                return chip;
-            });
-            const badge = switchBadge(route);
-            const switched = document.createElement('span');
-            if (badge) {
-                switched.className = 'route-switch';
-                switched.textContent = badge.text;
-                switched.title = badge.title;
-            }
-            // The hit count is its own button: it filters the traffic to the
-            // requests this route answered (again to clear the filter).
-            const hits = document.createElement('button');
-            hits.type = 'button';
-            hits.className = 'route-hits';
-            hits.classList.toggle('unused', !route.hits);
-            hits.textContent = String(route.hits || 0);
-            hits.title = `Matched ${hitsLabel(route.hits)}. Show only these requests`;
-            hits.setAttribute('aria-label', `Show the requests ${route.name} answered (${hitsLabel(route.hits)})`);
-            hits.addEventListener('click', () => {
-                const text = routeFilter(route.name);
-                filterInput.value = filterInput.value.trim() === text ? '' : text;
-                setFilter(filterInput.value);
-            });
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'route-button';
-            button.setAttribute('aria-label', `${route.method} ${routePath}: ${route.name}${tags.length ? `, tagged ${route.tags.join(', ')}` : ''}${badge ? `, switched ${badge.text}` : ''}, matched ${hitsLabel(route.hits)}`);
-            button.setAttribute('aria-pressed', String(selectedRoute(selection)?.id === route.id));
-            button.append(method, path, ...(badge ? [switched] : []), name, ...tags);
-            button.addEventListener('click', () => {
-                selection = selectRoute(route);
-                returnFocus = button;
-                for (const item of routesList.querySelectorAll('.route-button')) item.setAttribute('aria-pressed', String(item === button));
-                for (const row of getDataRows()) row.classList.remove('selected');
-                syncRowTabindex();
-                showInspector();
-                renderInspector();
-                focusInspectorOnMobile();
-            });
-            li.append(button, hits);
-            routesList.appendChild(li);
-        }
+        renderRoutes();
     } catch (e) {
         lastRoutesJSON = null;
         routeCount.textContent = '—';

@@ -6,7 +6,7 @@
 
 Routes match on the listener port, HTTP method, path, any query parameters
 declared in the `.http` file, and any `@header.*`, `@query.*`, `@path.*`,
-`@body`, `@json.*` and `@form.*` matchers. The first route that matches, in load order,
+`@body`, `@json` and `@form.*` matchers. The first route that matches, in load order,
 answers the request; see [Route order](#route-order). For worked examples of
 every matcher, see [`examples/matching/`](../examples/matching/).
 
@@ -171,6 +171,39 @@ Content-Type: application/json
 A request with `Authorization: Basic abc` matches neither route and gets a
 `404`. The admin UI explains why.
 
+### Host matching
+
+`@match.host` sends requests to a route by the `Host` they name, so one mock
+port can stand in for several services. The value is a
+[matcher value](#matcher-values), compared without case. A value without a
+port matches the host on any port; one with a port, such as
+`auth.example.test:9000`, needs that port too. A trailing dot is ignored.
+
+```http
+### Billing status
+@match.host = billing.example.test
+GET /status
+
+billing is up
+
+### Any shop
+@match.host = ~.*\.shop\.test
+GET /status
+
+a shop is up
+
+### Status
+GET /status
+
+up
+```
+
+`curl -H 'Host: billing.example.test' localhost:8080/status` answers
+`billing is up`; a plain `curl localhost:8080/status` answers `up`. To send
+real host names to the mock, point them at `127.0.0.1` in `/etc/hosts` or use
+`curl --resolve`. A route with `@match.host` is never shadowed by one for a
+different host.
+
 ### Query and path parameter matching
 
 `@query.name` constrains a query parameter beyond the exact values written in
@@ -268,6 +301,16 @@ pong
   missing field. A `*` segment only selects array elements, never object
   fields. Named regex groups capture from the first element that matches.
   Response placeholders don't take `*`; use an index such as `{{$json.roles.0}}`.
+- **`@json` with a whole document** (no path) accepts a JSON body that
+  contains the document: `@json = {"type": "card", "amount": 100}` matches
+  `{"amount": 100.0, "type": "card", "id": 7}`. Objects may have extra members
+  and any key order; arrays must have the same length, and their elements are
+  compared in order the same way. Values are compared as JSON, so `100` matches
+  `100.0` but not `"100"`, and `null` must be `null`. The document is literal (no
+  matcher values inside it) and goes on one line; `{{name}}` variables are
+  expanded first. It combines with `@json.field.path` matchers, which add
+  checks such as `@json.amount = >10`. A near miss names the first difference,
+  such as `JSON amount: expected 100; received 50`.
 - **`@form.name`**: matches a field of an `a=1&b=2` body, decoded, in any
   order. A repeated field matches when any of its values does. Field names must
   be valid variable names, so `user[name]` cannot be matched.
@@ -291,7 +334,8 @@ pong
   body has no fields, so `@json.name = !` and `@form.name = !` match it. A body
   that does not parse matches no `@json.*` (or `@form.*`) matcher, not even
   `!`.
-- Body matchers see the first 1 MiB of a request. A larger body matches no
+- Body matchers see the first 1 MiB of a request, or as much as
+  [`--max-body`](cli.md) allows. A larger body matches no
   `@body`, `@json.*`, `@xml.*` or `@form.*` matcher. The admin log still captures 64 KiB per body.
 
 Matchers and body placeholders combine into an OAuth-style token endpoint:
@@ -392,6 +436,55 @@ GET /orders
 - A route with `@times` never shadows a later route.
 - [`{{$hits}}`](placeholders.md#placeholders) inserts the count in the
   response, such as `{"attempt": {{$hits}}}`.
+
+### Scenarios
+
+A scenario is a small state machine for flows where an earlier request changes
+what a later one sees: an order is pending until it is paid, a job runs until
+it is done. `@scenario = name` puts a route in a scenario, `@state = s` lets it
+answer only while the scenario is in state `s`, and `@next-state = t` moves
+the scenario to `t` when the route answers. Every scenario starts in the state
+`started`.
+
+```http
+@scenario = order
+
+### Pending order
+@state = started
+GET /orders/1
+
+{"status": "pending"}
+
+### Pay
+@next-state = paid
+POST /orders/1/pay
+
+{"status": "paid"}
+
+### Paid order
+@state = paid
+GET /orders/1
+
+{"status": "paid"}
+```
+
+`GET /orders/1` answers `pending` until a `POST /orders/1/pay`, then `paid`.
+
+- A route without `@state` answers in any state; one without `@next-state`
+  leaves the state as it is. State names are single words, without spaces.
+- A route waiting for another state steps aside, as if it had not matched,
+  and never shadows a later route. The near-miss list names the state the
+  scenario is in.
+- Concurrent requests move a scenario once: when two requests race for a
+  route's state, one answers and the other goes on to later routes.
+- Reloads keep each scenario's state. `POST /reset` (or `Reset()` in a
+  [`mocktest`](testing.md#using-mock-in-go-tests) test) returns every scenario
+  to `started`, and [`PUT /scenarios`](admin-ui.md#admin-ui-and-api) moves one
+  to any state, so a test can start in the middle of a flow
+  (`Mock.SetScenario` in `mocktest`).
+- `/routes` and the route inspector show `scenario`, `state` and `nextState`;
+  `GET /scenarios` lists the current states. `mock match` and `mock check`
+  treat every scenario as `started`; `mock check` ignores `@state`.
 
 ### Routes that need data
 

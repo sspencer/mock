@@ -71,6 +71,9 @@ type Method struct {
 	MatchPath     map[string]string
 	MatchBody     string
 	MatchJSON     map[string]string
+	// MatchJSONBody is the @json document, compacted: the request body must
+	// contain it (see JSONContains). Empty when the section sets none.
+	MatchJSONBody string
 	MatchXML      map[string]string
 	MatchForm     url.Values
 	MatchCookies  url.Values
@@ -147,6 +150,17 @@ type Method struct {
 	// route accepts, between 0 (exclusive) and 1. 0 means no @match.chance,
 	// so the route accepts every matching request.
 	Chance float64
+	// MatchHost is the @match.host matcher for the request's Host header,
+	// compared without its port (and with it, for values that name one),
+	// in lower case. Empty accepts any host.
+	MatchHost string
+	// Scenario is the @scenario name: a state machine shared by every route
+	// that names it, starting in ScenarioStart. State, from @state, is the
+	// scenario state the route needs to answer ("" for any), and NextState,
+	// from @next-state, the state its answer moves the scenario to.
+	Scenario  string
+	State     string
+	NextState string
 	// Tags are the @tag names, such as billing and slow, that --only and
 	// --skip choose routes by. Compare them with HasTag.
 	Tags []string
@@ -869,6 +883,9 @@ func parseSection(pending pendingSection, fileDefs []definition, opts Options, s
 	if err := applyStatusDirective(&method, defs, pending.directives.defs, nameStatus, source); err != nil {
 		return method, err
 	}
+	if method.Scenario == "" && (method.State != "" || method.NextState != "") {
+		return method, parseErrorf(source, sectionNameLine, `section %q: @state and @next-state need a @scenario name, such as "@scenario = checkout"`, method.Name)
+	}
 	for _, callback := range method.Callbacks {
 		if callback.Method == "" {
 			directive := "@callback"
@@ -1088,7 +1105,7 @@ const fileVariableRemoved = `$file and @file are no longer supported; start the 
 // (@header.Name, @query.name, @path.name, @body, @json.path, @xml.path,
 // @form.name or @cookie.name) rather than a {{name}} variable.
 func isMatcherName(name string) bool {
-	if name == "body" {
+	if name == "body" || name == "json" {
 		return true
 	}
 	for _, prefix := range []string{"header.", "query.", "path.", "json.", "xml.", "form.", "cookie."} {
@@ -1203,6 +1220,15 @@ func applyControlVariable(method *Method, def definition, source string) error {
 			return parseErrorf(def.in(source), def.line, "section %q: @body: %v", method.Name, err)
 		}
 		method.MatchBody = value
+		return nil
+	}
+	if def.name == "json" {
+		compact, err := parseJSONDocument(value)
+		if err != nil {
+			return parseErrorf(def.in(source), def.line,
+				`section %q: @json needs a JSON object or array on one line (example: @json = {"type": "card"}): %v`, method.Name, err)
+		}
+		method.MatchJSONBody = compact
 		return nil
 	}
 	if path, ok := strings.CutPrefix(def.name, "json."); ok {
@@ -1423,9 +1449,31 @@ func applyControlVariable(method *Method, def definition, source string) error {
 			return parseErrorf(def.in(source), def.line, "section %q: @match.chance %v", method.Name, err)
 		}
 		method.Chance = chance
+	case "scenario", "state", "next-state":
+		name := strings.TrimSpace(value)
+		if name == "" || strings.ContainsAny(name, " \t") {
+			return parseErrorf(def.in(source), def.line, `section %q: @%s needs one name without spaces, such as "@%s = paid"`, method.Name, def.name, def.name)
+		}
+		switch def.name {
+		case "scenario":
+			method.Scenario = name
+		case "state":
+			method.State = name
+		default:
+			method.NextState = name
+		}
+	case "match.host":
+		host := strings.TrimSpace(value)
+		if host == "" {
+			return parseErrorf(def.in(source), def.line, `section %q: @match.host needs a host, such as "@match.host = api.example.test"`, method.Name)
+		}
+		if _, err := ParseMatcher(host); err != nil {
+			return parseErrorf(def.in(source), def.line, "section %q: @match.host: %v", method.Name, err)
+		}
+		method.MatchHost = host
 	default:
 		if strings.HasPrefix(def.name, "match.") {
-			return parseErrorf(def.in(source), def.line, `section %q: unknown directive @%s (did you mean @match.chance?)`, method.Name, def.name)
+			return parseErrorf(def.in(source), def.line, `section %q: unknown directive @%s (did you mean @match.chance or @match.host?)`, method.Name, def.name)
 		}
 	}
 	return nil
@@ -1858,6 +1906,10 @@ func trimTrailingBlankLines(lines []string) []string {
 	return lines[:end]
 }
 
+// ScenarioStart is the state every @scenario starts in, and returns to on
+// a reset.
+const ScenarioStart = "started"
+
 // controlVariables are consumed by the mock server itself (not only as {{name}} references).
 var controlVariables = map[string]struct{}{
 	"delay":          {},
@@ -1874,6 +1926,10 @@ var controlVariables = map[string]struct{}{
 	"rate-limit":     {},
 	"fallback":       {},
 	"match.chance":   {},
+	"match.host":     {},
+	"scenario":       {},
+	"state":          {},
+	"next-state":     {},
 	"status":         {},
 	"require":        {},
 	"missing":        {},

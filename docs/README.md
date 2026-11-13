@@ -23,6 +23,7 @@ New here? Start with the [project README](../README.md), then
 - [Working with real APIs](real-apis.md): `--upstream`, recording, `@proxy`, `mock check`, `mock import`.
 - [Testing with mock](testing.md): strict mode, route coverage, the `mocktest` Go package.
 - [Admin UI and API](admin-ui.md): the UI, access token, credential redaction, admin endpoints, clients and safety.
+- [Troubleshooting](troubleshooting.md): unmatched requests, near-miss reasons, shadowed routes, busy ports, failed reloads.
 
 ## Design notes
 

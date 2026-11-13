@@ -38,20 +38,21 @@ Areas:
 
 ## Top picks
 
-The previous top picks are implemented; none are chosen yet. Pick the ideas
-with the best value for their effort from the areas below.
+The last ten top picks (whole-body JSON matching, `mock routes`, unmatched
+request help, richer `mocktest` assertions, the request journal, route search
+and grouping, the host matcher, named scenarios, configurable limits and the
+troubleshooting page) are implemented. The next picks have not been chosen.
 
 ## Stateful behavior
 
 `@times` gives a route a count, `{{$hits}}` puts a route's answer count in its
-response, and `POST /reset` starts counts over; beyond that, routes are
-stateless. These ideas keep the "first match wins" model;
+response, `@scenario` routes answer by a named state, and `POST /reset` starts
+counts and scenarios over; beyond that, routes are stateless. These ideas keep the "first match wins" model;
 state only decides whether a route is eligible.
 
 | ID | Idea | Effort | Description |
 |----|------|--------|-------------|
-| `ST-2` | Named scenarios | **L** | `@scenario`, `@state` and `@next-state`: a route is eligible only while its scenario is in a given state, and answering can move it to another ("order is `pending` until `POST /orders/1/pay`"). WireMock's scenarios work this way. Builds on `@times` and `POST /reset`. |
-| `ST-4` | State in the admin UI | **S** | Show each scenario's current state in the route inspector (the remaining `@times` count is shown already), with a reset button. Follows `ST-2`. |
+| `ST-4` | State in the admin UI | **S** | Show each scenario's current state in the route inspector (the remaining `@times` count is shown already), with a reset button. `GET /scenarios` already has the data. |
 | `ST-6` | In-memory collections | **L** | `@collection = users.json` turns a fixture into a small store: `GET` lists and reads, `POST` adds, `PUT`/`PATCH` change and `DELETE` removes, in memory until restart or reset. This is json-server's whole purpose and Mockoon's "CRUD routes on data buckets". It is a second way to define behavior, so decide first whether it fits a tool built on explicit routes. |
 | `ST-7` | Captured values across requests | **L** | Store a value from one request (`@store token = {{$json.token}}`) and match or insert it in later ones (`{{$store.token}}`). Makes login-then-use flows realistic. Needs a scoping rule (global, per client, per session; see `TE-7`). |
 
@@ -59,9 +60,7 @@ state only decides whether a route is eligible.
 
 | ID | Idea | Effort | Description |
 |----|------|--------|-------------|
-| `MA-3` | Whole-body JSON match | **M** | `@json = {"type": "card", "amount": 100}` accepts a body that contains those members, in any key order and with extra members allowed. Easier to read than several `@json.*` lines. WireMock's `equalToJson` with `ignoreExtraElements`. |
 | `MA-4` | JSON Schema matcher | **L** | `@schema = order.schema.json` accepts a request whose body validates against the schema, so one route can return `400` for anything invalid. Needs a schema library (the first sizable dependency) or a small subset validator. |
-| `MA-5` | Host matcher | **S** | `@match.host = api.example.test` accepts requests by `Host` header, so one port can stand in for several services behind a proxy or `/etc/hosts` entries. The host in a request URL stays ignored unless this is set. |
 | `MA-8` | Matching every value of a repeated field | **S** | Matchers read the first value of a repeated query parameter or header. Add `@query.tag[] = ~^(a\|b)$` (all values) or `@query.tag[any]`, and `{{$query.tag[]}}` as a JSON array. |
 
 ## Responses and templating
@@ -80,7 +79,7 @@ state only decides whether a route is eligible.
 | `AP-5` | Import WireMock mappings | **M** | Convert WireMock stub JSON (`mappings/*.json` and `__files`) into `.http` sections, with a comment where a matcher has no equivalent. Lowers the cost of moving to `mock`. |
 | `AP-6` | Export routes | **M** | `mock export -format openapi\|postman\|har` writes a skeleton from the routes and their sample requests (`buildSampleRequest`), to share a mocked API with people who use other tools. |
 | `AP-7` | Live diff mode | **M** | `--upstream URL --diff` answers from the mock but also sends each matched request upstream and records the differences on the event, shown in the UI. Hoverfly calls this diff mode. Reuses `compareResponses` and the compare view. |
-| `AP-9` | Forward proxy mode | **M** | Accept absolute-form requests (`GET http://host/path`) so a client configured with `HTTP_PROXY` is mocked without changing its base URL, with `MA-5` choosing routes by host. Plain HTTP only; `CONNECT` tunnels would need TLS interception, which is out of scope. |
+| `AP-9` | Forward proxy mode | **M** | Accept absolute-form requests (`GET http://host/path`) so a client configured with `HTTP_PROXY` is mocked without changing its base URL, with `@match.host` choosing routes by host. Plain HTTP only; `CONNECT` tunnels would need TLS interception, which is out of scope. |
 
 ## Command line and configuration
 
@@ -88,12 +87,9 @@ state only decides whether a route is eligible.
 |----|------|--------|-------------|
 | `CL-2` | Project config file | **S** | A `mock.toml` (or `.mockrc`) in the working directory holding the flags a project always passes: files, directories, ports, upstream, redaction. Flags still win. |
 | `CL-4` | `mock fmt` | **M** | Normalize spacing, directive order and blank lines in `.http` files, like `gofmt`, with `-check` for CI. Most useful once files are shared across a team. |
-| `CL-5` | `mock routes` | **S** | Print the route table (name, method, path, port, matchers, source line) as text or JSON without serving. `validate` reports problems; nothing prints the resolved routes offline. |
 | `CL-6` | Shell completions and a man page | **S** | `mock completion bash\|zsh\|fish\|powershell` and a generated `mock.1`, shipped in the release archives. |
 | `CL-7` | Readiness helpers | **S** | `--ready-file path` writes the bound addresses as JSON once every port is listening, and `mock wait [-timeout 10s]` blocks until the admin `/state` answers. Replaces `sleep 1` in scripts, and makes random ports (`-p 0`) usable. |
 | `CL-8` | Open new ports on reload | **M** | A reload that adds a route on a new port is rejected today. Bind the new listener (and close ones no route uses) during reload, keeping the old plan when a bind fails. |
-| `CL-9` | Configurable limits | **S** | `--max-body` (1 MiB today) and `--log-size` (1,000 events today) for large uploads and long sessions. |
-| `CL-10` | Request log on disk | **S** | `--journal requests.jsonl` appends each event (redacted when `-R` is set) as a JSON line, so a run can be examined after `mock` exits and kept as a CI artifact. |
 | `CL-11` | Reload environments | **S** | `-e` environment files are read once at startup. Watch them like request files. |
 | `CL-12` | Listen on a Unix socket | **S** | `-b unix:/tmp/mock.sock` for sidecar and container setups that avoid TCP ports. |
 
@@ -101,7 +97,6 @@ state only decides whether a route is eligible.
 
 | ID | Idea | Effort | Description |
 |----|------|--------|-------------|
-| `TE-2` | Richer `mocktest` assertions | **S** | `AssertCalledWith` (JSON body, header or query expectations), `LastCall`, `WaitFor(call, timeout)` for asynchronous clients, and `AssertAllRoutesCalled` using the existing hit counts. |
 | `TE-3` | Typed routes from Go code | **S** | `srv.Add(t, mocktest.Route{Method: "GET", Path: "/users", Status: 503, JSON: ...})` builds a route from Go values, for tests that compute the response. `Stub(t, ".http text")` covers the text form already. |
 | `TE-7` | Sessions for parallel tests | **L** | A header such as `X-Mock-Session: abc` separates the request log, counts and state per test, so parallel tests can share one server. Smocker has sessions. Only worth doing after the stateful ideas. |
 | `TE-8` | Thin clients for other languages | **M** | Small packages for JavaScript and Python that start the binary, wait for it (`CL-7`) and wrap `/requests`, `/verify` and `/clear`: the `mocktest` experience outside Go. |
@@ -114,15 +109,13 @@ state only decides whether a route is eligible.
 |----|------|--------|-------------|
 | `UI-2` | Save a draft to the file | **M** | **Copy as route** copies text for the user to paste. Add **Add to file**, which appends the draft to a chosen request file through an admin endpoint guarded like `PUT /fixture` (current files only, version check, atomic write). |
 | `UI-3` | Edit routes in the browser | **L** | Edit a section's `.http` text in the inspector with validation before saving. Larger than `UI-2` because of comments, variables and files the editor must not reformat. |
-| `UI-4` | Route search and grouping | **S** | A filter box for the route list, and grouping by file, port or `@tag`. Long route lists are hard to scan today. |
 | `UI-5` | Timing statistics | **M** | Per-route count, error share and p50/p95 duration, with a small timeline of request rate. Useful when `mock` stands in for a dependency in a load test. |
 | `UI-6` | Body viewers | **M** | Image preview, a hex view for binary bodies, formatted XML, a decoded view for JWTs in `Authorization` headers, and a collapsible JSON tree (the fixture editor already has one). |
-| `UI-7` | Import a HAR or journal | **M** | Load a HAR export or a `CL-10` journal into the traffic view to examine, filter and compare an earlier run. |
+| `UI-7` | Import a HAR or journal | **M** | Load a HAR export or a `--journal` file into the traffic view to examine, filter and compare an earlier run. |
 | `UI-8` | Copy in more formats | **S** | Beside **Copy cURL**: `fetch`, HTTPie, Go `net/http` and a REST Client request (the request half of an `.http` section). |
 | `UI-9` | Pin and annotate requests | **S** | Pin requests so they stay when the log is cleared or the ring buffer wraps, with an optional note. Makes compare usable across a long session. |
 | `UI-10` | Callback and proxy flow view | **M** | For a request that triggered a callback or was forwarded upstream, show the hops as a small sequence diagram with timings. Smocker draws one from its history. |
 | `UI-11` | Saved filters | **S** | Keep recent and named traffic filters in `localStorage`, and put the current filter in the URL so a view can be bookmarked or shared. |
-| `UI-12` | Unmatched request help | **S** | For an unmatched request, list the near-miss routes with the failing matcher highlighted and a one-click filter to that route. The data is already on the event. |
 
 ## Protocols
 
@@ -155,7 +148,6 @@ state only decides whether a route is eligible.
 | `DO-2` | Migration guides | **S** | Short pages mapping WireMock stubs, json-server `db.json` and Mockoon environments to `.http` sections, with what does not carry over. Pairs with `AP-5`. |
 | `DO-3` | Comparison page | **S** | When to choose `mock` and when another tool fits better (OpenAPI-first: Prism; in-browser: MSW; GUI: Mockoon). Sets expectations and explains the scope decisions below. |
 | `DO-5` | Front-end recipes | **S** | Using `mock` behind the dev-server proxy of Vite, Next.js and webpack, which is also the answer to "why is there no CORS support". |
-| `DO-6` | Troubleshooting page | **S** | "Why did my request not match", "why did reload fail", "port already in use", reading near-miss reasons. Much of the text exists across pages. |
 
 ## Not planned
 

@@ -434,3 +434,29 @@ func TestParseConfigUpstreamRewrite(t *testing.T) {
 		}
 	}
 }
+
+func TestParseConfigLimits(t *testing.T) {
+	cfg, err := parseConfig([]string{"--max-body", "10MB", "--log-size", "5000", "api.http"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.MaxBody != 10<<20 || cfg.LogSize != 5000 {
+		t.Errorf("limits = %d, %d", cfg.MaxBody, cfg.LogSize)
+	}
+	for size, want := range map[string]int64{"512kb": 512 << 10, "4096": 4096, "1.5 kb": 1536, "1gb": 1 << 30, "7b": 7} {
+		if got, err := parseByteSize(size); err != nil || got != want {
+			t.Errorf("parseByteSize(%q) = %d, %v, want %d", size, got, err, want)
+		}
+	}
+	for _, args := range [][]string{
+		{"--max-body", "lots", "api.http"},
+		{"--max-body", "0", "api.http"},
+		{"--max-body", "2gb", "api.http"},
+		{"--log-size", "-1", "api.http"},
+		{"--log-size", "2000000", "api.http"},
+	} {
+		if _, err := parseConfig(args); err == nil {
+			t.Errorf("parseConfig(%q) accepted", args)
+		}
+	}
+}

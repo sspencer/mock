@@ -104,6 +104,15 @@
                         <button id="refreshRoutesButton" class="clear-button" type="button"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg><span>Refresh</span></button>
                     </div>
                 </div>
+                <div class="routes-tools">
+                    <input id="routeSearch" class="route-search" type="search" placeholder="Find routes" aria-label="Find routes by method, path, name, file or tag" autocomplete="off" spellcheck="false" />
+                    <select id="routeGroup" class="route-group-select" aria-label="Group routes">
+                        <option value="">No groups</option>
+                        <option value="file">By file</option>
+                        <option value="port">By port</option>
+                        <option value="tag">By tag</option>
+                    </select>
+                </div>
                 <ul id="routesList" class="routes-list">
                     <li class="empty-state">Loading routes…</li>
                 </ul>
@@ -273,7 +282,7 @@
             </div>
             <div>
                 <dt>Filter</dt>
-                <dd>Shows only requests that match every term you type. <code>2xx</code> to <code>5xx</code> match a status class, <code>matched</code> and <code>unmatched</code> whether a route answered, a method name such as <code>post</code> that method, and <code>route:Name</code> (or <code>route:"Two words"</code>) the requests a route answered, and <code>tag:name</code> the requests routes with that <code>@tag</code> answered. Other terms search the method, URL, status and labels. Put <code>-</code> before a term to exclude it, as in <code>-2xx</code>. Clicking a route's hit count filters to its requests; click again to clear.</dd>
+                <dd>Shows only requests that match every term you type. <code>2xx</code> to <code>5xx</code> match a status class, <code>matched</code> and <code>unmatched</code> whether a route answered, a method name such as <code>post</code> that method, and <code>route:Name</code> (or <code>route:"Two words"</code>) the requests a route answered, <code>tag:name</code> the requests routes with that <code>@tag</code> answered, and <code>near:Name</code> the unmatched requests that route nearly answered. Other terms search the method, URL, status and labels. Put <code>-</code> before a term to exclude it, as in <code>-2xx</code>. Clicking a route's hit count filters to its requests; click again to clear.</dd>
             </div>
             <div>
                 <dt>Keyboard</dt>
@@ -288,12 +297,16 @@
                 <dd>Reloads the configured routes list. Routes also refresh automatically every few seconds after request files change.</dd>
             </div>
             <div>
+                <dt>Find routes / grouping</dt>
+                <dd>Find routes narrows the list to routes containing every word you type in their method, path, name, file or tags; Escape clears it. The menu beside it groups the list by request file, by port, or by <code>@tag</code> (a route with two tags shows in both groups). The grouping is remembered in this browser.</dd>
+            </div>
+            <div>
                 <dt>Hide / Show routes</dt>
                 <dd>Collapses the routes list to give the request log more vertical space. The choice is remembered in this browser.</dd>
             </div>
             <div><dt>Resize panels</dt><dd>Drag a divider to resize adjacent panels. Focus a divider and use arrow keys (Shift for larger steps), Home or End. Double-click restores its default size. Sizes are remembered.</dd></div>
             <div><dt>Inspect &amp; copy</dt><dd>Pretty formats valid JSON; Raw preserves captured content. Copy body copies the captured text (or base64 for binary data). Copy cURL creates a shell-quoted command for complete text requests. Captured credentials are included unless mock runs with -R (--redact), which masks them before they are logged.</dd></div>
-            <div><dt>Route diagnostics</dt><dd>The number beside each route is how many requests it has answered. Select a route to inspect its requirements and response template, plus a sample cURL command for the mock server. Copy cURL copies it; path parameters such as <code>:id</code> are filled with sample values. Request details identify the route that answered (the first one that matched). Unmatched requests list nearby routes and failed constraints. Copy as route copies a draft <code>.http</code> section that answers the request, to paste into a request file; for a request a route answered, the draft reuses its response and is a starting point for a more specific variant, which must go above that route to match first. Resend opens an editor with the request's method, path, headers and body; Send replays it through the admin server, as if a client had sent it to the mock port, and selects the new request, labeled <code>resent</code>. Compare… picks a request; select another and choose Compare with #N to see both side by side: method, path, status, the route that answered, query parameters, headers, and a line diff of the bodies (JSON is compared with sorted keys). Only differences hides what is the same; Swap exchanges the sides. Copy unmatched as routes, above the traffic list, copies one draft section per distinct method and path among all unmatched requests in the log (proxied ones use the upstream response).</dd></div>
+            <div><dt>Route diagnostics</dt><dd>The number beside each route is how many requests it has answered. Select a route to inspect its requirements and response template, plus a sample cURL command for the mock server. Copy cURL copies it; path parameters such as <code>:id</code> are filled with sample values. Request details identify the route that answered (the first one that matched). Unmatched requests list nearby routes with each failed requirement highlighted; Inspect route selects one, and Similar misses filters to the other unmatched requests it nearly answered. Copy as route copies a draft <code>.http</code> section that answers the request, to paste into a request file; for a request a route answered, the draft reuses its response and is a starting point for a more specific variant, which must go above that route to match first. Resend opens an editor with the request's method, path, headers and body; Send replays it through the admin server, as if a client had sent it to the mock port, and selects the new request, labeled <code>resent</code>. Compare… picks a request; select another and choose Compare with #N to see both side by side: method, path, status, the route that answered, query parameters, headers, and a line diff of the bodies (JSON is compared with sorted keys). Only differences hides what is the same; Swap exchanges the sides. Copy unmatched as routes, above the traffic list, copies one draft section per distinct method and path among all unmatched requests in the log (proxied ones use the upstream response).</dd></div>
             <div><dt>Reload status</dt><dd>Failed reloads retain active routes and show an error banner only when needed. On narrow screens, use Back to traffic &amp; routes to return from the inspector.</dd></div>
         </dl>
     </div>

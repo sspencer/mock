@@ -55,6 +55,14 @@ type config struct {
 	// Record is the file that requests --upstream answered are appended to
 	// as draft sections (-r).
 	Record string
+	// Journal is a file every request event is appended to as a JSON line
+	// (--journal).
+	Journal string
+	// MaxBody is how many bytes of a request body are read for matching,
+	// templates and the log (--max-body); LogSize is how many request
+	// events the log keeps (--log-size). 0 means the mockhttp default.
+	MaxBody int64
+	LogSize int
 	// Strict reports unmatched requests and unused routes at shutdown and
 	// fails the run when any request went unmatched (-s). StrictUnused
 	// (--strict=unused) also fails it when a route never matched, and
@@ -119,6 +127,7 @@ const usageText = `usage:
   mock import [-host HOST] [-path PREFIX] <file.har|->
   mock run [flags] <file.http|-d dir> [file.http...] -- command [args...]
   mock match [-H 'Name: value'] [-d body] [-response] [-json] <file.http|dir> [file.http|dir...] METHOD URL
+  mock routes [-json] [-port N] [-only TAGS] [-skip TAGS] <file.http|dir> [file.http|dir...]
   mock check -upstream URL [-all] [-json] [-depth 3] [-check-header Name] [-header 'Name: value'] [-var name=value] [-env NAME [-env-file FILE]] [-timeout 10s] <file.http|dir> [file.http|dir...]
 
 flags:
@@ -146,6 +155,13 @@ flags:
                        of forwarded request paths
   -r, --record FILE    with -u, append a draft section to FILE for each
                        method and path the upstream answered
+      --journal FILE   append every request event to FILE as a JSON line, as
+                       GET /requests shows it (masked with -R)
+      --max-body SIZE  read up to SIZE of each request body for body
+                       matchers, templates and the log, such as 10mb or
+                       512kb (default 1mb; up to 1gb)
+      --log-size N     keep the latest N requests in the request log and
+                       the admin UI (default 1000; up to 1000000)
   -s, --strict         at shutdown, list requests no route matched and routes
                        that never matched, and exit 1 if any request was
                        unmatched; --strict=unused also exits 1 if a route
@@ -236,6 +252,10 @@ func parseConfig(args []string) (config, error) {
 	for _, name := range []string{"r", "record"} {
 		flagSet.StringVar(&cfg.Record, name, "", "")
 	}
+	flagSet.StringVar(&cfg.Journal, "journal", "", "")
+	var maxBody string
+	flagSet.StringVar(&maxBody, "max-body", "", "")
+	flagSet.IntVar(&cfg.LogSize, "log-size", 0, "")
 	for _, name := range []string{"s", "strict"} {
 		flagSet.Var(&strictFlag{&cfg}, name, "")
 	}
@@ -300,6 +320,14 @@ func parseConfig(args []string) (config, error) {
 			return config{}, usageError("--strict-report must name a .xml (JUnit) or .json file, not %q", cfg.StrictReport)
 		}
 		cfg.Strict = true
+	}
+	if maxBody != "" {
+		if cfg.MaxBody, err = parseByteSize(maxBody); err != nil || cfg.MaxBody > 1<<30 {
+			return config{}, usageError("--max-body must be a size from 1b to 1gb, such as 10mb or 512kb, not %q", maxBody)
+		}
+	}
+	if cfg.LogSize < 0 || cfg.LogSize > 1_000_000 {
+		return config{}, usageError("--log-size must be a request count from 1 to 1000000, not %d", cfg.LogSize)
 	}
 	if cfg.Record != "" && cfg.Upstream == nil {
 		return config{}, usageError("-r (--record) needs -u (--upstream): only forwarded requests are recorded")
@@ -488,4 +516,25 @@ func ExitCode(err error) int {
 		return exitErr.code
 	}
 	return 1
+}
+
+// parseByteSize parses a size such as "10mb", "512kb", "1gb" or "4096" (bytes).
+// kb is 1024 bytes; the unit is case-insensitive.
+func parseByteSize(raw string) (int64, error) {
+	text := strings.ToLower(strings.TrimSpace(raw))
+	scale := int64(1)
+	for _, unit := range []struct {
+		suffix string
+		scale  int64
+	}{{"kb", 1 << 10}, {"mb", 1 << 20}, {"gb", 1 << 30}, {"b", 1}} {
+		if number, found := strings.CutSuffix(text, unit.suffix); found {
+			text, scale = strings.TrimSpace(number), unit.scale
+			break
+		}
+	}
+	value, err := strconv.ParseFloat(text, 64)
+	if err != nil || value <= 0 || value*float64(scale) > 1<<40 || int64(value*float64(scale)) < 1 {
+		return 0, fmt.Errorf("invalid size %q", raw)
+	}
+	return int64(value * float64(scale)), nil
 }

@@ -38,6 +38,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if len(args) > 0 && args[0] == "match" {
 		return runMatch(args[1:], stdout)
 	}
+	if len(args) > 0 && args[0] == "routes" {
+		return runRoutes(args[1:], stdout)
+	}
 	if len(args) > 0 && args[0] == "init" {
 		return runInit(args[1:], stdout)
 	}
@@ -162,6 +165,16 @@ func serve(ctx context.Context, cfg config, stdin io.Reader, stdout, stderr io.W
 			}
 			mockServer.SetRequestHook(rec.record)
 		}
+		mockServer.SetLimits(mockhttp.Limits{MaxBody: cfg.MaxBody, LogSize: cfg.LogSize})
+		if cfg.Journal != "" {
+			j, err := openJournal(cfg.Journal, logger)
+			if err != nil {
+				closeAll()
+				return runError("%v", err)
+			}
+			defer j.Close()
+			mockServer.SetJournal(j.write)
+		}
 		handler = mockServer
 		if input.watched() {
 			reloads = &reloader{server: mockServer, input: input, opts: opts, plan: plan, logger: logger, out: routesOut, err: stderr}
@@ -196,6 +209,7 @@ func serve(ctx context.Context, cfg config, stdin io.Reader, stdout, stderr io.W
 			MockPort:  plan.uiPort(),
 			MultiPort: len(plan.ports) > 1,
 			Redact:    cfg.Redact,
+			LogSize:   mockServer.Limits().LogSize,
 		})
 		adminListener, err = net.Listen("tcp", listenAddress(cfg.Bind, cfg.AdminPort))
 		if err != nil {

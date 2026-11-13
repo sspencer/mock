@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- `@json = {"type": "card", "amount": 100}` matches a JSON body that contains the whole document: extra members and any key order are allowed, arrays are compared element by element, and values are compared as JSON (`100` matches `100.0`, not `"100"`). It combines with `@json.field` matchers, and a near miss names the first difference.
+
+- `mock routes api.http` prints the route table without serving it: method, path, port, status, name, source line, tags and matchers, in the order routes are tried. `-json` prints the routes as `GET /routes` describes them; `-only`/`-skip`, `-port`, `-var` and `-env` work as they do for `mock`.
+
+- `@match.host = billing.example.test` (any matcher value, compared without case; the port is optional) chooses routes by the request's `Host`, so one port can stand in for several services. `mock match -H 'Host: …'`, `mock check` and the admin UI's sample requests send a matching host.
+
+- Named scenarios: `@scenario = order` puts routes in a state machine that starts in `started`, `@state = paid` lets a route answer only in that state, and `@next-state = paid` moves the scenario when the route answers. Reloads keep the state, `POST /reset` starts it over, `GET /scenarios` lists the states and `PUT /scenarios` sets one (`Mock.SetScenario` in `mocktest`). The near-miss list says which state a scenario is in.
+
+- `--max-body 10mb` reads more (or less) of each request body for body matchers, templates and the log than the default 1 MiB, and `--log-size 5000` keeps more than the default 1,000 requests in the request log and the admin UI. `mockhttp.Server.SetLimits` sets both.
+
+- `--journal requests.jsonl` appends every request event, as `GET /requests` shows it (masked with `-R`), to a file as one JSON line, so the traffic outlives the run and can be kept as a CI artifact. `mockhttp.Server.SetJournal` takes any function.
+
+- `mocktest` has `AssertCalledWith` (header, query, JSON and body expectations, with a report of why each call fell short), `LastCall`, `WaitFor` for asynchronous clients, and `AssertAllRoutesCalled`.
+
+- The admin UI explains unmatched requests: each near-miss route is a card with the failing part of every reason highlighted, an **Inspect route** button, and **Similar misses**, which filters the log with the new `near:NAME` term.
+
+- The admin UI's route list has a search box and groups routes by file, port or `@tag` (remembered per browser).
+
+- A [Troubleshooting](docs/troubleshooting.md) page: unmatched requests, reading near-miss reasons, shadowed routes, busy ports, failed reloads and missed file changes.
+
 - **Breaking:** matcher values starting with `>`, `>=`, `<` or `<=` followed by a number, or `#` followed by a length comparison, are now comparisons instead of exact matches. Write `~>100` to match the text `>100`.
 
 - Numeric and length matchers: `@json.amount = >100`, `@query.limit = <=50`, `@header.X-Retry = >=1`, and `@json.items = #>0` (the elements of a JSON array, the members of an object, or the characters of other values; `#3` is exactly 3). `mock check` and the admin UI's sample requests send values that satisfy them.

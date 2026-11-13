@@ -826,12 +826,44 @@ tbody tr.selected.no-route .status-code::before { background: var(--hi-ink); }
 
 .routes-panel {
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+/* Search and grouping sit on one line under the routes heading. */
+.routes-tools {
+    display: flex;
+    gap: 6px;
+    padding: 6px 12px 4px 18px;
+}
+
+.route-search,
+.route-group-select {
+    height: 28px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 0.8rem;
+}
+
+.route-search { flex: 1 1 auto; min-width: 0; padding: 0 8px; }
+.route-search::placeholder { color: var(--faint); opacity: 1; }
+.route-group-select { flex: 0 0 auto; padding: 0 6px; }
+.route-search:focus-visible,
+.route-group-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.routes-list li.route-group {
+    padding: 8px 12px 2px 18px;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 650;
+    overflow-wrap: anywhere;
 }
 
 .routes-collapsed .routes-panel { grid-template-rows: auto; border-top: 1px solid var(--line); }
 .routes-collapsed .routes-panel .panel-header { border-bottom: 0; }
 .routes-collapsed .routes-list,
+.routes-collapsed .routes-tools,
 .routes-collapsed #refreshRoutesButton { display: none; }
 
 .routes-list {
@@ -1159,10 +1191,21 @@ textarea.resend-input { resize: vertical; }
     font-weight: 550;
 }
 
-#mismatchDetails { max-height: 24vh; overflow: auto; }
+#mismatchDetails { max-height: 32vh; overflow: auto; }
 #mismatchDetails p { margin: 8px 0 0; }
 #mismatchDetails ul { margin: 4px 0 0; padding-left: 18px; }
 #mismatchDetails li { margin-block: 4px; overflow-wrap: anywhere; }
+
+/* Each near miss is a card: the route, then its failed requirements with the
+   requirement in highlighter, then buttons. */
+.near-miss { padding-block: 6px; }
+.near-miss + .near-miss { border-top: 1px solid var(--line); }
+.near-miss-route { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.near-miss-route .route-path { font-family: var(--mono, monospace); overflow-wrap: anywhere; }
+.near-miss-name { color: var(--muted, inherit); }
+#mismatchDetails .near-miss-count { margin-top: 4px; color: var(--warn); font-size: 0.74rem; }
+.near-miss mark { padding: 0 3px; border-radius: 3px; background: var(--hi); color: var(--hi-ink); font-weight: 600; }
+.near-miss-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .detail-content {
     position: relative;

@@ -202,10 +202,12 @@ func safeMethod(method string) bool {
 }
 
 // mockResponse serves the sample request from a server holding only this
-// route, without its delay, faults, streaming, rate limit or callback.
+// route, without its delay, faults, streaming, rate limit, callback or
+// @scenario state.
 func mockResponse(method restclient.Method, sample sampleRequest) (*checkResponse, error) {
 	method.Port, method.Fault, method.Stream, method.RateLimit, method.Callbacks = 0, "", 0, 0, nil
 	method.Delay, method.DelayMax, method.DelaySigma, method.Throttle = 0, 0, 0, 0
+	method.Scenario, method.State, method.NextState = "", "", ""
 	method.Variables = maps.Clone(method.Variables)
 	delete(method.Variables, "delay")
 	server := mockhttp.New([]restclient.Method{method}, slog.New(slog.DiscardHandler))
@@ -213,6 +215,9 @@ func mockResponse(method restclient.Method, sample sampleRequest) (*checkRespons
 
 	request := httptest.NewRequest(sample.Method, sample.Target, strings.NewReader(sample.Body))
 	request.Header = sample.Headers.Clone()
+	if sample.Host != "" {
+		request.Host = sample.Host
+	}
 	recorder := httptest.NewRecorder()
 	server.ServeHTTP(recorder, request)
 	events := server.Requests(mockhttp.RequestFilter{})

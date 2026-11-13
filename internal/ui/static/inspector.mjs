@@ -131,10 +131,11 @@ export function jsonPathSegments(path) {
 // written (JSON literals such as 42 or true stay unquoted), ">100" gives 101
 // and "#>1" an array of two "example" strings; "*" and regexp values become
 // "example"; "!" fields are left out. Numeric path segments
-// make arrays. Returns '' when there is nothing to send or paths conflict.
-export function sampleJSONBody(matchJson) {
+// make arrays. A @json document, when given, is the starting point the paths
+// are set in. Returns '' when there is nothing to send or paths conflict.
+export function sampleJSONBody(matchJson, document = '') {
     const entries = Object.entries(matchJson || {}).filter(([, value]) => value !== '!');
-    if (!entries.length) return '';
+    if (!entries.length) return document;
     const literal = value => {
         const cmp = comparison(value);
         if (cmp?.length) return Array.from({ length: sampleLength(cmp) }, () => 'example');
@@ -145,6 +146,7 @@ export function sampleJSONBody(matchJson) {
     const isIndex = segment => /^(0|[1-9][0-9]*)$/.test(segment);
     let root;
     try {
+        if (document) root = JSON.parse(document);
         for (const [path, value] of entries) {
             // A "*" segment accepts any element, so the sample puts the value first.
             const parsed = jsonPathSegments(path);
@@ -206,10 +208,12 @@ export function buildRouteCurl(route, origin) {
             if (value !== '!') parts.push('--header', shellQuote(`${name}: ${sampleFor(value) ?? 'example'}`));
         }
     }
+    // A @match.host route answers only for its host; curl sends it as Host.
+    if (route.matchHost && route.matchHost !== '!') parts.push('--header', shellQuote(`Host: ${sampleFor(route.matchHost) ?? 'example.test'}`));
     const cookies = Object.entries(route.matchCookies || {}).flatMap(([name, values]) =>
         values.filter(value => value !== '!').map(value => `${name}=${sampleFor(value) ?? 'example'}`));
     if (cookies.length) parts.push('--cookie', shellQuote(cookies.join('; ')));
-    const json = sampleJSONBody(route.matchJson);
+    const json = sampleJSONBody(route.matchJson, route.matchJsonBody);
     const form = sampleFormBody(route.matchForm);
     const body = json || form || (route.matchBody && isSampleExact(route.matchBody) ? route.matchBody : '');
     // curl sends --data-raw as application/x-www-form-urlencoded by default.
@@ -251,6 +255,7 @@ export function formatRoute(route, sampleCurl = '') {
     const matchCookies = Object.entries(route.matchCookies || {}).flatMap(([name, values]) => values.map(value => `${name}: ${describe(value)}`)).join('\n');
     const matchBody = [
         route.matchBody ? `body: ${describe(route.matchBody)}` : '',
+        route.matchJsonBody ? `json: contains ${route.matchJsonBody}` : '',
         ...Object.entries(route.matchJson || {}).map(([path, value]) => `json ${path}: ${describe(value)}`),
         ...Object.entries(route.matchXml || {}).map(([path, value]) => `xml ${path}: ${describe(value)}`),
         ...Object.entries(route.matchForm || {}).flatMap(([name, values]) => values.map(value => `form ${name}: ${describe(value)}`)),
@@ -262,6 +267,7 @@ export function formatRoute(route, sampleCurl = '') {
         `Source: ${route.source || '(unknown)'}:${route.line || '?'} · revision ${route.revision}`,
         `Matched: ${hitsLabel(route.hits)}`,
         route.port ? `Port: ${route.port}` : '',
+        route.matchHost ? `Host: ${describe(route.matchHost)}` : '',
         route.tags?.length ? `Tags: ${route.tags.join(' · ')}` : '',
         route.proxy ? `Proxy: ${route.proxy}${route.delay && route.delay !== '0s' ? ` · delay ${route.delay}` : ''}` : `Response: ${route.statusTemplate || route.status} · delay ${route.delay || '0s'}${route.stream ? ` · stream ${route.stream}` : ''}${route.fault ? ` · fault ${route.fault}` : ''}${route.throttle ? ` · throttle ${route.throttle}` : ''}${route.compress ? ` · compress ${route.compress}` : ''}`,
         route.fixture ? `Fixture: ${route.fixture}` : '',
@@ -271,6 +277,7 @@ export function formatRoute(route, sampleCurl = '') {
         route.override ? `Fault override: ${route.override} (POST /faults; DELETE /faults clears it)` : '',
         route.chance ? `Chance: answers ${route.chance} of matching requests` : '',
         route.require ? `Requires: ${route.require} (else later routes answer)` : '',
+        route.scenario ? `Scenario: ${route.scenario}${route.state ? ` · answers in state ${route.state}` : ''}${route.nextState ? ` · then moves to ${route.nextState}` : ''}` : '',
         route.times ? `Times: answers ${route.times === 1 ? 'once' : `${route.times} times`}, ${route.timesLeft ?? route.times} left (POST /reset starts over)` : '',
         route.missing ? `Missing body file: ${route.missing === 'next' ? 'later routes answer' : `answers ${route.missing}`}` : '',
         route.etag ? 'ETag: automatic, with 304 for a matching If-None-Match' : '',

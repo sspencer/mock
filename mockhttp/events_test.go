@@ -135,12 +135,12 @@ func TestPublishRequestBoundsStoredEventsAndDropsFullSubscribers(t *testing.T) {
 		subscriber <- RequestEvent{}
 	}
 
-	for i := 0; i < maxRequestEvents+5; i++ {
+	for i := 0; i < DefaultLogSize+5; i++ {
 		server.publishRequest(RequestEvent{Request: EventRequest{URL: "/" + string(rune('a'+i%26))}})
 	}
 
-	if len(server.events) != maxRequestEvents {
-		t.Fatalf("len(events) = %d, want %d", len(server.events), maxRequestEvents)
+	if len(server.events) != DefaultLogSize {
+		t.Fatalf("len(events) = %d, want %d", len(server.events), DefaultLogSize)
 	}
 	if len(subscriber) != cap(subscriber) {
 		t.Fatalf("len(subscriber) = %d, want still full %d", len(subscriber), cap(subscriber))
@@ -267,7 +267,7 @@ func TestConcurrentPublicationIsOrdered(t *testing.T) {
 func TestOverflowDisconnectsAndReconnectResetsGap(t *testing.T) {
 	s := New(nil, nil)
 	_, ch := s.subscribe()
-	for range maxRequestEvents + 50 {
+	for range DefaultLogSize + 50 {
 		s.publishRequest(RequestEvent{})
 	}
 	for range ch {
@@ -278,7 +278,7 @@ func TestOverflowDisconnectsAndReconnectResetsGap(t *testing.T) {
 	r.Header.Set("Last-Event-ID", fmt.Sprintf("%s/1", s.session))
 	w := httptest.NewRecorder()
 	s.ServeEvents(w, r)
-	if !strings.Contains(w.Body.String(), "event: reset") || !strings.Contains(w.Body.String(), fmt.Sprintf("%s/%d", s.session, maxRequestEvents+50)) {
+	if !strings.Contains(w.Body.String(), "event: reset") || !strings.Contains(w.Body.String(), fmt.Sprintf("%s/%d", s.session, DefaultLogSize+50)) {
 		t.Fatal("missing reset or replay")
 	}
 }
@@ -341,5 +341,33 @@ func TestSSESurvivesServerWriteTimeout(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for SSE event after WriteTimeout window")
+	}
+}
+
+func TestSetLimits(t *testing.T) {
+	methods, err := restclient.Parse("limits.http", strings.NewReader("### Big\n@body = *\nPOST /big\n\nbig\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if got := s.Limits(); got.MaxBody != DefaultMaxBody || got.LogSize != DefaultLogSize {
+		t.Fatalf("default limits = %+v", got)
+	}
+	s.SetLimits(Limits{MaxBody: 10, LogSize: 3})
+	if code, _ := serveBody(t, s, "/big", "0123456789"); code != 200 {
+		t.Errorf("10-byte body: %d, want 200", code)
+	}
+	if code, _ := serveBody(t, s, "/big", "0123456789a"); code != 404 {
+		t.Errorf("11-byte body: %d, want 404", code)
+	}
+	for range 5 {
+		serveBody(t, s, "/big", "x")
+	}
+	if len(s.events) != 3 || s.events[2].ID != 7 || s.events[0].ID != 5 {
+		t.Errorf("log after 7 requests holds %d events, last %d", len(s.events), s.events[len(s.events)-1].ID)
+	}
+	s.SetLimits(Limits{LogSize: 2})
+	if len(s.events) != 2 || s.events[0].ID != 6 || s.Limits().MaxBody != DefaultMaxBody {
+		t.Errorf("after shrinking: %d events, limits %+v", len(s.events), s.Limits())
 	}
 }

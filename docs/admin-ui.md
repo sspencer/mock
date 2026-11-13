@@ -13,12 +13,13 @@ The UI is served at the root of the admin port (`-a`, default `8081`):
 | `/clear` | `POST` clears stored events |
 | `/reload` | `POST` reloads the request files now and returns the new state (see [Reloading](cli.md#reloading)) |
 | `/state` | `GET` active revision, route count, last successful reload, reload error, and the number of route `switches` in effect |
-| `/routes` | `POST` adds temporary routes and `DELETE /routes/{id}` removes them (see [Temporary routes](#temporary-routes)); `GET` route configuration, including source location, port, matchers, status, delay, `throttle`, `override` (a description of the `/faults` override in effect), `switch` (the route's own override, as set), `fallback`, `chance`, `defaultContentType`, `statusTemplate`, `require`, `missing`, `etag`, `times`, `timesLeft`, `tags` and `temporary` when set, body preview, and `hits` (requests answered); `GET /routes?tag=billing` lists only the routes with that `@tag` |
+| `/routes` | `POST` adds temporary routes and `DELETE /routes/{id}` removes them (see [Temporary routes](#temporary-routes)); `GET` route configuration, including source location, port, matchers, status, delay, `throttle`, `override` (a description of the `/faults` override in effect), `switch` (the route's own override, as set), `fallback`, `chance`, `defaultContentType`, `statusTemplate`, `require`, `missing`, `etag`, `times`, `timesLeft`, `matchHost`, `scenario`, `state`, `nextState`, `tags` and `temporary` when set, body preview, and `hits` (requests answered); `GET /routes?tag=billing` lists only the routes with that `@tag` |
 | `/requests` | `GET` the request log as JSON, optionally filtered (see below) |
 | `/verify` | `POST` checks how often calls were received and answers `200` or `422` (see [Verifying calls](#verifying-calls)) |
 | `/resend` | `POST` answers a request as if a client sent it to the mock port (see [Resending a request](#resending-a-request)) |
 | `/fixture` | `GET ?route=ID` reads a route's `@fixture` file; `PUT` writes it (see [Editing fixtures](#editing-fixtures)) |
-| `/reset` | `POST` starts `@times` and `{{$hits}}` counts, `@rate-limit` budgets and `@match.chance` draws over, and removes `/faults` overrides and temporary routes, without a reload; answers like `/state` |
+| `/scenarios` | `GET` lists each [`@scenario`](matching.md#scenarios) as `{"name", "state", "states"}`; `PUT` with `{"name": "order", "state": "paid"}` moves one to a state (an empty state is `started`) and answers with the list |
+| `/reset` | `POST` starts `@times` and `{{$hits}}` counts, `@rate-limit` budgets and `@match.chance` draws over, returns every `@scenario` to `started`, and removes `/faults` overrides and temporary routes, without a reload; answers like `/state` |
 | `/faults` | `GET` lists run-time route switches and fault overrides; `POST` sets one for a route or `*` (delay, fault, throttle, `off`, `status`); `DELETE` clears them (see [Changing faults at run time](responses.md#changing-faults-at-run-time)) |
 
 ### Admin access token
@@ -113,7 +114,7 @@ or a JSON `Content-Type`, and reject cross-origin and cross-site requests.
 
 `GET /requests` returns the request log as a JSON array, oldest first: the
 same events the UI shows, with the request, the response, and the route that
-answered (`match.route`, or `null`). It holds the latest 1,000 requests since
+answered (`match.route`, or `null`). It holds the latest 1,000 requests (`--log-size`) since
 `mock` started or the log was last cleared. Query parameters narrow it, and
 combine:
 
@@ -154,7 +155,7 @@ curl -s localhost:8081/verify -H 'Content-Type: application/json' \
 | `allMatched` | `true` on its own: no request went unmatched (requests forwarded with `--upstream` count as unmatched) |
 
 A `call` with no count must have been received at least once. Counts cover the
-request log (the latest 1,000 requests since `mock` started or `POST /clear`)
+request log (the latest 1,000 requests, or `--log-size`, since `mock` started or `POST /clear`)
 and leave out webhook callbacks. `mock` answers `200` when every expectation
 holds and `422` when any fails, with `ok`, a `results` entry per expectation
 (`want`, `got`, `ok` and a failure `message`), and a `message` that lists the
@@ -287,6 +288,7 @@ separated by spaces (case does not matter):
 | `get`, `POST`, ... | with this method |
 | `route:Users`, `route:"User detail"` | answered by the route with this name (quote names with spaces) |
 | `tag:billing` | answered by a route with this [`@tag`](matching.md#route-tags) |
+| `near:Users`, `near:"Create user"` | unmatched, with this route among the near misses |
 | anything else | whose method, URL, status, status text, label (`proxied`, `callback`) or fault contains it |
 
 A `-` in front excludes instead: `post -2xx` shows failed POSTs. Clicking a
@@ -312,8 +314,13 @@ On narrow screens, selecting traffic or a route opens the inspector; use
   instead of producing a misleading replay command. Copied credentials are
   included unless `mock` runs with [`-R`](#credential-redaction).
 - Matched requests show the fixture name, source file/line, configuration revision,
-  and elapsed time. Unmatched requests show up to five
-  nearby routes with method, path, query, header, and body mismatch explanations.
+  and elapsed time. Unmatched requests open **Why didn’t this request match?**
+  with up to five nearby routes. Each shows how many requirements failed and
+  lists them with the failing requirement highlighted (`Query role`,
+  `Header X-Tenant`, `JSON amount`, `Method`, `Port`, ...) followed by what was
+  expected and received. **Inspect route** shows that route's sheet, and
+  **Similar misses** filters the traffic to `near:"Name"`: every unmatched
+  request that route nearly answered.
   Requests forwarded with `--upstream` or by a `@proxy` route are marked
   **proxied** in the table (the filter matches `proxied`), and the inspector
   names the URL they were sent to. [Webhook callbacks](responses.md#webhook-callbacks) are
@@ -371,12 +378,17 @@ On narrow screens, selecting traffic or a route opens the inspector; use
   Callbacks and requests a route answered are skipped.
 - The routes list shows how many requests each route has answered; dimmed `0`s
   are routes nothing has matched yet.
+- **Find routes**, above the list, keeps the routes that contain every word
+  you type in their method, path, name, request file or tags (the count reads
+  `3 of 12`); Escape clears it. The menu beside it groups the list **By file**,
+  **By port** or **By tag** (a route with two tags is in both groups, untagged
+  routes last). The grouping is remembered in the browser.
 - Select a configured route to inspect its match requirements, response headers,
   variables, status, delay, and body template or file reference. File contents
   are not loaded into the route preview; large inline previews are truncated.
 - Failed reloads retain active routes and show an error banner. The banner is
   hidden during normal operation to leave more room for traffic and details.
-Pause freezes the table while buffering the latest 1,000 new requests. Resume
+Pause freezes the table while buffering the latest 1,000 new requests (`--log-size`). Resume
 shows that traffic; the status indicates how many older paused requests were
 omitted. The **Clear log** button clears server history across connected tabs.
 Traffic arriving after the clear boundary remains.
@@ -386,7 +398,7 @@ reconnect to replay retained events; a history gap or restart emits a `reset`
 event before replay. Clear emits a `clear` event. Request events include the selected route
 and configuration revision (or mismatch candidates, plus `upstream` when the
 request was forwarded). History is limited to 1,000
-events; gaps are reported rather than silently hidden. Event bodies include
+events (`--log-size`); gaps are reported rather than silently hidden. Event bodies include
 separate byte counts, truncation metadata, and base64 encoding for binary data.
 
 Export HAR downloads captured requests, including byte sizes and binary

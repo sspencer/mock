@@ -76,5 +76,6 @@ nav:
       - real-apis.md
       - testing.md
       - admin-ui.md
+      - troubleshooting.md
   - Design notes:
       - ideas.md

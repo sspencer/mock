@@ -203,7 +203,7 @@ A `POST /echo?a=1` with a JSON body answers:
 - `method`, `url` (path and query as sent), `path` (decoded), `host` and
   `body` (as text) are strings. `query` and `headers` map each name to an array
   of values, since both can repeat. `json` is the decoded body, present only
-  when the body is JSON. A body over 1 MiB has `"body":null` and
+  when the body is JSON. A body over 1 MiB (`--max-body`) has `"body":null` and
   `"bodyUnavailable":true`.
 - A path reads one part, using [`@json.*`](matching.md#body-matching) paths:
   `{{$request.method}}`, `{{$request.headers.User-Agent.0}}`,

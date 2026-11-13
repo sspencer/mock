@@ -1,3 +1,12 @@
+### [201] Test order
+# A whole-document @json: the body must contain these members (extra members are fine).
+# Run: curl -d '{"customer":{"name":"Test","vip":false},"test":true,"items":[]}' localhost:8080/orders
+@json = {"customer": {"name": "Test"}, "test": true}
+POST /orders
+Content-Type: application/json
+
+{"id": "test-order", "status": "discarded"}
+
 ### [201] Express order
 # JSON field matching: dot-separated paths reach into nested objects.
 # Run: curl -d '{"customer":{"name":"Avery"},"shipping":{"method":"express"},"items":[{"sku":"TEA-001","qty":2}]}' localhost:8080/orders

@@ -51,6 +51,7 @@ type RouteInfo struct {
 	MatchPath     map[string]string `json:"matchPath,omitempty"`
 	MatchBody     string            `json:"matchBody,omitempty"`
 	MatchJSON     map[string]string `json:"matchJson,omitempty"`
+	MatchJSONBody string            `json:"matchJsonBody,omitempty"`
 	MatchXML      map[string]string `json:"matchXml,omitempty"`
 	MatchForm     url.Values        `json:"matchForm,omitempty"`
 	MatchCookies  url.Values        `json:"matchCookies,omitempty"`
@@ -88,6 +89,13 @@ type RouteInfo struct {
 	Fallback bool `json:"fallback,omitempty"`
 	// Chance is the @match.chance share, such as "20%", when set.
 	Chance string `json:"chance,omitempty"`
+	// MatchHost is the @match.host matcher, when set.
+	MatchHost string `json:"matchHost,omitempty"`
+	// Scenario, State and NextState are the @scenario, @state and
+	// @next-state, when set.
+	Scenario  string `json:"scenario,omitempty"`
+	State     string `json:"state,omitempty"`
+	NextState string `json:"nextState,omitempty"`
 	// Tags are the route's @tag names, when it has any.
 	Tags []string `json:"tags,omitempty"`
 	// Hits counts the requests this route has answered, carried across
@@ -135,9 +143,9 @@ func describeRoute(method restclient.Method, index int, revision uint64) RouteIn
 	}
 	return RouteInfo{ID: fmt.Sprintf("%d:%d", revision, index), Revision: revision, Name: method.Name, Method: method.Method,
 		Path: (&url.URL{Path: method.Path, RawPath: method.EscapedPath}).EscapedPath(), Query: method.Query.Encode(), Port: method.Port, Source: method.Source, Line: method.Line, Status: method.Status,
-		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), Proxy: method.Proxy, Fixture: method.Fixture, Compress: method.Compress, Callback: describeCallback(method), RateLimit: describeRateLimit(method), DefaultContentType: method.DefaultContentType, Throttle: describeThrottle(method.Throttle), StatusTemplate: method.StatusTemplate, Require: describeRequire(method), Missing: describeMissing(method), ETag: method.ETag, Times: method.Times, Temporary: temporaryID(method), Fallback: method.Fallback, Chance: describeChance(method), Tags: append([]string(nil), method.Tags...), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
+		Delay: describeDelay(method), Stream: describeStream(method), Fault: describeFault(method), Proxy: method.Proxy, Fixture: method.Fixture, Compress: method.Compress, Callback: describeCallback(method), RateLimit: describeRateLimit(method), DefaultContentType: method.DefaultContentType, Throttle: describeThrottle(method.Throttle), StatusTemplate: method.StatusTemplate, Require: describeRequire(method), Missing: describeMissing(method), ETag: method.ETag, Times: method.Times, Temporary: temporaryID(method), Fallback: method.Fallback, Chance: describeChance(method), MatchHost: method.MatchHost, Scenario: method.Scenario, State: method.State, NextState: method.NextState, Tags: append([]string(nil), method.Tags...), File: method.File, Headers: method.Headers.Clone(), MatchHeaders: method.MatchHeaders.Clone(),
 		MatchQuery: cloneValues(method.MatchQuery), MatchPath: cloneOptional(method.MatchPath),
-		MatchBody: method.MatchBody, MatchJSON: cloneOptional(method.MatchJSON), MatchXML: cloneOptional(method.MatchXML), MatchForm: cloneValues(method.MatchForm), MatchCookies: cloneValues(method.MatchCookies),
+		MatchBody: method.MatchBody, MatchJSON: cloneOptional(method.MatchJSON), MatchJSONBody: method.MatchJSONBody, MatchXML: cloneOptional(method.MatchXML), MatchForm: cloneValues(method.MatchForm), MatchCookies: cloneValues(method.MatchCookies),
 		Variables: cloneVariables(method.Variables), Body: body, BodyTruncated: truncated}
 }
 
@@ -231,6 +239,10 @@ func mismatch(method restclient.Method, facts *requestFacts) RouteMismatch {
 		result.Reasons = append(result.Reasons, fmt.Sprintf("Served on port %d; request arrived on port %d", method.Port, localPort))
 		result.score += 3
 	}
+	if !hostMatches(method.MatchHost, r.Host) {
+		result.Reasons = append(result.Reasons, "Host: "+matcherReason(restclient.MustMatcher(method.MatchHost), hostValues(r.Host)[:1], true))
+		result.score += 3
+	}
 	params, pathOK := matchPath(pattern, r.URL.EscapedPath())
 	if !pathOK {
 		result.Reasons = append(result.Reasons, fmt.Sprintf("Path %q does not match %q", r.URL.EscapedPath(), pattern))
@@ -306,6 +318,12 @@ func mismatch(method restclient.Method, facts *requestFacts) RouteMismatch {
 		}
 		result.Reasons = append(result.Reasons, reason)
 		result.score++
+	}
+	if method.MatchJSONBody != "" {
+		if reason := facts.jsonBodyMismatch(method.MatchJSONBody); reason != "" {
+			result.Reasons = append(result.Reasons, reason)
+			result.score++
+		}
 	}
 	for _, path := range slices.Sorted(maps.Keys(method.MatchJSON)) {
 		if facts.jsonMatches(path, method.MatchJSON[path]) {
@@ -416,7 +434,8 @@ func abs(value int) int {
 
 // closestRoutes ranks the routes by how close they came to matching. uses
 // holds each route's @times counter, aligned with methods (it may be nil).
-func closestRoutes(methods []restclient.Method, uses []*atomic.Uint64, facts *requestFacts) []RouteMismatch {
+// waiting (which may be nil) explains why a route waits for its @scenario.
+func closestRoutes(methods []restclient.Method, uses []*atomic.Uint64, facts *requestFacts, waiting func(*restclient.Method) string) []RouteMismatch {
 	candidates := make([]RouteMismatch, 0, len(methods))
 	for i, method := range methods {
 		candidate := mismatch(method, facts)
@@ -426,6 +445,11 @@ func closestRoutes(methods []restclient.Method, uses []*atomic.Uint64, facts *re
 			if values, ok := facts.match(&method, facts.r.Method); ok {
 				path, _ := matchPath(routePattern(method), facts.r.URL.EscapedPath())
 				if reason := unavailable(&method, templateValues{values: values, path: path, facts: facts}); reason != "" {
+					candidate.Reasons = []string{reason}
+				}
+			}
+			if len(candidate.Reasons) == 0 && waiting != nil {
+				if reason := waiting(&method); reason != "" {
 					candidate.Reasons = []string{reason}
 				}
 			}
