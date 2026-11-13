@@ -26,6 +26,12 @@ Or run the published image, for Linux on `amd64` and `arm64` (more under
 docker run --rm -p 8080:8080 -p 8081:8081 ghcr.io/sspencer/mock
 ```
 
+The cask also installs the `mock(1)` man page and bash, zsh and fish
+completions. With another install, `mock completion bash|zsh|fish|powershell`
+and `mock man` write them (see
+[Shell completion and the man page](cli.md#shell-completion-and-the-man-page));
+the release archives include them under `completions/` and `man/`.
+
 In GitHub Actions, `uses: sspencer/mock@v0.6.0` installs the release binary
 (see [GitHub Actions](testing.md#github-actions)).
 

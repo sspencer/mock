@@ -2,6 +2,12 @@ version: 2
 
 project_name: mock
 
+# Shell completions and the man page, generated from the usage text into
+# build/release for the archives and the cask.
+before:
+  hooks:
+    - make release-files VERSION={{ .Tag }}
+
 builds:
   - id: mock
     main: .
@@ -33,6 +39,12 @@ archives:
       - docs/*.md
       - docs/*.png
       - CHANGELOG.md
+      - src: build/release/completions/*
+        dst: completions
+        strip_parent: true
+      - src: build/release/man/mock.1
+        dst: man
+        strip_parent: true
 
 checksum:
   name_template: checksums.txt
@@ -70,6 +82,11 @@ homebrew_casks:
     homepage: https://github.com/sspencer/mock
     description: Turn REST Client .http files into a local HTTP mock server
     license: Unlicense
+    manpages: [man/mock.1]
+    completions:
+      bash: completions/mock.bash
+      zsh: completions/_mock
+      fish: completions/mock.fish
     repository:
       owner: sspencer
       name: homebrew-tap

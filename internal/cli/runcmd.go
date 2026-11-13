@@ -24,8 +24,19 @@ func runRun(ctx context.Context, args []string, stdin io.Reader, stdout, stderr 
 		return usageError("missing the command to run after --\n%s", runUsage)
 	}
 	flags, command := args[:split], args[split+1:]
-	// Free ports unless -p or -a say otherwise: later flags win.
-	cfg, err := parseConfig(append([]string{"-p", "0", "-a", "0"}, flags...))
+	if wantsHelp(flags) {
+		fmt.Fprintln(stdout, runUsage)
+		fmt.Fprint(stdout, "\nThe flags are mock's own (see mock -h); -s is always on.\n")
+		return nil
+	}
+	pc, flags, err := loadProjectConfig(flags)
+	if err != nil {
+		return err
+	}
+	// Free ports unless -p or -a on the command line say otherwise: later
+	// flags win, and these come after the config file's.
+	pc.flags = append(pc.flags, "-p", "0", "-a", "0")
+	cfg, err := parseConfigWith(pc, flags)
 	if err != nil {
 		return err
 	}

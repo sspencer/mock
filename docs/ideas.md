@@ -47,7 +47,6 @@ best value for their effort, in suggested order:
 | ID | Idea | Effort | Why |
 |----|------|--------|-----|
 | [`UI-2`](#admin-ui) | Save a draft to the file | M | Closes the loop from an unmatched request to a route without leaving the UI; `PUT /fixture` already has the guarded, versioned, atomic write it needs |
-| [`CL-2`](#command-line-and-configuration) | Project config file | S | The flag list keeps growing (`--journal`, `--max-body`, `--ready-file`, `--h2c`, `-e`); a project should write its flags once |
 | [`PR-1`](#protocols) | GraphQL matchers | M | The GraphQL recipe works only when clients send `operationName`; matching on the parsed operation and variables makes GraphQL APIs first-class |
 | [`CL-8`](#command-line-and-configuration) | Open new ports on reload | M | The one kind of edit hot reload still rejects; it forces a restart in the middle of a session |
 | [`TE-10`](#testing-and-ci) | Contract snapshot | M | Seeds and `mock routes` make rendering deterministic; a snapshot turns a request-file change into a reviewable diff of what clients will receive |
@@ -97,9 +96,6 @@ state only decides whether a route is eligible.
 
 | ID | Idea | Effort | Description |
 |----|------|--------|-------------|
-| `CL-2` | Project config file | **S** | A `mock.toml` (or `.mockrc`) in the working directory holding the flags a project always passes: files, directories, ports, upstream, redaction. Flags still win. |
-| `CL-4` | `mock fmt` | **M** | Normalize spacing, directive order and blank lines in `.http` files, like `gofmt`, with `-check` for CI. Most useful once files are shared across a team. |
-| `CL-6` | Shell completions and a man page | **S** | `mock completion bash\|zsh\|fish\|powershell` and a generated `mock.1`, shipped in the release archives. |
 | `CL-8` | Open new ports on reload | **M** | A reload that adds a route on a new port is rejected today. Bind the new listener (and close ones no route uses) during reload, keeping the old plan when a bind fails. |
 | `CL-12` | Listen on a Unix socket | **S** | `-b unix:/tmp/mock.sock` for sidecar and container setups that avoid TCP ports. |
 

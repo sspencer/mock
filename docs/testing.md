@@ -125,7 +125,8 @@ The step fails like `mock run` does: with the command's status, or `1` when
 it passed but a request went unmatched (or a route never matched, with
 `--strict=unused`). The `version` output is the installed tag. Without `run`,
 later steps can call `mock` directly, for example
-`mock validate -strict mocks` or `mock run mocks/api.http -- ./test.sh`. A
+`mock validate -strict mocks`, `mock fmt -check mocks` (see
+[Formatting request files](cli.md#formatting-request-files)) or `mock run mocks/api.http -- ./test.sh`. A
 JUnit report can go to any step or action that publishes test results.
 
 ## Using mock in Go tests

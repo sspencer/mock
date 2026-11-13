@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- A `.mockrc` file in the working directory holds the flags a project always passes (one flag per line, or request files and directories). Flags on the command line win; repeatable flags add to the file's. `--config FILE` reads another file and `--no-config` reads none. `mock run` reads it too.
+
+- `mock fmt` rewrites request files in one layout (line endings, blank lines, directive order, header spacing), refusing any change that would alter the routes; `mock fmt -check` lists the files that need it and exits `1`, for CI.
+
+- `mock completion bash|zsh|fish|powershell` writes a shell completion script and `mock man` writes the `mock(1)` man page, both generated from the usage text. The release archives include them and the Homebrew cask installs them.
+
 - `mock wait` blocks until a running `mock` answers on its admin port (exit `1` after `-timeout`, `10s` by default), and `--ready-file mock.json` writes the bound addresses (`url`, `adminUrl`, `mock`, `routes`, `pid`) once every port is listening and removes the file at shutdown. `mock wait -file mock.json` waits for it and prints the mock URL, so scripts can use random ports without `sleep`.
 
 - `@query.tag[] = ~(red|green|blue)` and `@header.X-Id[] = ...` require every value of a repeated query parameter or header to match (a length matcher such as `#2` counts the values), and `{{$query.tag[]}}` inserts every value as a JSON array. `tag[]=` parameters count as values of `tag`.
