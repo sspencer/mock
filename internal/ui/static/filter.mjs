@@ -7,6 +7,8 @@
 //   route:NAME           answered by the route with this name; quote a name
 //                        with spaces: route:"User detail"
 //   tag:NAME             answered by a route with this @tag
+//   near:NAME            unmatched, with the route of this name among the
+//                        near misses
 //   anything else        text in the method, URL, status, badge or fault
 //
 // Terms are case-insensitive. "-term" negates a term, such as -2xx.
@@ -22,12 +24,13 @@ export function filterTerms(text) {
         terms.push({ negate: negate === '-', prefix: (prefix || '').toLowerCase(), value: (quoted ?? plain ?? '').toLowerCase() });
     }
     // "route:" alone is a prefix with nothing after it yet; ignore it while typing.
-    return terms.filter(term => term.prefix ? term.value : term.value !== 'route:' && term.value !== 'tag:');
+    return terms.filter(term => term.prefix ? term.value : !['route:', 'tag:', 'near:'].includes(term.value));
 }
 
-// routeFilter returns the filter text that shows one route's requests.
-export function routeFilter(name) {
-    return /[\s"]/.test(name) || !name ? `route:"${(name || '').replaceAll('"', '')}"` : `route:${name}`;
+// routeFilter returns the filter text that shows one route's requests, or
+// with prefix "near", the unmatched requests that nearly matched it.
+export function routeFilter(name, prefix = 'route') {
+    return /[\s"]/.test(name) || !name ? `${prefix}:"${(name || '').replaceAll('"', '')}"` : `${prefix}:${name}`;
 }
 
 // statusClass is "2xx" for 200..299 and so on; "" without a status.
@@ -36,6 +39,7 @@ const statusClass = (status) => status >= 100 && status < 600 ? `${Math.floor(st
 function termMatches(term, event, haystack) {
     const { prefix, value } = term;
     if (prefix === 'route') return (event.match?.route?.name || '').toLowerCase() === value && !event.callback;
+    if (prefix === 'near') return !event.match?.route && !event.callback && (event.match?.candidates || []).some(c => (c.name || '').toLowerCase() === value);
     if (prefix === 'tag') return (event.match?.route?.tags || []).some(tag => tag.toLowerCase() === value) && !event.callback;
     if (prefix) return haystack.includes(`${prefix}:${value}`);
     if (/^[1-5]xx$/.test(value)) return statusClass(Number(event.response?.status)) === value;

@@ -156,6 +156,11 @@ func matchRequest(method, target, body string, headers http.Header, port int) (*
 	for name, values := range headers {
 		req.Header[name] = append([]string(nil), values...)
 	}
+	// -H 'Host: x' is the request's host, as for a real client.
+	if host := req.Header.Get("Host"); host != "" {
+		req.Host = host
+		req.Header.Del("Host")
+	}
 	if body != "" && req.Header.Get("Content-Type") == "" {
 		trimmed := strings.TrimSpace(body)
 		if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {

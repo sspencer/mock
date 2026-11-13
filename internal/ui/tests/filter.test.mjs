@@ -37,6 +37,16 @@ test('tag terms match a tag of the answering route', () => {
     assert.deepEqual(filterTerms('tag:'), []);
 });
 
+test('near terms match unmatched requests a route nearly answered', () => {
+    const near = { match: { candidates: [{ name: 'Create user', reasons: ['Body: x'] }] } };
+    assert.ok(show('near:"create user"', ev('POST', 404, near)));
+    assert.ok(!show('near:"create user"', ev('POST', 201, { match: { route: { name: 'Create user' }, candidates: near.match.candidates } })));
+    assert.ok(!show('near:other', ev('POST', 404, near)));
+    assert.ok(!show('near:"create user"', { ...ev('POST', 404, near), callback: { url: 'x' } }));
+    assert.equal(routeFilter('Create user', 'near'), 'near:"Create user"');
+    assert.deepEqual(filterTerms('near:'), []);
+});
+
 test('other terms search the text', () => {
     assert.ok(show('users proxied', ev('GET', 200), 'get /users 200 proxied'));
     assert.ok(!show('orders', ev('GET', 200), 'get /users 200'));

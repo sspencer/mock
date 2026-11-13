@@ -21,7 +21,7 @@ import (
 )
 
 // requestBody is the part of a request body that body matchers see.
-// unavailable is set when the body was larger than maxMatchBodyBytes or could
+// unavailable is set when the body was larger than the body limit or could
 // not be read; then no body matcher matches.
 type requestBody struct {
 	data        []byte
@@ -70,9 +70,10 @@ func (s *Server) findMethod(r *http.Request, body requestBody) (*restclient.Meth
 // Explain reports which route would answer r, or the closest routes when
 // none would, without serving it: no hit is counted, no @times answer is
 // used, and a @match.chance route counts as eligible (its RouteInfo.Chance
-// says it answers only that share). It reads r's body, up to 1 MiB.
+// says it answers only that share). It reads r's body, up to the body limit
+// (see SetLimits).
 func (s *Server) Explain(r *http.Request) MatchInfo {
-	_, body := readRequestBody(r)
+	_, body := readRequestBody(r, s.Limits().MaxBody)
 	_, _, info, _ := s.selectRoute(r, body, true)
 	return info
 }
@@ -108,10 +109,10 @@ func (s *Server) selectRoute(r *http.Request, body requestBody, dry bool) (*rest
 					}
 					path, _ := matchPath(routePattern(*method), r.URL.EscapedPath())
 					tv := templateValues{values: values, path: path, facts: facts}
-					if unavailable(method, tv) != "" || usedUp(method, uses[i]) || s.switchedOff(*method) {
+					if unavailable(method, tv) != "" || usedUp(method, uses[i]) || s.switchedOff(*method) || !s.scenarioReady(method) {
 						continue
 					}
-					if !dry && (!rollChance(method, rolls[i]) || !takeUse(method, uses[i])) {
+					if !dry && (!rollChance(method, rolls[i]) || !takeUse(method, uses[i]) || !s.advanceScenario(method)) {
 						continue
 					}
 					route := describeRoute(*method, i, revision)
@@ -128,7 +129,7 @@ func (s *Server) selectRoute(r *http.Request, body requestBody, dry bool) (*rest
 			}
 		}
 	}
-	candidates := closestRoutes(methods, uses, facts)
+	candidates := closestRoutes(methods, uses, facts, s.scenarioReason)
 	for i := range candidates {
 		if candidates[i].Reasons[0] == "No matching response available" && s.switchedOffAt(methods, candidates[i]) {
 			candidates[i].Reasons = []string{"Switched off at run time (the admin UI's route switches, or DELETE /faults to switch it back on)"}
@@ -146,7 +147,7 @@ func methodAnswers(route restclient.Method, requestMethod string) bool {
 // match reports whether method accepts the request, treated as requestMethod,
 // and returns the path and query values available to its templates.
 func (f *requestFacts) match(method *restclient.Method, requestMethod string) (map[string]string, bool) {
-	if !method.Accepts(requestMethod) || !portMatches(method.Port, f.localPort) {
+	if !method.Accepts(requestMethod) || !portMatches(method.Port, f.localPort) || !hostMatches(method.MatchHost, f.r.Host) {
 		return nil, false
 	}
 	values, ok := matchPath(routePattern(*method), f.r.URL.EscapedPath())
@@ -164,6 +165,9 @@ func (f *requestFacts) match(method *restclient.Method, requestMethod string) (m
 		}
 	}
 	if method.MatchBody != "" && !f.bodyMatches(method.MatchBody) {
+		return nil, false
+	}
+	if method.MatchJSONBody != "" && !f.jsonBodyMatches(method.MatchJSONBody) {
 		return nil, false
 	}
 	for path, expected := range method.MatchJSON {
@@ -419,6 +423,35 @@ func (f *requestFacts) jsonMatches(path, expected string) bool {
 	return err == nil && matcher.MatchAny(values)
 }
 
+// jsonBodyMismatch compares the JSON body with a @json document. It returns
+// "" when the body contains the document, else a near-miss reason.
+func (f *requestFacts) jsonBodyMismatch(document string) string {
+	root, err := f.jsonDocument()
+	if err != nil {
+		return "JSON body: " + err.Error()
+	}
+	if root == nil {
+		return "JSON body: expected a JSON body; received none"
+	}
+	expected, err := restclient.DecodeJSON([]byte(document))
+	if err != nil {
+		return "JSON body: invalid @json document"
+	}
+	ok, mismatch := restclient.JSONContains(root, expected)
+	if ok {
+		return ""
+	}
+	path := mismatch.Path
+	if path == "" {
+		path = "body"
+	}
+	return "JSON " + path + ": expected " + mismatch.Expected + "; received " + mismatch.Received
+}
+
+func (f *requestFacts) jsonBodyMatches(document string) bool {
+	return f.jsonBodyMismatch(document) == ""
+}
+
 // jsonLengths is the length of each selected JSON value: an array's
 // elements, an object's members, a string's characters, or the text of a
 // number or boolean. Null and missing values have none.
@@ -644,6 +677,23 @@ func queryMatches(expected url.Values, actual url.Values) bool {
 // headerMatches requires every expected header matcher to accept the request's
 // values for that header: an exact value, "*" (present and non-blank), "!"
 // (missing or blank), or "~pattern" (a full-value regular expression).
+// hostValues is what @match.host compares: the request's host in lower case
+// without its port, then with it when it has one.
+func hostValues(host string) []string {
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	name, port, err := net.SplitHostPort(host)
+	if err != nil {
+		return []string{strings.Trim(host, "[]")}
+	}
+	return []string{strings.TrimSuffix(name, "."), net.JoinHostPort(name, port)}
+}
+
+// hostMatches applies a @match.host matcher to the request's Host header;
+// an empty matcher accepts any host.
+func hostMatches(expected, host string) bool {
+	return expected == "" || restclient.MustMatcher(expected).Match(hostValues(host))
+}
+
 func headerMatches(expected http.Header, actual http.Header) bool {
 	for name, expectedValues := range expected {
 		actualValues := actual.Values(name)

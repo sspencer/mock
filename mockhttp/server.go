@@ -58,6 +58,9 @@ type Server struct {
 	defaults atomic.Pointer[RouteDefaults]
 	// requestHook is called with each handled request's event.
 	requestHook atomic.Pointer[func(RequestEvent)]
+	// journal is called with each published event (see SetJournal).
+	journal   atomic.Pointer[func(RequestEvent)]
+	journalMu sync.Mutex
 	// redact masks credentials in request events (SetRedact).
 	redact atomic.Bool
 	// fixtureMu serializes PUT /fixture version checks and writes.
@@ -70,6 +73,13 @@ type Server struct {
 	// limiters holds the @rate-limit state of each route, by routeKey.
 	limiters map[string]*rateLimiter
 	limitMu  sync.Mutex
+	// maxBody and logSize are the SetLimits values; 0 means the default.
+	maxBody atomic.Int64
+	logSize int
+	// scenarios holds each @scenario's state, by name; a missing name is in
+	// restclient.ScenarioStart. Reloads keep it; Reset clears it.
+	scenarios  map[string]string
+	scenarioMu sync.Mutex
 	// reloader re-reads the request files for POST /reload.
 	reloader func()
 	// callbacks tracks @callback requests in flight; callbackCtx is cancelled
@@ -152,7 +162,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	arrivedAt := time.Now()
 	controller := http.NewResponseController(w)
 	_ = controller.SetWriteDeadline(time.Time{}) // Configured delays do not spend the write budget.
-	requestBody, matchBody := readRequestBody(r)
+	requestBody, matchBody := readRequestBody(r, s.Limits().MaxBody)
 	capture := newResponseCapture(w)
 
 	method, values, match, ok := s.findMethod(r, matchBody)
@@ -528,10 +538,10 @@ func warnShadowedRoutes(logger *slog.Logger, methods []restclient.Method) {
 
 // shadows reports whether route a matches every request route b matches:
 // a accepts every method b does, they share a port, a's path pattern covers
-// b's (see pathCovers), a has no @match.chance, and each of a's constraints
+// b's (see pathCovers), a has no @match.chance or @state, and each of a's constraints
 // is also one of b's. It errs towards false; routes it misses still work.
 func shadows(a, b restclient.Method) bool {
-	if !acceptsAllMethods(a, b) || (a.Port != 0 && a.Port != b.Port) || a.Chance > 0 || a.Require != "" || a.MissingNext || a.Times > 0 {
+	if !acceptsAllMethods(a, b) || (a.Port != 0 && a.Port != b.Port) || a.Chance > 0 || a.Require != "" || a.MissingNext || a.Times > 0 || a.State != "" {
 		return false
 	}
 	segments, ok := pathCovers(routePattern(a), routePattern(b))
@@ -539,6 +549,12 @@ func shadows(a, b restclient.Method) bool {
 		return false
 	}
 	if a.MatchBody != "" && a.MatchBody != b.MatchBody {
+		return false
+	}
+	if a.MatchJSONBody != "" && a.MatchJSONBody != b.MatchJSONBody {
+		return false
+	}
+	if a.MatchHost != "" && !strings.EqualFold(a.MatchHost, b.MatchHost) {
 		return false
 	}
 	for key, values := range a.Query {

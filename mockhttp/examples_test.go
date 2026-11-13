@@ -48,6 +48,7 @@ var matchingScenarios = []exampleScenario{
 	{"X-Tenant: acme-eu", "GET", "/account/usage", map[string]string{"X-Tenant": "acme-eu"}, "", 200, "Usage for a tenant"},
 	{"X-Tenant: Not Valid", "GET", "/account/usage", map[string]string{"X-Tenant": "Not Valid"}, "", 400, "Usage without a tenant"},
 
+	{"Test order (whole-document @json)", "POST", "/orders", jsonHeader, `{"customer":{"name":"Test","vip":false},"test":true,"items":[]}`, 201, "Test order"},
 	{"Express shipping, echoes customer name", "POST", "/orders", jsonHeader, `{"customer":{"name":"Avery"},"shipping":{"method":"express"},"items":[{"sku":"TEA-001","qty":2}]}`, 201, "Express order"},
 	{"VIP customer (boolean true)", "POST", "/orders", jsonHeader, `{"customer":{"vip":true},"items":[{"sku":"TEA-002","qty":1}]}`, 201, "VIP order"},
 	{"Gift card in any item, amount captured", "POST", "/orders", jsonHeader, `{"items":[{"sku":"TEA-001","qty":1},{"sku":"GIFT-50","qty":1}]}`, 201, "Gift card order"},

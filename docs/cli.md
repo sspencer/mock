@@ -12,6 +12,7 @@ mock init [-force] [dir]
 mock import [-host HOST] [-path PREFIX] <file.har|->
 mock run [flags] <file.http|-d dir> [file.http...] -- command [args...]
 mock match [-H 'Name: value'] [-d body|@file] [-port N] [-response] [-json] [-var name=value] [-env NAME] <file.http|dir> [file.http|dir...] METHOD URL
+mock routes [-json] [-port N] [-only TAGS] [-skip TAGS] [-var name=value] [-env NAME] <file.http|dir> [file.http|dir...]
 mock check -upstream URL [-all] [-json] [-depth 3] [-check-header Name] [-header 'Name: value'] [-var name=value] [-env NAME [-env-file FILE]] [-timeout 10s] <file.http|dir> [file.http|dir...]
 mock -version
 mock -h
@@ -33,6 +34,9 @@ Flags:
 | `--upstream-header` | | With `-u`, `NAME: VALUE`: set this header on every forwarded request, such as credentials. Repeat for more headers (see [Credentials and path prefixes](real-apis.md#credentials-and-path-prefixes)) |
 | `--upstream-strip` | | With `-u`, remove this prefix, such as `/api`, from the start of forwarded request paths |
 | `-r`, `--record` | (off) | With `-u`, append a draft `.http` section to this file for each method and path the upstream answered (see [Recording forwarded requests](real-apis.md#recording-forwarded-requests)) |
+| `--journal` | (off) | Append every request event to this file as a JSON line, so the traffic outlives the request log (see [Request journal](#request-journal)) |
+| `--max-body` | `1mb` | Read up to this much of each request body for body matchers, templates and the log, such as `10mb` or `512kb` (`kb` is 1,024 bytes; up to `1gb`). A larger body matches no body matcher |
+| `--log-size` | `1000` | Keep the latest this many requests in the request log, `/requests`, `/verify` and the admin UI (up to 1,000,000) |
 | `-s`, `--strict` | (off) | At shutdown, list requests no route matched and routes that never matched, and exit `1` if any request was unmatched; `--strict=unused` also exits `1` if a route never matched (see [Strict mode and route coverage](testing.md#strict-mode-and-route-coverage)) |
 | `--strict-report` | | Turn on `-s` and also write the report to this file: JUnit XML for `.xml`, JSON for `.json` (see [Strict reports for CI](testing.md#strict-reports-for-ci)) |
 | `-H`, `--header` | | `NAME: VALUE`: add this response header to every route that sets no header of that name and no `@default.header` for it. Repeat for more headers (see [Default response headers](request-files.md#default-response-headers)) |
@@ -98,6 +102,22 @@ and `source`), and each request is one record:
 `duration` is in nanoseconds. Faulted and proxied requests add `fault` and
 `upstream`. Warnings, reload errors and the `--strict` report still go to
 stderr as text.
+
+## Request journal
+
+`--journal FILE` appends every request event to `FILE` as one JSON line,
+the same object [`GET /requests`](admin-ui.md#reading-the-request-log) returns
+for it. Requests, [`@callback`](responses.md#webhook-callbacks) sends and
+forwarded requests are all written, in event ID order. With
+[`-R`](admin-ui.md#credential-redaction) the lines are masked like the
+admin UI. The file is created if needed and appended to, so a restart adds to
+it; event IDs start over at `1` with each run (the `session` field tells runs
+apart). Clearing the log in the admin UI does not touch the file.
+
+```sh
+mock --journal requests.jsonl api.http
+jq -r 'select(.match.route == null) | .request.method + " " + .request.url' requests.jsonl
+```
 
 ## Reloading
 
@@ -228,7 +248,7 @@ closest routes:
 
 | Flag | Description |
 |------|-------------|
-| `-H 'Name: value'` | A request header. Repeat for more |
+| `-H 'Name: value'` | A request header. Repeat for more. `-H 'Host: api.test'` sets the host that `@match.host` routes check |
 | `-d body` | The request body, or `@file` to read it from a file. Without a `Content-Type` header it is sent as JSON when it starts with `{` or `[`, else as a URL-encoded form (as `curl -d`) |
 | `-port N` | The mock port the request arrives on, for routes with a port. A full URL's port works too. Without either, routes on every port can match |
 | `-response` | Also render the response: status, headers and body, without delays, faults, streaming, throttling, rate limits or callbacks |
@@ -238,6 +258,37 @@ closest routes:
 Flags may come before or after the files, method and URL. Nothing is
 counted: a `@times` route is shown as answering, with a note, and so is a
 `@match.chance` route, which answers only its share.
+
+## Listing routes
+
+`mock routes` prints the route table of request files without serving them,
+in the order routes are tried (the first that matches answers):
+
+```sh
+mock routes api.http
+```
+
+```text
+METHOD  PATH       PORT  STATUS  NAME         SOURCE       TAGS   MATCHES
+GET     /users     8080  200     Admin users  api.http:1   admin  header X-Tenant: *; query role: admin
+POST    /users     8080  201     Create user  api.http:9          json: {"kind":"person"}; json name: *
+GET     /metrics   9100  200     Metrics      api.http:16  ops
+GET     /legacy/*  8080  proxy   Forward      api.http:22
+```
+
+`PORT` is the route's own port, else the default (`-port`, or `MOCK_PORT`, else
+`8080`). `STATUS` is `proxy` for an `@proxy` route and the placeholder for a
+templated status. `MATCHES` lists the request matchers and the settings that
+make a route skip requests (`@match.chance`, `@times`, `@require`,
+`@fallback`). It loads files as `mock validate` does and fails (exit `1`) on
+the same errors.
+
+| Flag | Description |
+|------|-------------|
+| `-json` | Print the routes as JSON, as the admin `GET /routes` describes them |
+| `-port N` | The default port shown for routes that set none |
+| `-only TAGS`, `-skip TAGS` | List only routes with one of these `@tag` names, or leave them out, as `mock --only` and `--skip` serve them |
+| `-var`, `-env`, `-env-file` | Set variables as `mock -v` and `-e` do |
 
 ## Other commands
 

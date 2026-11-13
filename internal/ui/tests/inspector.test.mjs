@@ -249,3 +249,26 @@ test('comparison matchers get satisfying sample values, like sample.go', () => {
     const curl = buildRouteCurl({ method: 'GET', path: '/a', matchQuery: { limit: ['<=50'] }, matchHeaders: { 'X-Count': ['>=2'] } }, 'http://localhost:8080');
     assert.ok(curl.includes("'http://localhost:8080/a?limit=50'") && curl.includes("'X-Count: 2'"), curl);
 });
+
+test('sampleJSONBody starts from a @json document', () => {
+    assert.equal(sampleJSONBody({}, '{"type":"card"}'), '{"type":"card"}');
+    assert.equal(sampleJSONBody({ 'meta.id': '7' }, '{"type":"card","meta":{"x":1}}'), '{"type":"card","meta":{"x":1,"id":7}}');
+    assert.match(buildRouteCurl({ method: 'POST', path: '/pay', matchJsonBody: '{"type":"card"}' }, 'http://127.0.0.1:8080'),
+        /--header 'Content-Type: application\/json' --data-raw '\{"type":"card"\}'/);
+});
+
+test('Route sheet describes the @scenario states', () => {
+    assert.ok(formatRoute({ method: 'GET', path: '/x', scenario: 'order', state: 'paid', nextState: 'shipped' }).includes('Scenario: order · answers in state paid · then moves to shipped'));
+    assert.ok(formatRoute({ method: 'POST', path: '/x', scenario: 'order', nextState: 'paid' }).includes('Scenario: order · then moves to paid\n'));
+    assert.ok(!formatRoute({ method: 'GET', path: '/x' }).includes('Scenario'));
+});
+
+test('Route cURL and sheet carry the @match.host host', () => {
+    const origin = 'http://localhost:8080';
+    for (const [matchHost, want] of [['billing.example.test', 'billing.example.test'], ['*', 'example.test'], ['~.*\\.test', 'example.test']]) {
+        assert.equal(buildRouteCurl({ method: 'GET', path: '/x', matchHost }, origin), `curl --header 'Host: ${want}' 'http://localhost:8080/x'`, matchHost);
+    }
+    assert.equal(buildRouteCurl({ method: 'GET', path: '/x', matchHost: '!' }, origin), "curl 'http://localhost:8080/x'");
+    assert.ok(formatRoute({ method: 'GET', path: '/x', matchHost: 'billing.example.test' }).includes('Host: billing.example.test'));
+    assert.ok(!formatRoute({ method: 'GET', path: '/x' }).includes('Host:'));
+});

@@ -106,3 +106,47 @@ func TestParseTimes(t *testing.T) {
 		t.Error("@times is a control variable")
 	}
 }
+
+func TestMatchHost(t *testing.T) {
+	methods, err := Parse("test.http", strings.NewReader("### Billing\n@match.host = ~.*\\.example\\.test\nGET /x\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if methods[0].MatchHost != `~.*\.example\.test` {
+		t.Errorf("MatchHost = %q", methods[0].MatchHost)
+	}
+	if len(UnusedVariables(methods)) != 0 {
+		t.Errorf("@match.host reported unused: %v", UnusedVariables(methods))
+	}
+	for source, want := range map[string]string{
+		"### A\n@match.host =\nGET /x\n":        "@match.host",
+		"### A\n@match.host = ~(\nGET /x\n":     "@match.host",
+		"### A\n@match.hots = a.test\nGET /x\n": "did you mean @match.chance or @match.host?",
+	} {
+		if _, err := Parse("test.http", strings.NewReader(source)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Parse(%q) error = %v, want %q", source, err, want)
+		}
+	}
+}
+
+func TestScenarioDirectives(t *testing.T) {
+	methods, err := Parse("test.http", strings.NewReader("@scenario = order\n\n### Pay\n@state = started\n@next-state = paid\nPOST /pay\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := methods[0]; m.Scenario != "order" || m.State != "started" || m.NextState != "paid" {
+		t.Errorf("method = %q %q %q", m.Scenario, m.State, m.NextState)
+	}
+	if len(UnusedVariables(methods)) != 0 || IsDefaultVariable("scenario") {
+		t.Errorf("scenario directives treated as variables: %v", UnusedVariables(methods))
+	}
+	for source, want := range map[string]string{
+		"### A\n@state = paid\nGET /x\n":                    "need a @scenario",
+		"### A\n@scenario = my order\nGET /x\n":             "@scenario needs one name without spaces",
+		"### A\n@scenario = order\n@next-state =\nGET /x\n": "@next-state needs one name",
+	} {
+		if _, err := Parse("test.http", strings.NewReader(source)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Parse(%q) error = %v, want %q", source, err, want)
+		}
+	}
+}

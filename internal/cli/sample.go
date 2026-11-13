@@ -23,6 +23,9 @@ type sampleRequest struct {
 	Target  string
 	Headers http.Header
 	Body    string
+	// Host is a sample host for a @match.host route, else "". It is sent to
+	// the route, not to the -upstream API, which has its own host.
+	Host string
 }
 
 // numericParam matches parameter names that look numeric; they get "1" and
@@ -152,6 +155,9 @@ func buildSampleRequest(method restclient.Method) sampleRequest {
 			}
 		}
 	}
+	if method.MatchHost != "" && method.MatchHost != "!" {
+		sample.Host = sampleValue(method.MatchHost, "example.test")
+	}
 	var cookies []string
 	for _, name := range slices.Sorted(maps.Keys(method.MatchCookies)) {
 		for _, value := range method.MatchCookies[name] {
@@ -164,7 +170,7 @@ func buildSampleRequest(method restclient.Method) sampleRequest {
 		sample.Headers.Set("Cookie", strings.Join(cookies, "; "))
 	}
 
-	if body := sampleJSONBody(method.MatchJSON); body != "" {
+	if body := sampleJSONBody(method.MatchJSON, method.MatchJSONBody); body != "" {
 		sample.Body = body
 		if sample.Headers.Get("Content-Type") == "" {
 			sample.Headers.Set("Content-Type", "application/json")
@@ -199,10 +205,14 @@ var errSampleConflict = errors.New("conflicting @json paths")
 // JSON literals when they parse (42, true) and strings otherwise, ">100"
 // gives 101, "#>1" an array of two "example" strings; "*" and regex values
 // become "example"; "!" fields are left out. Digit segments
-// make arrays and a "*" segment puts the value first. It returns "" when
+// make arrays and a "*" segment puts the value first. A @json document,
+// when given, is the starting point the paths are set in. It returns "" when
 // there is nothing to send or the paths conflict.
-func sampleJSONBody(matchJSON map[string]string) string {
+func sampleJSONBody(matchJSON map[string]string, document string) string {
 	var root any
+	if document != "" && json.Unmarshal([]byte(document), &root) != nil {
+		return ""
+	}
 	for _, path := range slices.Sorted(maps.Keys(matchJSON)) {
 		value := matchJSON[path]
 		if value == "!" {

@@ -57,10 +57,10 @@ func TestBuildSampleRequestBodies(t *testing.T) {
 	if wild.Target != "/files/a%20b/c" {
 		t.Errorf("wildcard target = %q", wild.Target)
 	}
-	if got := sampleJSONBody(map[string]string{"a": "1", "a.b": "2"}); got != "" {
+	if got := sampleJSONBody(map[string]string{"a": "1", "a.b": "2"}, ""); got != "" {
 		t.Errorf("conflicting paths = %q, want empty", got)
 	}
-	if got := sampleJSONBody(map[string]string{"0.id": "7", "1.id": "true"}); got != `[{"id":7},{"id":true}]` {
+	if got := sampleJSONBody(map[string]string{"0.id": "7", "1.id": "true"}, ""); got != `[{"id":7},{"id":true}]` {
 		t.Errorf("array root = %q", got)
 	}
 }
@@ -88,12 +88,33 @@ func TestSampleValuesSatisfyComparisons(t *testing.T) {
 	if _, ok := sampleFor("~x+"); ok {
 		t.Error("sampleFor(regexp): want no sample")
 	}
-	if got := sampleJSONBody(map[string]string{"amount": ">100", "items": "#>1", "code": "#fff"}); got != `{"amount":101,"code":"#fff","items":["example","example"]}` {
+	if got := sampleJSONBody(map[string]string{"amount": ">100", "items": "#>1", "code": "#fff"}, ""); got != `{"amount":101,"code":"#fff","items":["example","example"]}` {
 		t.Errorf("sampleJSONBody = %s", got)
 	}
 	m := parseOne(t, "### A\n@query.limit = <=50\n@header.X-Count = >=2\nGET /a\n")
 	sample := buildSampleRequest(m)
 	if sample.Target != "/a?limit=50" || sample.Headers.Get("X-Count") != "2" {
 		t.Errorf("sample = %+v", sample)
+	}
+}
+
+func TestSampleJSONBodyFromDocument(t *testing.T) {
+	if got := sampleJSONBody(map[string]string{"meta.id": "7"}, `{"type":"card","meta":{"x":1}}`); got != `{"meta":{"id":7,"x":1},"type":"card"}` {
+		t.Fatalf("got %q", got)
+	}
+	if got := sampleJSONBody(nil, `[1,2]`); got != `[1,2]` {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestBuildSampleRequestHost(t *testing.T) {
+	if host := buildSampleRequest(parseOne(t, "### A\n@match.host = billing.example.test\nGET /x\n")).Host; host != "billing.example.test" {
+		t.Errorf("host = %q", host)
+	}
+	if host := buildSampleRequest(parseOne(t, "### A\n@match.host = ~.*\\.test\nGET /x\n")).Host; host != "example.test" {
+		t.Errorf("regex host = %q, want example.test", host)
+	}
+	if host := buildSampleRequest(parseOne(t, "### A\nGET /x\n")).Host; host != "" {
+		t.Errorf("no matcher host = %q, want empty", host)
 	}
 }

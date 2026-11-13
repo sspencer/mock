@@ -7,13 +7,57 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 )
 
-const maxRequestEvents = 1000
+// DefaultLogSize is how many request events the log keeps unless SetLimits
+// changes it.
+const DefaultLogSize = 1000
+
+// Limits are the request body and request log sizes (see SetLimits).
+type Limits struct {
+	// MaxBody is how many bytes of a request body are read for body
+	// matchers, templates and the log.
+	MaxBody int64
+	// LogSize is how many request events the log keeps.
+	LogSize int
+}
+
+// SetLimits changes the request body and request log sizes. A zero field
+// keeps the default (DefaultMaxBody, DefaultLogSize). A smaller log drops
+// the oldest events.
+func (s *Server) SetLimits(limits Limits) {
+	s.maxBody.Store(limits.MaxBody)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.logSize = limits.LogSize
+	if size := s.logSizeLocked(); len(s.events) > size {
+		s.events = slices.Clone(s.events[len(s.events)-size:])
+	}
+}
+
+// Limits returns the request body and request log sizes in effect.
+func (s *Server) Limits() Limits {
+	limits := Limits{MaxBody: s.maxBody.Load(), LogSize: DefaultLogSize}
+	if limits.MaxBody <= 0 {
+		limits.MaxBody = DefaultMaxBody
+	}
+	s.mu.Lock()
+	limits.LogSize = s.logSizeLocked()
+	s.mu.Unlock()
+	return limits
+}
+
+func (s *Server) logSizeLocked() int {
+	if s.logSize > 0 {
+		return s.logSize
+	}
+	return DefaultLogSize
+}
 
 type RequestEvent struct {
 	Session  string        `json:"session"`
@@ -188,8 +232,21 @@ func (s *Server) ServeRoutes(w http.ResponseWriter, r *http.Request) {
 		s.serveRoutesWrite(w, r)
 		return
 	}
-	tag := r.URL.Query().Get("tag")
+	routes := s.routeInfos(r.URL.Query().Get("tag"))
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(routes)
+}
+
+// Routes describes every route, in the order they are tried, as GET /routes
+// does: with hit counts, run-time switches and @times counts left.
+func (s *Server) Routes() []RouteInfo {
+	return s.routeInfos("")
+}
+
+// routeInfos describes the routes, or only those with tag when it is set.
+func (s *Server) routeInfos(tag string) []RouteInfo {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	routes := make([]RouteInfo, 0, len(s.methods))
 	for i, method := range s.methods {
 		if tag != "" && !method.HasTag(tag) {
@@ -202,9 +259,7 @@ func (s *Server) ServeRoutes(w http.ResponseWriter, r *http.Request) {
 		route.TimesLeft = timesLeft(&method, s.uses[i])
 		routes = append(routes, route)
 	}
-	s.mu.Unlock()
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(routes)
+	return routes
 }
 
 func (s *Server) subscribe() ([]RequestEvent, chan RequestEvent) {
@@ -229,13 +284,28 @@ func (s *Server) unsubscribe(subscriber chan RequestEvent) {
 }
 
 func (s *Server) publishRequest(event RequestEvent) uint64 {
+	journal := s.journal.Load()
+	if journal == nil {
+		return s.storeEvent(event).ID
+	}
+	// Journal lines follow event IDs: number and write one event at a time.
+	s.journalMu.Lock()
+	defer s.journalMu.Unlock()
+	event = s.storeEvent(event)
+	(*journal)(event)
+	return event.ID
+}
+
+// storeEvent numbers event, adds it to the log and sends it to subscribers.
+func (s *Server) storeEvent(event RequestEvent) RequestEvent {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	event.ID = s.nextEventID.Add(1)
 	event.Session = s.session
-	if len(s.events) == maxRequestEvents {
-		copy(s.events, s.events[1:])
-		s.events[len(s.events)-1] = event
+	if size := s.logSizeLocked(); len(s.events) >= size {
+		// Dropping from the front lets append reuse or regrow the array,
+		// so a large log costs no copy per event.
+		s.events = append(s.events[len(s.events)-size+1:], event)
 	} else {
 		s.events = append(s.events, event)
 	}
@@ -247,7 +317,7 @@ func (s *Server) publishRequest(event RequestEvent) uint64 {
 			delete(s.subscribers, subscriber)
 		}
 	}
-	return event.ID
+	return event
 }
 
 func writeEvent(w io.Writer, event RequestEvent) bool {
@@ -351,6 +421,19 @@ func requestEventHeaders(r *http.Request) http.Header {
 		headers.Set("Transfer-Encoding", strings.Join(r.TransferEncoding, ", "))
 	}
 	return headers
+}
+
+// SetJournal calls journal with every event the request log records,
+// requests and @callback sends alike, as published: numbered, and masked
+// when SetRedact is on, in event ID order. Calls are serialized, in the
+// request's goroutine and outside the server's lock, so a slow journal
+// slows requests. A nil journal removes it.
+func (s *Server) SetJournal(journal func(RequestEvent)) {
+	if journal == nil {
+		s.journal.Store(nil)
+		return
+	}
+	s.journal.Store(&journal)
 }
 
 // SetRequestHook calls hook with the event of every request the server

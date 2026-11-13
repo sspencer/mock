@@ -166,6 +166,27 @@ func TestSignup(t *testing.T) {
   received. `Calls(call)` and `Requests(filter)` return the request events to
   check bodies and headers yourself, `Clear()` forgets requests received so
   far, and `Mock` is the underlying `mockhttp.Server`.
+- `AssertCalledWith(t, call, mocktest.With{...})` passes when at least one
+  request the call names carries everything in `With` and returns those
+  requests. `Header` and `Query` map names to values in the
+  [matcher syntax](matching.md#matcher-values) (`"acme"`, `"*"`, `"!"`, `"~[0-9]+"`, `">100"`),
+  `Body` is an [`@body`](matching.md#body-matching) matcher and `JSON` a document the body
+  must contain, as [`@json`](matching.md#body-matching) takes it. A failure lists why each
+  call fell short:
+
+  ```go
+  api.AssertCalledWith(t, "POST /users", mocktest.With{
+  	Header: map[string]string{"Authorization": "~Bearer .+"},
+  	JSON:   `{"name": "avery", "plan": "free"}`,
+  })
+  ```
+
+- `LastCall(t, call)` returns the most recent request a call names, and
+  `WaitFor(t, call, timeout)` waits for the first one, for code that calls
+  the server in the background. Both stop the test when there is none.
+- `AssertAllRoutesCalled(t)` fails when a route from the request files
+  answered nothing, as [`--strict=unused`](#strict-mode-and-route-coverage)
+  does; stubs are not checked.
 - `Stub(t, text)` serves the routes in `.http` text in front of the server's
   routes until the test (or subtest) ends, so one test can change an answer:
 

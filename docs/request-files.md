@@ -193,7 +193,7 @@ is read at startup; restart `mock` to pick up changes to it.
 | `@name = value` file and method variables, `-v name=value` overrides, [environment files](#rest-client-environments) (`-e`) and `{{$env.NAME}}` | `{{$dotenv}}`, `{{$processEnv}}` and other IDE-only system variables |
 | Request line `METHOD /path`, a full URL, an optional `HTTP/1.1` version, or a bare target (`GET`); `mock` also accepts a method list (`GET,HEAD`) or `*` | Full multi-step scripts |
 | Response headers after the request line | Separate request vs response documents |
-| `@header.Name`, `@cookie.name`, `@query.name`, `@path.name`, `@body`, `@json.path`, `@xml.path`, `@form.name` request matchers (exact, `*`, `!`, `~regex`, `!text`, `!~regex`) | none |
+| `@header.Name`, `@cookie.name`, `@match.host`, `@query.name`, `@path.name`, `@body`, `@json.path`, `@xml.path`, `@form.name` request matchers (exact, `*`, `!`, `~regex`, `!text`, `!~regex`, `>n`, `#>n`), and a whole-document `@json` | none |
 | `{{name}}`, `{{%name}}` and `{{$placeholder}}` in bodies, response headers and `< path` file paths, with [filters](placeholders.md#filters) and [`{{#repeat}}` blocks](placeholders.md#generated-lists) | Request variables (`{{login.response.body.token}}`; a load warning) |
 | `< path` external body files; [`@import`](#sharing-variables-with-import) of another file's variables (a `mock` extension) | Mixing inline text and `< path` in one body |
 
@@ -366,8 +366,8 @@ in the file, or in a section, where it replaces the file value.
 | `@delay` | Go duration such as `250ms` or `2s`, a range `100ms..800ms` (both ends inclusive, picked afresh per request), or a long tail `p50 80ms p99 900ms` or `lognormal 90ms 0.4` | none | Wait before responding. Negative or invalid durations are load errors. See [Delays, streaming and faults](responses.md#delays-streaming-and-faults). |
 | `@compress` | `gzip`, `deflate`, `auto` or `off` | `off` | Compress the response body; `auto` follows the request's `Accept-Encoding`. See [Compressed responses](responses.md#compressed-responses). |
 | `@stream` | non-negative duration such as `50ms` | off | Send the body in pieces (one event or line at a time) with this pause between them. See [Delays, streaming and faults](responses.md#delays-streaming-and-faults). |
-| `@fault` | `reset`, `truncate`, `hang`, `empty` or `garbage`, optionally followed by a share such as `reset 25%` | off |
-| `@throttle` | a rate such as `32kb/s`, `1mb/s` or `512b/s` | off | Send the body at that rate. See [Bandwidth throttling](responses.md#bandwidth-throttling). | Break the response on purpose. See [Delays, streaming and faults](responses.md#delays-streaming-and-faults). |
+| `@fault` | `reset`, `truncate`, `hang`, `empty` or `garbage`, optionally followed by a share such as `reset 25%` | off | Break the response on purpose. See [Delays, streaming and faults](responses.md#delays-streaming-and-faults). |
+| `@throttle` | a rate such as `32kb/s`, `1mb/s` or `512b/s` | off | Send the body at that rate. See [Bandwidth throttling](responses.md#bandwidth-throttling). |
 | `@rate-limit` | A count and a window, such as `5/1s`, `100/1m` or `10/s` | none | Answer `429` with `Retry-After` once the route is over its budget, and send `X-RateLimit-*` headers. `@rate-limit.key = {{$header.Authorization}}` gives each client its own budget. See [Rate limits](responses.md#rate-limits). |
 | `@seed` | any non-empty text | random | Make generated values reproducible per request. See [Reproducible data](placeholders.md#reproducible-data). |
 | `@template` | `auto`, `on` or `off` | `auto` | Whether placeholders are expanded in the body. See [External response bodies](#external-response-bodies). |
@@ -377,6 +377,9 @@ in the file, or in a section, where it replaces the file value.
 | `@proxy` | `http` or `https` URL | none | Forward the requests this section matches to the URL instead of answering. See [Per-route proxying](real-apis.md#per-route-proxying). |
 | `@tag` | tag names separated by commas, such as `billing, slow` | none | Name the section for `--only` and `--skip`, the admin UI and `/routes?tag=`. See [Route tags](matching.md#route-tags). |
 | `@fallback` | `true` or `false` | `false` | Try the section after every section without it, whatever the load order. See [Fallback routes](matching.md#fallback-routes). |
+| `@scenario` | a name without spaces, such as `order` | none | Put the section in a named state machine shared by every section that names it. See [Scenarios](matching.md#scenarios). |
+| `@state` | a state name, such as `paid` | any state | Let the section answer only while its `@scenario` is in that state (every scenario starts in `started`). Needs `@scenario`. |
+| `@next-state` | a state name | unchanged | Move the section's `@scenario` to that state when the section answers. Needs `@scenario`. |
 | `@match.chance` | a percentage above `0%`, such as `20%` | `100%` | Let the section answer only that share of the requests it matches; the rest go on to later routes. Reproducible with `@seed`. See [Occasional responses](matching.md#occasional-responses). |
 | `@default.header.Name` | header value, which may hold placeholders | none | Add the response header to every section in scope that does not set it. See [Default response headers](#default-response-headers). |
 | `@status` | status from `200` to `999`, or a placeholder such as `{{$query.status \| default 200}}` | `200` | The response status, when the section name has none. See [Request file format](#request-file-format). |
@@ -388,6 +391,7 @@ in the file, or in a section, where it replaces the file value.
 | `@import` | a request file path | none | Bring in that file's file-level definitions (file scope only). See [Sharing variables with @import](#sharing-variables-with-import). |
 | `@port` | port number | `-p` (`8080`) | Serve the section on this port. A port in the request URL takes precedence. See [Multiple ports](matching.md#multiple-ports). |
 | `@header.Name` | [matcher value](matching.md#matcher-values): `text`, `*`, `!`, `~regex`, `!text` or `!~regex` | none | Require the incoming request header to match. A section's header matcher replaces a file one of the same name. See [Header matching](matching.md#header-matching). |
+| `@match.host` | matcher value | none | Require the request's `Host` to match, compared without case; the port is optional (`api.test` matches `api.test:8080`). See [Host matching](matching.md#host-matching). |
 | `@cookie.name` | matcher value | none | Require the request cookie to match. See [Cookie matching](matching.md#cookie-matching). |
 | `@query.name` | matcher value | none | Require the query parameter to match. See [Query and path parameter matching](matching.md#query-and-path-parameter-matching). |
 | `@path.name` | `text` or `~regex` | none | Require the `:name` path parameter or `*name` wildcard to match. At file scope it applies only to sections whose path has that parameter. |

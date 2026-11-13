@@ -374,3 +374,40 @@ uiTest('route switches turn a route off and back on', { width: 1280, height: 900
     assert.equal((await fetch(mockURL + '/users')).status, 200);
     assert.equal(await page.evaluate(() => document.getElementById('switchOff').checked), false);
 });
+
+uiTest('route search narrows and groups the routes list', { width: 1280, height: 900 }, async (page) => {
+    await page.waitFor(() => document.querySelectorAll('#routesList .route-button').length === 4, { message: 'four routes' });
+    await page.click('#routeSearch');
+    await page.type('post user');
+    await page.waitFor(() => document.querySelectorAll('#routesList .route-button').length === 1, { message: 'one route matches' });
+    assert.equal(await page.evaluate(() => document.getElementById('routeCount').textContent), '1 of 4');
+    await page.press('Escape');
+    await page.waitFor(() => document.querySelectorAll('#routesList .route-button').length === 4, { message: 'Escape clears the search' });
+    await page.evaluate(() => {
+        const select = document.getElementById('routeGroup');
+        select.value = 'file';
+        select.dispatchEvent(new Event('change'));
+    });
+    const groups = await page.evaluate(() => [...document.querySelectorAll('#routesList .route-group')].map(li => li.textContent));
+    assert.equal(groups.length, 1);
+    assert.match(groups[0], /api\.http · 4$/);
+});
+
+uiTest('an unmatched request highlights what each near miss needed', { width: 1280, height: 900 }, async (page) => {
+    await traffic(['POST', '/users', { title: 'x' }]);
+    await page.waitFor(() => document.querySelectorAll('#requestTableBody tr[data-id]').length === 1);
+    await page.click('#requestTableBody tr[data-id]:first-child');
+    await page.waitFor(() => document.querySelector('#mismatchDetails .near-miss'), { message: 'a near-miss card' });
+    const card = await page.evaluate(() => ({
+        open: document.getElementById('mismatchPanel').open,
+        marks: [...document.querySelectorAll('#mismatchDetails .near-miss:first-child mark')].map(mark => mark.textContent),
+    }));
+    assert.equal(card.open, true, 'the explanation opens for an unmatched request');
+    assert.ok(card.marks.includes('JSON name'), `the failed @json.name is highlighted (${card.marks})`);
+    await page.evaluate(() => [...document.querySelectorAll('#mismatchDetails .near-miss:first-child button')].find(b => b.textContent === 'Similar misses').id ||= 'similarMisses');
+    await page.click('#similarMisses');
+    assert.equal(await page.evaluate(() => document.getElementById('filterInput').value), 'near:"Create user"');
+    await page.evaluate(() => [...document.querySelectorAll('#mismatchDetails .near-miss:first-child button')].find(b => b.textContent === 'Inspect route').id ||= 'inspectRoute');
+    await page.click('#inspectRoute');
+    await page.waitFor(() => !document.getElementById('routeView').hidden, { message: 'the route sheet shows' });
+});

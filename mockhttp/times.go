@@ -41,7 +41,7 @@ func timesLeft(method *restclient.Method, uses *atomic.Uint64) *int {
 
 // Reset returns the server's run-time state to where it started, without a
 // reload: @times counts, {{$hits}} counts, @rate-limit budgets and
-// @match.chance draws start over, and run-time fault overrides, route
+// @match.chance draws start over, every @scenario returns to its start, and run-time fault overrides, route
 // switches and temporary routes are removed. Hit counts, the request log and
 // the --strict tally are kept.
 func (s *Server) Reset() {
@@ -55,6 +55,7 @@ func (s *Server) Reset() {
 	s.limitMu.Lock()
 	clear(s.limiters)
 	s.limitMu.Unlock()
+	s.resetScenarios()
 	_, _ = s.ClearFaults("")
 	s.RemoveRoutes("")
 }

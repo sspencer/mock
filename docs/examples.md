@@ -87,7 +87,7 @@ curl -s -X PUT localhost:8080/uploads/logo.png -H 'Content-Type: image/png' --da
   the name; any other file gets `415`, and a form without a `file` part `400`.
 - The size limit checks `@header.Content-Length` with a regex, before the
   body matters, so it works for uploads larger than the 1 MiB `mock` reads
-  for matching.
+  for matching (`--max-body`).
 - `{{$ulid | keep}}` uses one generated id in the `Location` header and the
   body.
 

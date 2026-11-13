@@ -70,6 +70,8 @@ show 'X-Tenant: acme-eu'                     GET /account/usage --header 'X-Tena
 show 'X-Tenant: Not Valid'                   GET /account/usage --header 'X-Tenant: Not Valid'
 
 section 'JSON bodies (json.http)'
+show 'Test order (whole-document @json)'     POST /orders "${json[@]}" \
+    --data '{"customer":{"name":"Test","vip":false},"test":true,"items":[]}'
 show 'Express shipping, echoes customer name' POST /orders "${json[@]}" \
     --data '{"customer":{"name":"Avery"},"shipping":{"method":"express"},"items":[{"sku":"TEA-001","qty":2}]}'
 show 'VIP customer (boolean true)'           POST /orders "${json[@]}" \

@@ -217,10 +217,10 @@ func TestOversizedBodyMatchesNoBodyMatcher(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := New(methods, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	if code, _ := serveBody(t, s, "/big", strings.Repeat("a", maxMatchBodyBytes)); code != 200 {
+	if code, _ := serveBody(t, s, "/big", strings.Repeat("a", DefaultMaxBody)); code != 200 {
 		t.Fatalf("1 MiB body status = %d, want 200", code)
 	}
-	if code, _ := serveBody(t, s, "/big", strings.Repeat("a", maxMatchBodyBytes+1)); code != 404 {
+	if code, _ := serveBody(t, s, "/big", strings.Repeat("a", DefaultMaxBody+1)); code != 404 {
 		t.Fatalf("oversized body status = %d, want 404", code)
 	}
 	reasons := strings.Join(s.events[len(s.events)-1].Match.Candidates[0].Reasons, "\n")

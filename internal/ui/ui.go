@@ -21,6 +21,9 @@ type Config struct {
 	MultiPort bool   `json:"multiPort,omitempty"`
 	// Redact is set when -R masks credentials in the request log.
 	Redact bool `json:"redact,omitempty"`
+	// LogSize is how many requests the server's log keeps (--log-size); the
+	// page keeps as many. 0 means mockhttp.DefaultLogSize.
+	LogSize int `json:"logSize,omitempty"`
 }
 
 // NewHandler serves the request console and its API at the root of the
@@ -35,6 +38,7 @@ func NewHandler(mockServer *mockhttp.Server, assets fs.FS, cfg Config) http.Hand
 	mux.HandleFunc("/fixture", mockServer.ServeFixture)
 	mux.HandleFunc("/faults", mockServer.ServeFaults)
 	mux.HandleFunc("/reset", mockServer.ServeReset)
+	mux.HandleFunc("/scenarios", mockServer.ServeScenarios)
 	mux.HandleFunc("/verify", mockServer.ServeVerify)
 	mux.HandleFunc("/routes", mockServer.ServeRoutes)
 	mux.HandleFunc("/routes/", mockServer.ServeRoutes)
