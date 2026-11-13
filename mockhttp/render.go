@@ -636,6 +636,9 @@ func (r *renderer) evaluate(node templateNode, scope *renderScope) (string, bool
 		value, err := callFunction(node.name, node.args, r.now, r.rng)
 		return value, err == nil
 	}
+	if node.name == "hits" {
+		return strconv.FormatUint(r.values.hits, 10), true
+	}
 	if node.name == "index" {
 		for s := scope; s != nil; s = s.parent {
 			if s.inRepeat {

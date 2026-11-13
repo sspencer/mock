@@ -38,30 +38,20 @@ Areas:
 
 ## Top picks
 
-The ideas with the best value for their effort, in suggested order:
-
-| ID | Idea | Effort | Why |
-|----|------|--------|-----|
-| [`TE-5`](#testing-and-ci) | Verification endpoint | S | With `mock run` and `POST /routes`, tests in any language can stub; this lets them assert without parsing `/requests` |
-| [`CL-3`](#command-line-and-configuration) | Report every load error | M | Fixing one parse error at a time is the slowest part of writing request files, and editor support needs it |
-| [`MA-2`](#matching-and-routing) | Numeric and length comparisons | M | `amount > 100` and "non-empty array" are common matches that need hard-to-read regexes today |
-| [`ST-5`](#stateful-behavior) | Hit count placeholder | S | Polling and retry responses (`"attempt": 3`) build on the counters `@times` added |
-| [`TE-6`](#testing-and-ci) | Strict report formats | S | JUnit output puts unmatched requests in CI test reports; `mock run` makes this the natural next step |
-| [`DI-4`](#distribution-and-editor-support) | GitHub Action | S | One `uses:` line installs the released binary and wraps a job in `mock run` |
-| [`MA-10`](#matching-and-routing) | Route tags | S | Serve a slice of a large route set and group routes in the UI, which temporary routes and switches make longer |
-| [`AP-8`](#working-with-real-apis) | Upstream request rewriting | S | Forwarding to a real API that needs credentials or a path prefix is the common `--upstream` gap |
+The previous top picks are implemented; none are chosen yet. Pick the ideas
+with the best value for their effort from the areas below.
 
 ## Stateful behavior
 
-`@times` gives a route a count, and `POST /reset` starts counts over; beyond
-that, routes are stateless. These ideas keep the "first match wins" model;
+`@times` gives a route a count, `{{$hits}}` puts a route's answer count in its
+response, and `POST /reset` starts counts over; beyond that, routes are
+stateless. These ideas keep the "first match wins" model;
 state only decides whether a route is eligible.
 
 | ID | Idea | Effort | Description |
 |----|------|--------|-------------|
 | `ST-2` | Named scenarios | **L** | `@scenario`, `@state` and `@next-state`: a route is eligible only while its scenario is in a given state, and answering can move it to another ("order is `pending` until `POST /orders/1/pay`"). WireMock's scenarios work this way. Builds on `@times` and `POST /reset`. |
 | `ST-4` | State in the admin UI | **S** | Show each scenario's current state in the route inspector (the remaining `@times` count is shown already), with a reset button. Follows `ST-2`. |
-| `ST-5` | Hit count placeholder | **S** | `{{$hits}}` inserts how many times the route has answered, for bodies such as `{"attempt": 3}` and for polling endpoints that report progress. |
 | `ST-6` | In-memory collections | **L** | `@collection = users.json` turns a fixture into a small store: `GET` lists and reads, `POST` adds, `PUT`/`PATCH` change and `DELETE` removes, in memory until restart or reset. This is json-server's whole purpose and Mockoon's "CRUD routes on data buckets". It is a second way to define behavior, so decide first whether it fits a tool built on explicit routes. |
 | `ST-7` | Captured values across requests | **L** | Store a value from one request (`@store token = {{$json.token}}`) and match or insert it in later ones (`{{$store.token}}`). Makes login-then-use flows realistic. Needs a scoping rule (global, per client, per session; see `TE-7`). |
 
@@ -69,12 +59,10 @@ state only decides whether a route is eligible.
 
 | ID | Idea | Effort | Description |
 |----|------|--------|-------------|
-| `MA-2` | Numeric and length comparisons | **M** | Matcher forms such as `@json.amount = >100`, `@query.limit = <=50` and `@json.items = #>0` (array length). Today this needs a regex. Mountebank and MockServer have comparison predicates. |
 | `MA-3` | Whole-body JSON match | **M** | `@json = {"type": "card", "amount": 100}` accepts a body that contains those members, in any key order and with extra members allowed. Easier to read than several `@json.*` lines. WireMock's `equalToJson` with `ignoreExtraElements`. |
 | `MA-4` | JSON Schema matcher | **L** | `@schema = order.schema.json` accepts a request whose body validates against the schema, so one route can return `400` for anything invalid. Needs a schema library (the first sizable dependency) or a small subset validator. |
 | `MA-5` | Host matcher | **S** | `@match.host = api.example.test` accepts requests by `Host` header, so one port can stand in for several services behind a proxy or `/etc/hosts` entries. The host in a request URL stays ignored unless this is set. |
 | `MA-8` | Matching every value of a repeated field | **S** | Matchers read the first value of a repeated query parameter or header. Add `@query.tag[] = ~^(a\|b)$` (all values) or `@query.tag[any]`, and `{{$query.tag[]}}` as a JSON array. |
-| `MA-10` | Route tags | **S** | `@tag = billing, slow` on a section; `--only billing` and `--skip slow` choose what to serve, and the UI and `/routes` can group and filter by tag. |
 
 ## Responses and templating
 
@@ -92,7 +80,6 @@ state only decides whether a route is eligible.
 | `AP-5` | Import WireMock mappings | **M** | Convert WireMock stub JSON (`mappings/*.json` and `__files`) into `.http` sections, with a comment where a matcher has no equivalent. Lowers the cost of moving to `mock`. |
 | `AP-6` | Export routes | **M** | `mock export -format openapi\|postman\|har` writes a skeleton from the routes and their sample requests (`buildSampleRequest`), to share a mocked API with people who use other tools. |
 | `AP-7` | Live diff mode | **M** | `--upstream URL --diff` answers from the mock but also sends each matched request upstream and records the differences on the event, shown in the UI. Hoverfly calls this diff mode. Reuses `compareResponses` and the compare view. |
-| `AP-8` | Upstream request rewriting | **S** | `--upstream-header 'Authorization: Bearer ...'` and a path prefix (`--upstream-strip /api`) for forwarded requests, so a client pointed at the mock can reach a real API that needs credentials it does not have. |
 | `AP-9` | Forward proxy mode | **M** | Accept absolute-form requests (`GET http://host/path`) so a client configured with `HTTP_PROXY` is mocked without changing its base URL, with `MA-5` choosing routes by host. Plain HTTP only; `CONNECT` tunnels would need TLS interception, which is out of scope. |
 
 ## Command line and configuration
@@ -100,7 +87,6 @@ state only decides whether a route is eligible.
 | ID | Idea | Effort | Description |
 |----|------|--------|-------------|
 | `CL-2` | Project config file | **S** | A `mock.toml` (or `.mockrc`) in the working directory holding the flags a project always passes: files, directories, ports, upstream, redaction. Flags still win. |
-| `CL-3` | Report every load error | **M** | `mock validate` stops at the first parse error, so fixing a file reveals the next one. Let the parser recover at the next `###` and report all of them. |
 | `CL-4` | `mock fmt` | **M** | Normalize spacing, directive order and blank lines in `.http` files, like `gofmt`, with `-check` for CI. Most useful once files are shared across a team. |
 | `CL-5` | `mock routes` | **S** | Print the route table (name, method, path, port, matchers, source line) as text or JSON without serving. `validate` reports problems; nothing prints the resolved routes offline. |
 | `CL-6` | Shell completions and a man page | **S** | `mock completion bash\|zsh\|fish\|powershell` and a generated `mock.1`, shipped in the release archives. |
@@ -117,8 +103,6 @@ state only decides whether a route is eligible.
 |----|------|--------|-------------|
 | `TE-2` | Richer `mocktest` assertions | **S** | `AssertCalledWith` (JSON body, header or query expectations), `LastCall`, `WaitFor(call, timeout)` for asynchronous clients, and `AssertAllRoutesCalled` using the existing hit counts. |
 | `TE-3` | Typed routes from Go code | **S** | `srv.Add(t, mocktest.Route{Method: "GET", Path: "/users", Status: 503, JSON: ...})` builds a route from Go values, for tests that compute the response. `Stub(t, ".http text")` covers the text form already. |
-| `TE-5` | Verification endpoint | **S** | `POST /verify` with expectations (`{"call": "POST /orders", "times": 1}`) answers `200` or `422` with a readable failure, so shell and non-Go tests need not parse `/requests`. |
-| `TE-6` | Strict report formats | **S** | `--strict-report junit.xml` (or JSON) so CI systems show unmatched requests and unused routes as test results. Add `--strict=unused` to also fail on routes that never matched. |
 | `TE-7` | Sessions for parallel tests | **L** | A header such as `X-Mock-Session: abc` separates the request log, counts and state per test, so parallel tests can share one server. Smocker has sessions. Only worth doing after the stateful ideas. |
 | `TE-8` | Thin clients for other languages | **M** | Small packages for JavaScript and Python that start the binary, wait for it (`CL-7`) and wrap `/requests`, `/verify` and `/clear`: the `mocktest` experience outside Go. |
 | `TE-9` | Testcontainers module | **S** | A documented container definition (the `ghcr.io/sspencer/mock` image, wait strategy on `/state`, mounted request files) for Java, .NET and Node test suites. |
@@ -130,7 +114,7 @@ state only decides whether a route is eligible.
 |----|------|--------|-------------|
 | `UI-2` | Save a draft to the file | **M** | **Copy as route** copies text for the user to paste. Add **Add to file**, which appends the draft to a chosen request file through an admin endpoint guarded like `PUT /fixture` (current files only, version check, atomic write). |
 | `UI-3` | Edit routes in the browser | **L** | Edit a section's `.http` text in the inspector with validation before saving. Larger than `UI-2` because of comments, variables and files the editor must not reformat. |
-| `UI-4` | Route search and grouping | **S** | A filter box for the route list, and grouping by file, port or tag (`MA-10`). Long route lists are hard to scan today. |
+| `UI-4` | Route search and grouping | **S** | A filter box for the route list, and grouping by file, port or `@tag`. Long route lists are hard to scan today. |
 | `UI-5` | Timing statistics | **M** | Per-route count, error share and p50/p95 duration, with a small timeline of request rate. Useful when `mock` stands in for a dependency in a load test. |
 | `UI-6` | Body viewers | **M** | Image preview, a hex view for binary bodies, formatted XML, a decoded view for JWTs in `Authorization` headers, and a collapsible JSON tree (the fixture editor already has one). |
 | `UI-7` | Import a HAR or journal | **M** | Load a HAR export or a `CL-10` journal into the traffic view to examine, filter and compare an earlier run. |
@@ -159,9 +143,8 @@ state only decides whether a route is eligible.
 |----|------|--------|-------------|
 | `DI-2` | More package formats | **S** | Scoop and WinGet manifests, `.deb`/`.rpm` through GoReleaser's `nfpms`, and an install script for CI. |
 | `DI-3` | Signed releases | **S** | Sign `checksums.txt` with cosign and attach an SBOM and build provenance, for users whose policy requires them. |
-| `DI-4` | GitHub Action | **S** | `uses: sspencer/setup-mock@v1` downloads the right binary, optionally starts it in the background and prints the strict report when the job ends. |
 | `DI-5` | Syntax highlighting | **M** | A TextMate grammar (VS Code, and reusable by others) for the directives, matchers and `{{$placeholder}}` syntax on top of `.http` highlighting. |
-| `DI-6` | Language server | **L** | Diagnostics from `mock validate -json` while typing, completion for directives, placeholders and filters, hover docs, and go-to-definition for `@variables` and `< files`. `CL-3` makes the diagnostics more useful. |
+| `DI-6` | Language server | **L** | Diagnostics from `mock validate -json` while typing, completion for directives, placeholders and filters, hover docs, and go-to-definition for `@variables` and `< files`. `mock validate` already reports every error with its file and line. |
 | `DI-7` | npm wrapper | **M** | An npm package that downloads the binary, so JavaScript projects can add `mock` as a dev dependency and run `npx`. Many front-end teams choose mock tools this way. |
 | `DI-8` | Embeddable handler | **S** | Document and stabilize `mockhttp.Server` as an `http.Handler` for Go programs that want mock routes inside their own server (a dev mode, a demo binary), with an example. `mocktest` covers tests only. |
 

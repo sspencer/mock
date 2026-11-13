@@ -92,8 +92,8 @@ export a HAR file. See [Admin UI and API](docs/admin-ui.md).
 ## What else it does
 
 - **Match on more than the path.** Choose a route by header, query, path
-  parameter, cookie, JSON, form or XML body value, with exact, wildcard, regex
-  and negated matchers. [Matching](docs/matching.md)
+  parameter, cookie, JSON, form or XML body value, with exact, wildcard, regex,
+  negated, numeric and length matchers. [Matching](docs/matching.md)
 - **Generate data.** Faker values, dates, signed tokens, repeated lists,
   conditional blocks, fixture files (JSON, CSV or NDJSON, with lookup by key
   and paging), the echoed request, and seeds for repeatable output.
@@ -112,7 +112,9 @@ export a HAR file. See [Admin UI and API](docs/admin-ui.md).
 - **Run in tests and CI.** `mock run api.http -- npm test` wraps a test
   command and fails on unmatched requests, `@times` and temporary routes stub
   retries and one-off answers, `mock validate` lints request files, and the
-  `mocktest` package starts a mock inside a Go test. [Testing](docs/testing.md)
+  `mocktest` package starts a mock inside a Go test. `POST /verify` asserts
+  calls from any language, `--strict-report` writes JUnit, and
+  `uses: sspencer/mock` sets it all up in GitHub Actions. [Testing](docs/testing.md)
 - **Serve several ports at once** from one process.
   [Multiple ports](docs/matching.md#multiple-ports)
 - **Reuse REST Client files** and their environments.

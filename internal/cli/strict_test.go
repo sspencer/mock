@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -26,7 +27,7 @@ func TestStrictReportFailsOnUnmatchedRequests(t *testing.T) {
 		},
 		Unmatched:      []mockhttp.UnmatchedRequest{{Method: "GET", Path: "/missing", Count: 2}, {Method: "POST", Path: "/real", Count: 1, Proxied: true}},
 		UnmatchedTotal: 4,
-	})
+	}, false)
 	if err == nil || ExitCode(err) != 1 || err.Error() != "strict: 4 requests unmatched" {
 		t.Fatalf("err = %v (exit %d)", err, ExitCode(err))
 	}
@@ -43,12 +44,12 @@ func TestStrictReportFailsOnUnmatchedRequests(t *testing.T) {
 
 func TestStrictReportPassesWithUnusedRoutes(t *testing.T) {
 	var out bytes.Buffer
-	err := strictReport(&out, mockhttp.Coverage{Routes: []mockhttp.RouteHits{{Name: "A", Method: "GET", Path: "/a", Source: "a.http", Line: 1}}})
+	err := strictReport(&out, mockhttp.Coverage{Routes: []mockhttp.RouteHits{{Name: "A", Method: "GET", Path: "/a", Source: "a.http", Line: 1}}}, false)
 	if err != nil || !strings.Contains(out.String(), "strict: 1 of 1 route never matched a request") {
 		t.Fatalf("err = %v report = %q", err, out.String())
 	}
 	out.Reset()
-	err = strictReport(&out, mockhttp.Coverage{Routes: []mockhttp.RouteHits{{Name: "A", Hits: 1}}})
+	err = strictReport(&out, mockhttp.Coverage{Routes: []mockhttp.RouteHits{{Name: "A", Hits: 1}}}, false)
 	if err != nil || out.String() != "strict: every request matched a route, and all 1 route matched a request\n" {
 		t.Fatalf("err = %v report = %q", err, out.String())
 	}
@@ -60,6 +61,101 @@ func TestParseConfigStrict(t *testing.T) {
 		if err != nil || !cfg.Strict {
 			t.Fatalf("parseConfig(%s) = %+v, %v", flag, cfg, err)
 		}
+	}
+}
+
+func TestParseConfigStrictUnusedAndReport(t *testing.T) {
+	for _, tt := range []struct {
+		args                 []string
+		strict, unused       bool
+		report, errorMessage string
+	}{
+		{args: []string{"--strict=unused"}, strict: true, unused: true},
+		{args: []string{"-s=unused", "-s"}, strict: true},
+		{args: []string{"--strict=false"}},
+		{args: []string{"--strict-report", "out/junit.xml"}, strict: true, report: "out/junit.xml"},
+		{args: []string{"--strict=unused", "--strict-report", "r.JSON"}, strict: true, unused: true, report: "r.JSON"},
+		{args: []string{"--strict=maybe"}, errorMessage: "--strict=unused"},
+		{args: []string{"--strict-report", "report.txt"}, errorMessage: ".xml (JUnit) or .json"},
+	} {
+		cfg, err := parseConfig(append(tt.args, "a.http"))
+		if tt.errorMessage != "" {
+			if err == nil || !strings.Contains(err.Error(), tt.errorMessage) {
+				t.Errorf("%v: err = %v, want %q", tt.args, err, tt.errorMessage)
+			}
+			continue
+		}
+		if err != nil || cfg.Strict != tt.strict || cfg.StrictUnused != tt.unused || cfg.StrictReport != tt.report {
+			t.Errorf("%v: cfg strict %v unused %v report %q, err %v", tt.args, cfg.Strict, cfg.StrictUnused, cfg.StrictReport, err)
+		}
+	}
+}
+
+func TestStrictReportFailsOnUnusedRoutes(t *testing.T) {
+	coverage := mockhttp.Coverage{Routes: []mockhttp.RouteHits{{Name: "A", Method: "GET", Path: "/a", Source: "a.http", Line: 1, Hits: 1}, {Name: "B", Method: "GET", Path: "/b", Source: "a.http", Line: 5}}}
+	var out bytes.Buffer
+	if err := strictReport(&out, coverage, true); ExitCode(err) != 1 || err.Error() != "strict: 1 route never matched" {
+		t.Fatalf("err = %v", err)
+	}
+	coverage.Unmatched, coverage.UnmatchedTotal = []mockhttp.UnmatchedRequest{{Method: "GET", Path: "/x", Count: 2}}, 2
+	if err := strictReport(&out, coverage, true); err == nil || err.Error() != "strict: 2 requests unmatched, 1 route never matched" {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestStrictReportFiles(t *testing.T) {
+	coverage := mockhttp.Coverage{
+		Routes: []mockhttp.RouteHits{
+			{Name: "Users", Method: "GET", Path: "/users", Source: "a.http", Line: 1, Hits: 3},
+			{Name: "Delete", Method: "DELETE", Path: "/users/:id", Source: "a.http", Line: 7},
+		},
+		Unmatched:      []mockhttp.UnmatchedRequest{{Method: "GET", Path: "/missing", Count: 2, Proxied: true}},
+		UnmatchedTotal: 3,
+	}
+	dir := t.TempDir()
+	junit := filepath.Join(dir, "strict.xml")
+	if err := writeStrictReport(junit, coverage, false); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(junit)
+	for _, want := range []string{
+		`<testsuites name="mock strict" tests="4" failures="2" skipped="1">`,
+		`<testsuite name="mock requests" tests="2" failures="2" skipped="0">`,
+		`<testcase name="GET /missing" classname="unmatched">`,
+		`<failure message="2 requests no route matched (forwarded with --upstream)">`,
+		`<testcase name="other paths" classname="unmatched">`,
+		`<testcase name="GET /users  Users" classname="a.http" file="a.http" line="1"></testcase>`,
+		`<skipped message="never matched a request">a.http:7: route never matched a request</skipped>`,
+	} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("JUnit report lacks %s:\n%s", want, data)
+		}
+	}
+	if err := writeStrictReport(junit, mockhttp.Coverage{Routes: coverage.Routes}, true); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(junit)
+	if !strings.Contains(string(data), `<testcase name="every request matched a route" classname="unmatched"></testcase>`) || !strings.Contains(string(data), `<failure message="never matched a request">`) {
+		t.Errorf("JUnit report with failUnused:\n%s", data)
+	}
+
+	jsonPath := filepath.Join(dir, "strict.json")
+	if err := writeStrictReport(jsonPath, coverage, false); err != nil {
+		t.Fatal(err)
+	}
+	var report struct {
+		Passed         bool `json:"passed"`
+		UnmatchedTotal int  `json:"unmatchedTotal"`
+		Unused         []struct {
+			Name string `json:"name"`
+		} `json:"unused"`
+	}
+	data, _ = os.ReadFile(jsonPath)
+	if err := json.Unmarshal(data, &report); err != nil || report.Passed || report.UnmatchedTotal != 3 || len(report.Unused) != 1 || report.Unused[0].Name != "Delete" {
+		t.Errorf("JSON report = %s (%v)", data, err)
+	}
+	if err := writeStrictReport(filepath.Join(dir, "missing", "r.json"), coverage, false); err == nil {
+		t.Error("writing into a missing directory: want an error")
 	}
 }
 

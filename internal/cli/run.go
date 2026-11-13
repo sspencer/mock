@@ -86,7 +86,7 @@ func serve(ctx context.Context, cfg config, stdin io.Reader, stdout, stderr io.W
 		return runError("%v", err)
 	}
 	opts.Headers = http.Header(cfg.Headers)
-	input, err := loadInput(cfg.Args, cfg.Dirs, stdin, opts)
+	input, err := loadInput(cfg.Args, cfg.Dirs, stdin, opts, cfg.Tags)
 	if err != nil {
 		return runError("%v", err)
 	}
@@ -119,6 +119,9 @@ func serve(ctx context.Context, cfg config, stdin io.Reader, stdout, stderr io.W
 	if input.StaticDir != "" && cfg.Defaults != (mockhttp.RouteDefaults{}) {
 		return usageError("-w (--delay) and -f (--fault) need request files; a directory argument serves static files only")
 	}
+	if input.StaticDir != "" && cfg.Tags.active() {
+		return usageError("--only and --skip need request files; a directory argument serves static files only")
+	}
 	if input.StaticDir != "" && cfg.Strict {
 		return usageError("-s (--strict) needs request files; a directory argument serves static files only")
 	}
@@ -149,7 +152,7 @@ func serve(ctx context.Context, cfg config, stdin io.Reader, stdout, stderr io.W
 		input.Methods = methods
 		mockServer = mockhttp.New(input.Methods, logger)
 		mockServer.SetRouteDefaults(cfg.Defaults)
-		mockServer.SetUpstream(cfg.Upstream)
+		mockServer.SetUpstreamWith(cfg.Upstream, mockhttp.UpstreamOptions{Headers: http.Header(cfg.UpstreamHeaders), StripPrefix: cfg.UpstreamStrip})
 		mockServer.SetRedact(cfg.Redact)
 		if cfg.Record != "" {
 			rec, err := newRecorder(cfg.Record, cfg.Port, logger)
@@ -296,7 +299,14 @@ func serve(ctx context.Context, cfg config, stdin io.Reader, stdout, stderr io.W
 			<-errCh
 		}
 		if cfg.Strict && mockServer != nil {
-			return strictReport(stderr, mockServer.Coverage())
+			coverage := mockServer.Coverage()
+			if cfg.StrictReport != "" {
+				if err := writeStrictReport(cfg.StrictReport, coverage, cfg.StrictUnused); err != nil {
+					_ = strictReport(stderr, coverage, cfg.StrictUnused)
+					return err
+				}
+			}
+			return strictReport(stderr, coverage, cfg.StrictUnused)
 		}
 		return nil
 	case err := <-errCh:

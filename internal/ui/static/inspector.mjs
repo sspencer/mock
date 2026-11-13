@@ -59,7 +59,43 @@ export function sampleParam(name) {
 // "!text" and "!~pattern" (present but not that), else exact. A sample
 // request uses exact values as written and a placeholder otherwise; a
 // placeholder may not satisfy a regexp.
-export const isSampleExact = value => value !== '*' && !value.startsWith('!') && !value.startsWith('~');
+// ">100", ">=", "<", "<=" compare a number and "#>0" a length (restclient's
+// compareMatcher and lengthMatcher); a sample sends a value that satisfies them.
+const NUMBER = String.raw`-?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?`;
+const COMPARE = new RegExp(String.raw`^(>=|<=|>|<)\s*(${NUMBER})$`);
+const LENGTH = /^#\s*(>=|<=|>|<|=)?\s*([0-9]+)$/;
+
+// comparison parses a comparison or length matcher into { length, op, n }, or null.
+export function comparison(value) {
+    let match = COMPARE.exec(value);
+    if (match && Number.isFinite(Number(match[2]))) return { length: false, op: match[1], n: Number(match[2]) };
+    match = LENGTH.exec(value);
+    if (match) return { length: true, op: match[1] || '=', n: Number(match[2]) };
+    return null;
+}
+
+export const isSampleExact = value => value !== '*' && !value.startsWith('!') && !value.startsWith('~') && !comparison(value);
+
+// sampleLength is a length that satisfies a length matcher (sample.go's sampleLength).
+function sampleLength({ op, n }) {
+    if (op === '>') return n + 1;
+    if (op === '<') return Math.min(1, Math.max(n - 1, 0));
+    if (op === '<=') return Math.min(1, n);
+    return n;
+}
+
+// sampleFor is the value a sample request sends for a matcher, or null: an
+// exact value itself, a number that satisfies a comparison (">100" gives
+// "101"), or text of a satisfying length ("#>2" gives "xxx").
+export function sampleFor(value) {
+    if (isSampleExact(value)) return value;
+    const cmp = comparison(value);
+    if (!cmp) return null;
+    if (cmp.length) return 'x'.repeat(sampleLength(cmp));
+    if (cmp.op === '>') return String(Math.floor(cmp.n) + 1);
+    if (cmp.op === '<') return String(Math.ceil(cmp.n) - 1);
+    return String(cmp.n);
+}
 
 // Describes a matcher value for the route details panel.
 export function describeMatcher(value) {
@@ -67,6 +103,13 @@ export function describeMatcher(value) {
     if (value.startsWith('!~')) return `${value} (present, not matching the regular expression)`;
     if (value.startsWith('!')) return `${value} (present, not ${value.slice(1)})`;
     if (value.startsWith('~')) return `${value} (regular expression)`;
+    const cmp = comparison(value);
+    if (cmp) {
+        const words = cmp.length
+            ? { '>': 'more than', '>=': 'at least', '<': 'less than', '<=': 'at most', '=': 'exactly' }
+            : { '>': 'above', '>=': 'at least', '<': 'below', '<=': 'at most', '=': 'exactly' };
+        return `${value} (${cmp.length ? 'a length of' : 'a number'} ${words[cmp.op]} ${cmp.n})`;
+    }
     return value;
 }
 
@@ -85,15 +128,19 @@ export function jsonPathSegments(path) {
 }
 
 // Builds a sample JSON body from @json matchers. Exact values are used as
-// written (JSON literals such as 42 or true stay unquoted); "*" and regexp
-// values become "example"; "!" fields are left out. Numeric path segments
+// written (JSON literals such as 42 or true stay unquoted), ">100" gives 101
+// and "#>1" an array of two "example" strings; "*" and regexp values become
+// "example"; "!" fields are left out. Numeric path segments
 // make arrays. Returns '' when there is nothing to send or paths conflict.
 export function sampleJSONBody(matchJson) {
     const entries = Object.entries(matchJson || {}).filter(([, value]) => value !== '!');
     if (!entries.length) return '';
     const literal = value => {
-        if (!isSampleExact(value)) return 'example';
-        try { return JSON.parse(value); } catch { return value; }
+        const cmp = comparison(value);
+        if (cmp?.length) return Array.from({ length: sampleLength(cmp) }, () => 'example');
+        const sample = sampleFor(value);
+        if (sample === null) return 'example';
+        try { return JSON.parse(sample); } catch { return sample; }
     };
     const isIndex = segment => /^(0|[1-9][0-9]*)$/.test(segment);
     let root;
@@ -126,7 +173,7 @@ export function sampleFormBody(matchForm) {
     const form = new URLSearchParams();
     for (const [name, values] of Object.entries(matchForm || {})) {
         for (const value of values) {
-            if (value !== '!') form.append(name, isSampleExact(value) ? value : 'example');
+            if (value !== '!') form.append(name, sampleFor(value) ?? 'example');
         }
     }
     return form.toString();
@@ -136,7 +183,7 @@ export function buildRouteCurl(route, origin) {
     const matchPath = route.matchPath || {};
     const path = String(route.path)
         .replace(/(^|\/):([^/]+)/g, (_, slash, name) =>
-            slash + (name in matchPath && isSampleExact(matchPath[name]) ? encodeURIComponent(matchPath[name]) : sampleParam(name)))
+            slash + (name in matchPath && sampleFor(matchPath[name]) !== null ? encodeURIComponent(sampleFor(matchPath[name])) : sampleParam(name)))
         // A trailing * or *name wildcard matches the rest of the path.
         .replace(/(^|\/)\*([A-Za-z0-9_]*)$/, (_, slash, name) =>
             slash + (name in matchPath && isSampleExact(matchPath[name]) ? matchPath[name].split('/').map(encodeURIComponent).join('/') : 'example'));
@@ -144,7 +191,7 @@ export function buildRouteCurl(route, origin) {
     const extra = new URLSearchParams();
     for (const [name, values] of Object.entries(route.matchQuery || {})) {
         for (const value of values) {
-            if (value !== '!') extra.append(name, isSampleExact(value) ? value : sampleParam(name));
+            if (value !== '!') extra.append(name, sampleFor(value) ?? sampleParam(name));
         }
     }
     const queryText = [route.query, extra.toString()].filter(Boolean).join('&');
@@ -156,11 +203,11 @@ export function buildRouteCurl(route, origin) {
     else if (method !== 'GET') parts.push('--request', method);
     for (const [name, values] of Object.entries(route.matchHeaders || {})) {
         for (const value of values) {
-            if (value !== '!') parts.push('--header', shellQuote(`${name}: ${isSampleExact(value) ? value : 'example'}`));
+            if (value !== '!') parts.push('--header', shellQuote(`${name}: ${sampleFor(value) ?? 'example'}`));
         }
     }
     const cookies = Object.entries(route.matchCookies || {}).flatMap(([name, values]) =>
-        values.filter(value => value !== '!').map(value => `${name}=${isSampleExact(value) ? value : 'example'}`));
+        values.filter(value => value !== '!').map(value => `${name}=${sampleFor(value) ?? 'example'}`));
     if (cookies.length) parts.push('--cookie', shellQuote(cookies.join('; ')));
     const json = sampleJSONBody(route.matchJson);
     const form = sampleFormBody(route.matchForm);
@@ -215,6 +262,7 @@ export function formatRoute(route, sampleCurl = '') {
         `Source: ${route.source || '(unknown)'}:${route.line || '?'} · revision ${route.revision}`,
         `Matched: ${hitsLabel(route.hits)}`,
         route.port ? `Port: ${route.port}` : '',
+        route.tags?.length ? `Tags: ${route.tags.join(' · ')}` : '',
         route.proxy ? `Proxy: ${route.proxy}${route.delay && route.delay !== '0s' ? ` · delay ${route.delay}` : ''}` : `Response: ${route.statusTemplate || route.status} · delay ${route.delay || '0s'}${route.stream ? ` · stream ${route.stream}` : ''}${route.fault ? ` · fault ${route.fault}` : ''}${route.throttle ? ` · throttle ${route.throttle}` : ''}${route.compress ? ` · compress ${route.compress}` : ''}`,
         route.fixture ? `Fixture: ${route.fixture}` : '',
         route.callback ? `Callback: ${route.callback}` : '',

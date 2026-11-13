@@ -35,6 +35,29 @@ mock --upstream https://api.example.com fixtures.http
 The admin UI marks forwarded requests as **proxied** and shows the upstream
 URL, the real response, and the nearby routes that didn't match.
 
+### Credentials and path prefixes
+
+Two flags change the forwarded request, for a client that is pointed at `mock`
+but does not have what the real API needs:
+
+```sh
+mock --upstream https://api.example.com \
+  --upstream-header "Authorization: Bearer $API_TOKEN" \
+  --upstream-strip /api fixtures.http
+```
+
+- `--upstream-header 'Name: value'` sets the header on every forwarded
+  request, replacing the client's value of that name. Repeat it for more
+  headers. The request log shows the request as the client sent it, without
+  these headers.
+- `--upstream-strip /api` removes the prefix from the start of the request
+  path before it is appended to the upstream URL, so `/api/users` goes to
+  `https://api.example.com/users`. A path that does not start with the
+  prefix (`/apiary` does not) is forwarded unchanged.
+- Both need `--upstream`, and change neither `@proxy` routes nor what
+  [`-r`](#recording-forwarded-requests) records, which keeps the path the
+  client used.
+
 ### Recording forwarded requests
 
 Add `-r` (`--record`) to turn forwarded traffic into a request file. Each time

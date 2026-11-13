@@ -41,7 +41,9 @@ type Server struct {
 	rolls []*atomic.Uint64
 	// uses counts the requests each @times route answered since the last
 	// reset; carried across reloads like hits.
-	uses           []*atomic.Uint64
+	uses []*atomic.Uint64
+	// answers counts each route's answers since the last reset, for $hits.
+	answers        []*atomic.Uint64
 	unmatched      unmatchedLog
 	logger         *slog.Logger
 	events         []RequestEvent
@@ -87,6 +89,7 @@ func New(methods []restclient.Method, logger *slog.Logger) *Server {
 		hits:        carryHits(methods, nil, nil),
 		rolls:       carryHits(methods, nil, nil),
 		uses:        carryHits(methods, nil, nil),
+		answers:     carryHits(methods, nil, nil),
 		session:     rand.Text(),
 		logger:      logger,
 		subscribers: make(map[chan RequestEvent]struct{}),
@@ -130,6 +133,7 @@ func (s *Server) installLocked() {
 	s.hits = carryHits(combined, s.methods, s.hits)
 	s.rolls = carryHits(combined, s.methods, s.rolls)
 	s.uses = carryHits(combined, s.methods, s.uses)
+	s.answers = carryHits(combined, s.methods, s.answers)
 	s.pruneLimiters(combined)
 	s.methods = combined
 	s.config.Revision++
@@ -745,6 +749,7 @@ func cloneMethods(methods []restclient.Method) []restclient.Method {
 		out[i].MatchForm = cloneValues(methods[i].MatchForm)
 		out[i].MatchCookies = cloneValues(methods[i].MatchCookies)
 		out[i].Comments = append([]string(nil), methods[i].Comments...)
+		out[i].Tags = append([]string(nil), methods[i].Tags...)
 		out[i].Variables = make(map[string]string, len(methods[i].Variables))
 		for k, v := range methods[i].Variables {
 			out[i].Variables[k] = v
@@ -868,7 +873,7 @@ func warnUnknownPlaceholders(logger *slog.Logger, method restclient.Method, fixt
 				}
 				continue
 			}
-			if key == "index" && inRepeat {
+			if key == "index" && inRepeat || key == "hits" {
 				continue
 			}
 			if _, ok := itemPath(key); ok && inRepeat {

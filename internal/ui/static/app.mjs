@@ -1320,6 +1320,13 @@ async function loadRoutes() {
             if (route.name) {
                 name.title = route.name;
             }
+            const tags = (route.tags || []).map(tag => {
+                const chip = document.createElement('span');
+                chip.className = 'route-tag';
+                chip.textContent = tag;
+                chip.title = `Tag ${tag}: filter the traffic with tag:${tag}`;
+                return chip;
+            });
             const badge = switchBadge(route);
             const switched = document.createElement('span');
             if (badge) {
@@ -1344,9 +1351,9 @@ async function loadRoutes() {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'route-button';
-            button.setAttribute('aria-label', `${route.method} ${routePath}: ${route.name}${badge ? `, switched ${badge.text}` : ''}, matched ${hitsLabel(route.hits)}`);
+            button.setAttribute('aria-label', `${route.method} ${routePath}: ${route.name}${tags.length ? `, tagged ${route.tags.join(', ')}` : ''}${badge ? `, switched ${badge.text}` : ''}, matched ${hitsLabel(route.hits)}`);
             button.setAttribute('aria-pressed', String(selectedRoute(selection)?.id === route.id));
-            button.append(method, path, ...(badge ? [switched] : []), name);
+            button.append(method, path, ...(badge ? [switched] : []), name, ...tags);
             button.addEventListener('click', () => {
                 selection = selectRoute(route);
                 returnFocus = button;

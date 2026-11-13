@@ -328,3 +328,45 @@ POST /c
 		}
 	}
 }
+
+func TestComparisonAndLengthMatchers(t *testing.T) {
+	tests := []struct {
+		raw    string
+		kind   MatcherKind
+		values []string
+		want   bool
+	}{
+		{">100", MatchCompare, []string{"101"}, true},
+		{">100", MatchCompare, []string{"100"}, false},
+		{">= 100", MatchCompare, []string{" 100 "}, true},
+		{"<0", MatchCompare, []string{"-0.5"}, true},
+		{"<=1e3", MatchCompare, []string{"1000"}, true},
+		{">1", MatchCompare, []string{"abc", "2"}, true},
+		{">1", MatchCompare, []string{"0x10", "Inf", "NaN"}, false},
+		{">1", MatchCompare, nil, false},
+		{"#>0", MatchLength, []string{"[1]"}, true},
+		{"#>0", MatchLength, []string{"[]"}, false},
+		{"#2", MatchLength, []string{`{"a":1,"b":2}`}, true},
+		{"#= 3", MatchLength, []string{"héé"}, true},
+		{"#<=2", MatchLength, []string{"abc"}, false},
+		{"#fff", MatchExact, []string{"#fff"}, true},
+		{">abc", MatchExact, []string{">abc"}, true},
+		{"#", MatchExact, []string{"#"}, true},
+	}
+	for _, tt := range tests {
+		m, err := ParseMatcher(tt.raw)
+		if err != nil || m.Kind != tt.kind {
+			t.Errorf("ParseMatcher(%q) = kind %v, %v; want kind %v", tt.raw, m.Kind, err, tt.kind)
+			continue
+		}
+		if got := m.Match(tt.values); got != tt.want {
+			t.Errorf("%q.Match(%q) = %v, want %v", tt.raw, tt.values, got, tt.want)
+		}
+	}
+	if m := MustMatcher("#>=2"); !m.MatchLengths([]int{0, 3}) || m.MatchLengths([]int{1}) || m.Describe() != "a length of at least 2" {
+		t.Errorf("MatchLengths / Describe: %+v %q", m, m.Describe())
+	}
+	if d := MustMatcher("<0.5").Describe(); d != "a number below 0.5" {
+		t.Errorf("Describe = %q", d)
+	}
+}

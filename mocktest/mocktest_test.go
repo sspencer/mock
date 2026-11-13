@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sspencer/mock/mockhttp"
 )
 
 const api = `### [201] Create user
@@ -124,9 +126,9 @@ func TestSplitCall(t *testing.T) {
 		{"GET users", "", "", false},
 	}
 	for _, tt := range tests {
-		method, target, ok := splitCall(tt.call)
+		method, target, ok := mockhttp.SplitCall(tt.call)
 		if method != tt.method || target != tt.target || ok != tt.ok {
-			t.Errorf("splitCall(%q) = %q, %q, %v", tt.call, method, target, ok)
+			t.Errorf("SplitCall(%q) = %q, %q, %v", tt.call, method, target, ok)
 		}
 	}
 }

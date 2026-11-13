@@ -13,11 +13,12 @@ The UI is served at the root of the admin port (`-a`, default `8081`):
 | `/clear` | `POST` clears stored events |
 | `/reload` | `POST` reloads the request files now and returns the new state (see [Reloading](cli.md#reloading)) |
 | `/state` | `GET` active revision, route count, last successful reload, reload error, and the number of route `switches` in effect |
-| `/routes` | `POST` adds temporary routes and `DELETE /routes/{id}` removes them (see [Temporary routes](#temporary-routes)); `GET` route configuration, including source location, port, matchers, status, delay, `throttle`, `override` (a description of the `/faults` override in effect), `switch` (the route's own override, as set), `fallback`, `chance`, `defaultContentType`, `statusTemplate`, `require`, `missing`, `etag`, `times`, `timesLeft` and `temporary` when set, body preview, and `hits` (requests answered) |
+| `/routes` | `POST` adds temporary routes and `DELETE /routes/{id}` removes them (see [Temporary routes](#temporary-routes)); `GET` route configuration, including source location, port, matchers, status, delay, `throttle`, `override` (a description of the `/faults` override in effect), `switch` (the route's own override, as set), `fallback`, `chance`, `defaultContentType`, `statusTemplate`, `require`, `missing`, `etag`, `times`, `timesLeft`, `tags` and `temporary` when set, body preview, and `hits` (requests answered); `GET /routes?tag=billing` lists only the routes with that `@tag` |
 | `/requests` | `GET` the request log as JSON, optionally filtered (see below) |
+| `/verify` | `POST` checks how often calls were received and answers `200` or `422` (see [Verifying calls](#verifying-calls)) |
 | `/resend` | `POST` answers a request as if a client sent it to the mock port (see [Resending a request](#resending-a-request)) |
 | `/fixture` | `GET ?route=ID` reads a route's `@fixture` file; `PUT` writes it (see [Editing fixtures](#editing-fixtures)) |
-| `/reset` | `POST` starts `@times` counts, `@rate-limit` budgets and `@match.chance` draws over, and removes `/faults` overrides and temporary routes, without a reload; answers like `/state` |
+| `/reset` | `POST` starts `@times` and `{{$hits}}` counts, `@rate-limit` budgets and `@match.chance` draws over, and removes `/faults` overrides and temporary routes, without a reload; answers like `/state` |
 | `/faults` | `GET` lists run-time route switches and fault overrides; `POST` sets one for a route or `*` (delay, fault, throttle, `off`, `status`); `DELETE` clears them (see [Changing faults at run time](responses.md#changing-faults-at-run-time)) |
 
 ### Admin access token
@@ -134,6 +135,44 @@ A test can assert what its code under test sent: `POST /clear` (with
 `X-Requested-With`) before the test, then read `/requests` after it. An
 invalid `matched`, `callbacks` or `since` value returns `400`.
 
+### Verifying calls
+
+`POST /verify` checks how often requests were received, so a test in any
+language can assert without parsing `/requests`. The body is one expectation
+or an array of them:
+
+```sh
+curl -s localhost:8081/verify -H 'Content-Type: application/json' \
+  -d '[{"call": "POST /orders", "times": 1}, {"call": "Search", "atLeast": 2}, {"allMatched": true}]'
+```
+
+| Field | Meaning |
+|-------|---------|
+| `call` | A method and path, such as `POST /orders` (exact path; add `?query` to require that exact query string), or the name of the route that answered |
+| `times` | Received exactly this many times (`0`: never) |
+| `atLeast`, `atMost` | Received at least, or at most, this many times; combine them for a range |
+| `allMatched` | `true` on its own: no request went unmatched (requests forwarded with `--upstream` count as unmatched) |
+
+A `call` with no count must have been received at least once. Counts cover the
+request log (the latest 1,000 requests since `mock` started or `POST /clear`)
+and leave out webhook callbacks. `mock` answers `200` when every expectation
+holds and `422` when any fails, with `ok`, a `results` entry per expectation
+(`want`, `got`, `ok` and a failure `message`), and a `message` that lists the
+failures and the requests received:
+
+```text
+verify: 1 of 3 expectations failed
+  POST /orders: called 0 times, want exactly 1 time
+requests received:
+  GET /search?q=a -> 200 ("Search")
+  GET /search?q=b -> 200 ("Search")
+```
+
+With `Accept: text/plain`, `mock` sends only that message, so `curl -f` in a
+shell script fails the step and prints why. A malformed body or unknown field
+returns `400`. Like other admin `POST`s it needs a JSON content type or
+`X-Requested-With`.
+
 ### Resending a request
 
 The admin UI runs on its own port and `mock` sends no CORS headers, so the
@@ -247,6 +286,7 @@ separated by spaces (case does not matter):
 | `matched` / `unmatched` | a route answered, or none did (callbacks are neither) |
 | `get`, `POST`, ... | with this method |
 | `route:Users`, `route:"User detail"` | answered by the route with this name (quote names with spaces) |
+| `tag:billing` | answered by a route with this [`@tag`](matching.md#route-tags) |
 | anything else | whose method, URL, status, status text, label (`proxied`, `callback`) or fault contains it |
 
 A `-` in front excludes instead: `post -2xx` shows failed POSTs. Clicking a

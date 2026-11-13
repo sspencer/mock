@@ -414,3 +414,23 @@ func TestParseConfigProfilesAndThrottle(t *testing.T) {
 		}
 	}
 }
+
+func TestParseConfigUpstreamRewrite(t *testing.T) {
+	cfg, err := parseConfig([]string{"-u", "https://api.example.com", "--upstream-header", "Authorization: Bearer x", "--upstream-strip", "/api", "api.http"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if http.Header(cfg.UpstreamHeaders).Get("Authorization") != "Bearer x" || cfg.UpstreamStrip != "/api" {
+		t.Errorf("cfg = %+v", cfg)
+	}
+	for _, args := range [][]string{
+		{"--upstream-strip", "/api", "api.http"},
+		{"--upstream-header", "A: b", "api.http"},
+		{"-u", "https://api.example.com", "--upstream-strip", "api", "api.http"},
+		{"-u", "https://api.example.com", "--upstream-header", "bad", "api.http"},
+	} {
+		if _, err := parseConfig(args); err == nil {
+			t.Errorf("parseConfig(%q): want an error", args)
+		}
+	}
+}

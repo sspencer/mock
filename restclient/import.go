@@ -37,8 +37,11 @@ func expandImports(source string, defs []definition, chain []string) ([]definiti
 		if err != nil {
 			return nil, nil, parseErrorf(def.in(source), def.line, "@import %s: %v", raw, err)
 		}
-		_, imported, err := scanFile(path, file)
+		_, imported, scanErrs, err := scanFile(path, file)
 		file.Close()
+		if err == nil {
+			err = joinErrors(scanErrs)
+		}
 		if err != nil {
 			return nil, nil, err
 		}

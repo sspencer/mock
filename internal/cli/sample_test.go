@@ -75,3 +75,25 @@ func TestBuildSampleRequestMethodLists(t *testing.T) {
 		}
 	}
 }
+
+func TestSampleValuesSatisfyComparisons(t *testing.T) {
+	for value, want := range map[string]string{
+		">100": "101", ">=100": "100", "<0.5": "0", "<=50": "50", ">1.5": "2",
+		"#>2": "xxx", "#3": "xxx", "#<5": "x", "#<=0": "", "exact": "exact",
+	} {
+		if got, ok := sampleFor(value); !ok || got != want {
+			t.Errorf("sampleFor(%q) = %q, %v; want %q", value, got, ok, want)
+		}
+	}
+	if _, ok := sampleFor("~x+"); ok {
+		t.Error("sampleFor(regexp): want no sample")
+	}
+	if got := sampleJSONBody(map[string]string{"amount": ">100", "items": "#>1", "code": "#fff"}); got != `{"amount":101,"code":"#fff","items":["example","example"]}` {
+		t.Errorf("sampleJSONBody = %s", got)
+	}
+	m := parseOne(t, "### A\n@query.limit = <=50\n@header.X-Count = >=2\nGET /a\n")
+	sample := buildSampleRequest(m)
+	if sample.Target != "/a?limit=50" || sample.Headers.Get("X-Count") != "2" {
+		t.Errorf("sample = %+v", sample)
+	}
+}

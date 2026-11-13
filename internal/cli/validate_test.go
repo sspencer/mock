@@ -97,6 +97,27 @@ func TestValidateJSONReport(t *testing.T) {
 	}
 }
 
+func TestValidateReportsEveryError(t *testing.T) {
+	path := writeValidateFile(t, "### A\n@times = 0\nGET /a\n\n### B\nGET /b\n\n### C\n@delay = soon\nGET /c\n")
+	out, err := runValidateArgs(t, "-json", path)
+	var report validateReport
+	if jsonErr := json.Unmarshal([]byte(out), &report); jsonErr != nil || ExitCode(err) != 1 || len(report.Diagnostics) != 2 {
+		t.Fatalf("report = %s, err = %v", out, err)
+	}
+	for i, line := range []int{2, 9} {
+		if d := report.Diagnostics[i]; d.Level != "error" || d.Source != path || d.Line != line || strings.Contains(d.Message, path) {
+			t.Errorf("diagnostic %d = %+v, want an error at line %d", i, d, line)
+		}
+	}
+	out, _ = runValidateArgs(t, path)
+	if !strings.Contains(out, path+":2: error: section \"A\": @times") || !strings.Contains(out, path+":9: error: ") {
+		t.Errorf("text report = %q", out)
+	}
+	if err == nil || err.Error() != "validation failed: 2 errors, 0 warnings" {
+		t.Errorf("err = %v", err)
+	}
+}
+
 func TestValidateUsageErrors(t *testing.T) {
 	for _, args := range [][]string{nil, {"-bogus", "x.http"}} {
 		if _, err := runValidateArgs(t, args...); ExitCode(err) != 2 {

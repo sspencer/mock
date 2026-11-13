@@ -101,6 +101,8 @@ carry sessions.
 | `~regex` | a value matches the Go regular expression `regex` in full |
 | `!text` | the value is present and not blank, and no value equals `text` |
 | `!~regex` | the value is present and not blank, and no value matches `regex` in full |
+| `>100`, `>=100`, `<0`, `<=50` | a value is a number (such as `42`, `-0.5` or `1e3`) that compares that way |
+| `#>0`, `#>=2`, `#<10`, `#<=10`, `#3` | the value's length compares that way (`#3` is exactly 3): the elements of a JSON array, the members of a JSON object, or the characters of anything else |
 
 A regex must match the whole value; it is anchored at both ends, so
 `~[0-9]+` rejects `12a`. Write `~.*token.*` to match anywhere in the value. Start the
@@ -110,7 +112,28 @@ any one of the values. An invalid or empty regex is a load error. `\\` in a
 variable value is an escaped backslash, so write `\\\\` for a literal backslash in
 a pattern; other escapes such as `\d` pass through unchanged. To match a value
 that literally is `*`, or starts with `!` or `~`, use a regex such as `~\*` or
-`~!draft`.
+`~!draft`; likewise `~>100` for the text `>100`. A `#` value that is not a
+length comparison, such as `#fff`, stays an exact match.
+
+Comparisons read numbers and lengths where a regex would be hard to read:
+
+```http
+### Large order
+@json.amount = >1000
+@json.items = #>0
+POST /orders
+
+### [400] Page too large
+@query.limit = >100
+GET /orders
+```
+
+- A value that is not a number never matches a numeric comparison, and a
+  missing value matches neither kind.
+- A JSON string is measured in characters even when it looks like an array.
+  With a `*` path segment, any one selected value may satisfy the comparison.
+- `mock check` and the admin UI's sample requests send a value that
+  satisfies the comparison, such as `101` for `>100`.
 
 `!text` and `!~regex` mean "present, but not this". A missing or blank value
 never matches them; add a separate route with `!` for that case. When a header
@@ -367,6 +390,8 @@ GET /orders
 - `/routes` and the route inspector show `times` and `timesLeft`, and the
   near-miss list says when a route has used up its answers.
 - A route with `@times` never shadows a later route.
+- [`{{$hits}}`](placeholders.md#placeholders) inserts the count in the
+  response, such as `{"attempt": {{$hits}}}`.
 
 ### Routes that need data
 
@@ -421,6 +446,27 @@ count of requests that reached it, so a freshly started server sent the same
 requests in the same order picks the same routes each run. A route with
 `@match.chance` never shadows a later route. When nothing answers a request
 because a route lost its draw, the near-miss list in the admin UI says so.
+
+### Route tags
+
+`@tag = billing, slow` gives a section one or more tag names (letters, digits,
+`_`, `.` and `-`; case does not matter). At file scope it tags every section
+in the file, and a section's own `@tag` replaces the file's. Tags choose which
+routes to serve:
+
+```sh
+mock --only billing -d mocks/          # only routes tagged billing
+mock --skip slow,flaky api.http        # every route except those tagged slow or flaky
+```
+
+- `--only` keeps routes with at least one of its tags; untagged routes are
+  left out. `--skip` leaves out routes with any of its tags, and wins over
+  `--only`. Both take comma-separated lists and can be repeated.
+- The choice applies again on every reload. A load that leaves no route to
+  serve is an error.
+- The routes list in the admin UI shows each route's tags, `tag:billing` in
+  the traffic filter shows the requests tagged routes answered, and
+  `GET /routes?tag=billing` lists only those routes.
 
 ## Multiple ports
 

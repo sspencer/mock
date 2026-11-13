@@ -34,6 +34,11 @@ a namespace:
   field (see [Fixture data](#fixture-data)).
 - `{{$request}}` is the whole request as a JSON object (see
   [Echoing the request](#echoing-the-request)).
+- `{{$hits}}` is how many requests the route has answered, counting this
+  one, so a polling or retry route can say `{"attempt": {{$hits}}}`. It goes
+  back to zero on a reset (`POST /reset` or `Reset()` in `mocktest`) and is
+  kept by a reload that keeps the route; the hit counts in `/routes` and the
+  `--strict` report are not reset.
 
 A namespaced value that the request lacks leaves the placeholder literal.
 `{{$path.name}}` warns at load time when the route has no `:name` parameter. A missing body field leaves the

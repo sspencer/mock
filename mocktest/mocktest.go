@@ -114,37 +114,7 @@ func (s *Server) Requests(filter mockhttp.RequestFilter) []mockhttp.RequestEvent
 // exactly; add ?query to require that exact query string too), or the name
 // of the route that answered, such as "Create user".
 func (s *Server) Calls(call string) []mockhttp.RequestEvent {
-	method, target, ok := splitCall(call)
-	if !ok {
-		return s.Mock.Requests(mockhttp.RequestFilter{Route: call})
-	}
-	path, _, hasQuery := strings.Cut(target, "?")
-	events := s.Mock.Requests(mockhttp.RequestFilter{Method: method, Path: path})
-	if !hasQuery {
-		return events
-	}
-	out := events[:0]
-	for _, event := range events {
-		if event.Request.URL == target {
-			out = append(out, event)
-		}
-	}
-	return out
-}
-
-// splitCall splits "METHOD /path" into its parts.
-func splitCall(call string) (method, target string, ok bool) {
-	method, target, ok = strings.Cut(strings.TrimSpace(call), " ")
-	target = strings.TrimSpace(target)
-	if !ok || method == "" || !strings.HasPrefix(target, "/") {
-		return "", "", false
-	}
-	for _, c := range method {
-		if c < 'A' || c > 'Z' {
-			return "", "", false
-		}
-	}
-	return method, target, true
+	return s.Mock.Calls(call)
 }
 
 // AssertCalled fails the test unless call (see Calls) was received exactly
