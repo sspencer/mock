@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `mock skill` writes an agent skill for the installed version of `mock`: `mock skill .claude/skills` writes `.claude/skills/mock/SKILL.md`, and `mock skill` alone prints it. It covers the request file format, matchers, placeholders, directives, the validate, match and run workflow, the admin API and debugging. A different existing file is kept unless you pass `-force`. The source is `skills/mock/SKILL.md`.
+
 ## v0.6.0 - 2026-11-13
 
 A large release for tests and CI and for stateful mocks: `mock run`, `POST /verify`, strict reports and a GitHub Action; scenarios, `@times`, temporary routes and run-time switches; long-tail delays, throttling and new faults; numeric, host and whole-document JSON matchers; `mock match`, `mock routes`, `mock wait` and `mock fmt`; a `.mockrc` project config, shell completions and a man page; and a redesigned admin UI. See the **Breaking** entries for matcher values starting with `>`/`<`, the Go 1.27 requirement and `restclient.ParseDelay`.

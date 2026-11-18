@@ -9,6 +9,7 @@ mock [flags] <directory>
 cat file.http | mock
 mock validate [-strict] [-json] [-var name=value] [-env NAME [-env-file FILE]] <file.http|dir> [file.http|dir...]
 mock init [-force] [dir]
+mock skill [-force] [dir]
 mock import [-curl] [-host HOST] [-path PREFIX] <file.har|file.sh|->
 mock run [flags] <file.http|-d dir> [file.http...] -- command [args...]
 mock wait [-timeout 10s] [-token TOKEN] [-q] [-file FILE | URL]
@@ -440,6 +441,28 @@ mock completion powershell | Out-String | Invoke-Expression   # PowerShell profi
 Both are generated from the usage text, so they always match the binary. The
 release archives include them as `completions/` and `man/mock.1`, and the
 Homebrew cask installs them.
+
+## Agent skill
+
+`mock skill` writes a skill that teaches coding agents (Claude Code, and other
+tools that read `SKILL.md` files) how to use `mock`: the request file
+format, matchers, placeholders and directives, the
+validate → match → run workflow, the admin API for tests, and how to debug a
+`404`. The skill is built into the binary, so it always describes the
+installed version:
+
+```sh
+mock skill .claude/skills       # this project: writes .claude/skills/mock/SKILL.md
+mock skill ~/.claude/skills     # every project
+mock skill                      # print SKILL.md, to put it somewhere else
+```
+
+With a directory, `mock skill` writes `DIR/mock/SKILL.md`. If that file already
+holds the same text it says so and changes nothing; if it holds something
+else, it refuses unless you pass `-force`, so run `mock skill -force DIR`
+after upgrading `mock`. The source is
+[`skills/mock/SKILL.md`](https://github.com/sspencer/mock/blob/master/skills/mock/SKILL.md)
+in the repository.
 
 ## Other commands
 

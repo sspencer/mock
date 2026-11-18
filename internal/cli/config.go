@@ -132,6 +132,7 @@ const usageText = `usage:
   cat file.http | mock
   mock validate [-strict] [-json] [-var name=value] [-env NAME [-env-file FILE]] <file.http|dir> [file.http|dir...]
   mock init [-force] [dir]
+  mock skill [-force] [dir]
   mock import [-curl] [-host HOST] [-path PREFIX] <file.har|file.sh|->
   mock run [flags] <file.http|-d dir> [file.http...] -- command [args...]
   mock match [-H 'Name: value'] [-d body] [-response] [-json] <file.http|dir> [file.http|dir...] METHOD URL
