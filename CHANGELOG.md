@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.7.0 - 2026-11-17
 
 - `mock skill` writes an agent skill for the installed version of `mock`: `mock skill .claude/skills` writes `.claude/skills/mock/SKILL.md`, and `mock skill` alone prints it. It covers the request file format, matchers, placeholders, directives, the validate, match and run workflow, the admin API and debugging. A different existing file is kept unless you pass `-force`. The source is `skills/mock/SKILL.md`.
 
