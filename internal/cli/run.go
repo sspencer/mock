@@ -47,6 +47,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if len(args) > 0 && args[0] == "init" {
 		return runInit(args[1:], stdout)
 	}
+	if len(args) > 0 && args[0] == "skill" {
+		return runSkill(args[1:], stdout)
+	}
 	if len(args) > 0 && args[0] == "fmt" {
 		return runFmt(args[1:], stdin, stdout, stderr)
 	}

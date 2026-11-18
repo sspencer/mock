@@ -119,6 +119,9 @@ export a HAR file. See [Admin UI and API](docs/admin-ui.md).
   [Multiple ports](docs/matching.md#multiple-ports)
 - **Reuse REST Client files** and their environments.
   [REST Client files](docs/request-files.md#rest-client-files)
+- **Teach your coding agent.** `mock skill .claude/skills` installs a skill
+  that shows agents how to write, check and run mocks.
+  [Agent skill](docs/cli.md#agent-skill)
 
 ## Documentation
 

@@ -3,6 +3,8 @@
 .github
 docs
 *.md
+# The agent skill is embedded in the binary.
+!skills/mock/SKILL.md
 LICENSE
 Makefile
 .gitignore

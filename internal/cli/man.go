@@ -15,6 +15,7 @@ const manUsage = "usage: mock man"
 var subcommandSummaries = map[string]string{
 	"validate":   "Load request files and report errors and warnings without serving. Exits 1 on errors, or on warnings with -strict.",
 	"init":       "Write a starter api.http and users.json to the directory (default the current one).",
+	"skill":      "Write the agent skill for this version of mock: SKILL.md to stdout, or to DIR/mock/SKILL.md (such as .claude/skills), refusing to replace a different file without -force.",
 	"import":     "Draft .http sections from a HAR file, or from curl commands with -curl.",
 	"run":        "Serve the request files on free ports, run the command after -- with MOCK_URL and MOCK_ADMIN_URL set, then print the strict report.",
 	"match":      "Show which route answers a request, or why none does.",
