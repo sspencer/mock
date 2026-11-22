@@ -19,7 +19,7 @@ func TestInitWritesValidStarter(t *testing.T) {
 			t.Errorf("%s not written: %v", name, err)
 		}
 	}
-	if !strings.Contains(out.String(), "mock "+filepath.Join(dir, "api.http")) {
+	if !strings.Contains(out.String(), "mock serve "+filepath.Join(dir, "api.http")) {
 		t.Errorf("output = %q", out.String())
 	}
 

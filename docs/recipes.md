@@ -96,7 +96,7 @@ starts a fresh server per test instead.
 port, so a successful `GET /state` means it is ready. In a CI script:
 
 ```sh
-mock -i 1s api.http &
+mock serve -i 1s api.http &
 mock wait          # polls http://127.0.0.1:8081/state, for up to 10s
 ```
 
@@ -106,7 +106,7 @@ needs one. With free ports (`-p 0 -a 0`), have `mock` write the addresses it
 bound to a file and wait for that instead:
 
 ```sh
-mock -p 0 -a 0 --ready-file /tmp/mock.json api.http &
+mock serve -p 0 -a 0 --ready-file /tmp/mock.json api.http &
 MOCK_URL=$(mock wait -file /tmp/mock.json)
 curl "$MOCK_URL/users/1"
 ```
@@ -147,7 +147,7 @@ services:
 another port cannot call it directly. Proxy the API path through the dev
 server instead: the browser sees one origin, so there is no CORS to configure,
 and the front end calls relative URLs such as `/api/users` in development and
-production alike. Run `mock api.http` beside the dev server; in the examples
+production alike. Run `mock serve api.http` beside the dev server; in the examples
 the routes are written without the `/api` prefix, which the proxy removes.
 
 **Vite** (`vite.config.js`):

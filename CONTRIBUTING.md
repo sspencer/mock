@@ -12,10 +12,14 @@ cd mock
 make all
 ```
 
-`make verify` checks formatting, runs `go vet`, and runs Go and JavaScript tests
-without changing source files or installing anything. `make all` also installs
-`mock` into `GOBIN` (or `GOPATH/bin`). Use `make fmt` to format explicitly.
-`make test` runs Go tests; `make test-ui` runs dashboard behavior and HAR tests.
+`make` (`make all`) is fast: it runs `go vet`, builds `build/mock`, and installs
+it into `GOBIN` (or `GOPATH/bin`). `make install-man` and `make install-completions`
+install the `mock(1)` man page and bash/zsh/fish completions (`make install-all`
+installs everything; run `make help` for all targets). `make verify` checks
+formatting, runs `go vet`, and runs Go and JavaScript tests without changing
+source files or installing anything. Use `make fmt` to format explicitly.
+`make test` runs Go tests; `make test-race` runs them with `-race`; `make test-ui`
+runs dashboard behavior and HAR tests.
 `make test-browser` builds `mock` and checks the admin UI in headless Chrome or
 Chromium: layout at desktop and phone widths, dark mode contrast, dragging and
 keyboard-resizing dividers, keyboard navigation, the help dialog, and resend and
@@ -25,7 +29,7 @@ failing test saves a screenshot to `$BROWSER_ARTIFACTS` or the temp directory.
 `make vulncheck` downloads the pinned Go vulnerability scanner and checks dependencies.
 
 ```sh
-go run . examples/user.http
+go run . serve examples/user.http
 ```
 
 The request log is at <http://localhost:8081/>. Example files live in

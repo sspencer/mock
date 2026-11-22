@@ -39,7 +39,7 @@ strict: 1 of 6 routes never matched a request
 For example, in a CI script:
 
 ```sh
-mock --strict -x fixtures.http &
+mock serve --strict -x fixtures.http &
 mock_pid=$!
 npm test
 kill "$mock_pid"     # SIGTERM

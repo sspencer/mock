@@ -4,7 +4,7 @@
 # Tokens are real JWTs (HS256), so client libraries can decode them and
 # check expiry.
 #
-#   mock examples/gallery/oauth.http
+#   mock serve examples/gallery/oauth.http
 #   curl -s localhost:8080/oauth/token -d grant_type=client_credentials \
 #     -d client_id=demo-app -d client_secret=demo-secret
 #

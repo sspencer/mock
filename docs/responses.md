@@ -138,7 +138,7 @@ or throttle to every route without editing the files, for a resilience run
 against the same fixtures your normal tests use:
 
 ```sh
-mock --delay "p50 80ms p99 900ms" --fault "reset 5%" api.http
+mock serve --delay "p50 80ms p99 900ms" --fault "reset 5%" api.http
 ```
 
 They take the same values as `@delay`, `@fault` and `@throttle`. A route's own

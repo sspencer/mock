@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,48 +21,62 @@ import (
 	"github.com/sspencer/mock/restclient"
 )
 
-// Run executes the mock command line: it serves until ctx is done or a server
-// fails, or runs a subcommand such as validate.
+// Run executes the mock command line, dispatching to a subcommand such as
+// serve, run, validate, or help.
 func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.Logger) error {
-	if len(args) > 0 && args[0] == "validate" {
+	if len(args) == 0 {
+		return usageError("missing command (use \"mock serve <file.http>\" to start a server)\nrun \"mock help\" for usage")
+	}
+	switch args[0] {
+	case "serve":
+		return runServe(ctx, args[1:], stdin, stdout, stderr, logger)
+	case "help":
+		return runHelp(ctx, args[1:], stdin, stdout, stderr)
+	case "-h", "--h", "-help", "--help":
+		_, err := io.WriteString(stdout, topHelpText())
+		return err
+	case "-version", "--version":
+		_, err := fmt.Fprintln(stdout, currentVersion())
+		return err
+	case "validate":
 		return runValidate(args[1:], stdout)
-	}
-	if len(args) > 0 && args[0] == "check" {
+	case "check":
 		return runCheck(ctx, args[1:], stdout)
-	}
-	if len(args) > 0 && args[0] == "import" {
+	case "import":
 		return runImport(args[1:], stdin, stdout, stderr)
-	}
-	if len(args) > 0 && args[0] == "run" {
+	case "run":
 		return runRun(ctx, args[1:], stdin, stdout, stderr)
-	}
-	if len(args) > 0 && args[0] == "match" {
+	case "match":
 		return runMatch(args[1:], stdout)
-	}
-	if len(args) > 0 && args[0] == "routes" {
+	case "routes":
 		return runRoutes(args[1:], stdout)
-	}
-	if len(args) > 0 && args[0] == "wait" {
+	case "send":
+		return runSend(ctx, args[1:], stdout)
+	case "client":
+		return runClient(args[1:], stdout)
+	case "wait":
 		return runWait(ctx, args[1:], stdout)
-	}
-	if len(args) > 0 && args[0] == "init" {
+	case "init":
 		return runInit(args[1:], stdout)
-	}
-	if len(args) > 0 && args[0] == "skill" {
+	case "skill":
 		return runSkill(args[1:], stdout)
-	}
-	if len(args) > 0 && args[0] == "fmt" {
+	case "fmt":
 		return runFmt(args[1:], stdin, stdout, stderr)
-	}
-	if len(args) > 0 && args[0] == "completion" {
+	case "completion":
 		return runCompletion(args[1:], stdout)
-	}
-	if len(args) > 0 && args[0] == "man" {
+	case "man":
 		return runMan(args[1:], stdout)
 	}
+	if strings.HasPrefix(args[0], "-") {
+		return usageError("unknown flag %q (use \"mock serve\" for server flags)\nrun \"mock help\" for usage", args[0])
+	}
+	return usageError("unknown command %q (use \"mock serve %s\" to serve a file)\nrun \"mock help\" for usage", args[0], args[0])
+}
+
+func runServe(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, logger *slog.Logger) error {
 	if wantsHelp(args) {
-		fmt.Fprint(stdout, usageText)
-		return nil
+		_, err := io.WriteString(stdout, serveHelpText())
+		return err
 	}
 	pc, args, err := loadProjectConfig(args)
 	if err != nil {
@@ -72,8 +87,8 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return err
 	}
 	if cfg.Help != "" {
-		fmt.Fprint(stdout, cfg.Help)
-		return nil
+		_, err := io.WriteString(stdout, serveHelpText())
+		return err
 	}
 	if cfg.Version {
 		fmt.Fprintln(stdout, currentVersion())
@@ -108,7 +123,7 @@ func serve(ctx context.Context, cfg config, stdin io.Reader, stdout, stderr io.W
 	}
 	if len(cfg.Args) == 0 && len(cfg.Dirs) == 0 {
 		if f, ok := stdin.(*os.File); ok && stdinIsTerminal(f) {
-			return usageError("missing request input\nusage: mock [-p 8080] [-a 8081 | -x] [-b addr] [-u url] [-s] [-v name=value] [-H 'name: value'] [-e env] [-d dir] [-i 1s] [-w delay] [-f fault] [-T rate] [-P profile] [-l json] <file.http> [file.http...] | mock [-p 8080] <directory> | cat file.http | mock")
+			return usageError("missing request input\nusage: mock serve [-p 8080] [-a 8081 | -x] [-b addr] [-u url] [-s] [-v name=value] [-H 'name: value'] [-e env] [-d dir] [-i 1s] [-w delay] [-f fault] [-T rate] [-P profile] [-l json] <file.http> [file.http...] | mock serve [-p 8080] <directory> | cat file.http | mock serve")
 		}
 	}
 	opts, err := cfg.Env.options(cfg.Vars)

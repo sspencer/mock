@@ -3,7 +3,7 @@
 ### List users
 # Starter mock API, written by "mock init".
 #
-# Run it with:   mock api.http
+# Run it with:   mock serve api.http
 # Then try:      curl localhost:8080/users/7
 # Watch traffic: http://127.0.0.1:8081/
 #

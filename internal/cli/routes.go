@@ -29,7 +29,7 @@ func runRoutes(args []string, stdout io.Writer) error {
 	if err != nil {
 		return usageError("%v", err)
 	}
-	port := fs.Int("port", defaultPort, "the default port, for routes that set none (as mock -p)")
+	port := fs.Int("port", defaultPort, "the default port, for routes that set none (as mock serve -p)")
 	var tags tagFilter
 	fs.Var((*tagsFlag)(&tags.Only), "only", "list only routes with one of these @tag `names` (comma-separated, repeatable)")
 	fs.Var((*tagsFlag)(&tags.Skip), "skip", "leave out routes with any of these @tag `names`")

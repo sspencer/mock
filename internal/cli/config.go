@@ -126,10 +126,10 @@ const minPollInterval = 100 * time.Millisecond
 // usageText is printed by -h. Most flags have a short and a long name; Go's
 // flag package accepts either with one or two dashes.
 const usageText = `usage:
-  mock [flags] <file.http> [file.http...]
-  mock [flags] -d <dir> [-d <dir>...] [file.http...]
-  mock [flags] <directory>
-  cat file.http | mock
+  mock serve [flags] <file.http> [file.http...]
+  mock serve [flags] -d <dir> [-d <dir>...] [file.http...]
+  mock serve [flags] <directory>
+  cat file.http | mock serve [flags]
   mock validate [-strict] [-json] [-var name=value] [-env NAME [-env-file FILE]] <file.http|dir> [file.http|dir...]
   mock init [-force] [dir]
   mock skill [-force] [dir]
@@ -137,11 +137,14 @@ const usageText = `usage:
   mock run [flags] <file.http|-d dir> [file.http...] -- command [args...]
   mock match [-H 'Name: value'] [-d body] [-response] [-json] <file.http|dir> [file.http|dir...] METHOD URL
   mock routes [-json] [-port N] [-only TAGS] [-skip TAGS] <file.http|dir> [file.http|dir...]
+  mock send [-all] [-url URL] [-port N] [-H 'Name: value'] [-only TAGS] [-skip TAGS] [-delay 0s] [-timeout 10s] [-json] [-var name=value] [-env NAME [-env-file FILE]] <file.http|dir> [file.http|dir...]
+  mock client [-url URL] [-port N] [-H 'Name: value'] [-only TAGS] [-skip TAGS] [-var name=value] [-env NAME [-env-file FILE]] <file.http|dir> [file.http|dir...]
   mock wait [-timeout 10s] [-token TOKEN] [-q] [-file FILE | URL]
   mock fmt [-check] <file.http|dir|-> [file.http|dir...]
   mock completion bash|zsh|fish|powershell
   mock man
   mock check -upstream URL [-all] [-json] [-depth 3] [-check-header Name] [-header 'Name: value'] [-var name=value] [-env NAME [-env-file FILE]] [-timeout 10s] <file.http|dir> [file.http|dir...]
+  mock help [subcommand]
 
 flags:
   -p, --port PORT      default HTTP port, for routes whose request target or

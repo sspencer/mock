@@ -3,10 +3,10 @@
 # Command line
 
 ```text
-mock [flags] <file.http> [file.http...]
-mock [flags] -d <dir> [-d <dir>...] [file.http...]
-mock [flags] <directory>
-cat file.http | mock
+mock serve [flags] <file.http> [file.http...]
+mock serve [flags] -d <dir> [-d <dir>...] [file.http...]
+mock serve [flags] <directory>
+cat file.http | mock serve [flags]
 mock validate [-strict] [-json] [-var name=value] [-env NAME [-env-file FILE]] <file.http|dir> [file.http|dir...]
 mock init [-force] [dir]
 mock skill [-force] [dir]
@@ -15,15 +15,18 @@ mock run [flags] <file.http|-d dir> [file.http...] -- command [args...]
 mock wait [-timeout 10s] [-token TOKEN] [-q] [-file FILE | URL]
 mock match [-H 'Name: value'] [-d body|@file] [-port N] [-response] [-json] [-var name=value] [-env NAME] <file.http|dir> [file.http|dir...] METHOD URL
 mock routes [-json] [-port N] [-only TAGS] [-skip TAGS] [-var name=value] [-env NAME] <file.http|dir> [file.http|dir...]
+mock send [-all] [-url URL] [-port N] [-H 'Name: value'] [-only TAGS] [-skip TAGS] [-delay 0s] [-timeout 10s] [-json] [-var name=value] [-env NAME [-env-file FILE]] <file.http|dir> [file.http|dir...]
+mock client [-url URL] [-port N] [-H 'Name: value'] [-only TAGS] [-skip TAGS] [-var name=value] [-env NAME [-env-file FILE]] <file.http|dir> [file.http|dir...]
 mock check -upstream URL [-all] [-json] [-depth 3] [-check-header Name] [-header 'Name: value'] [-var name=value] [-env NAME [-env-file FILE]] [-timeout 10s] <file.http|dir> [file.http|dir...]
 mock fmt [-check] <file.http|dir|-> [file.http|dir...]
 mock completion bash|zsh|fish|powershell
 mock man
+mock help [subcommand]
 mock -version
 mock -h
 ```
 
-`mock -h` (or `--help`) prints this usage and the flag list, then exits `0`.
+`mock -h` (or `--help`, or `mock help`) prints this usage, a description of each subcommand, and the server flag list, then exits `0`. `mock help <subcommand>` prints the usage, description and flags for that subcommand. Use `mock serve` to start the mock server (`mock serve api.http`).
 
 Flags:
 
@@ -124,7 +127,7 @@ it; event IDs start over at `1` with each run (the `session` field tells runs
 apart). Clearing the log in the admin UI does not touch the file.
 
 ```sh
-mock --journal requests.jsonl api.http
+mock serve --journal requests.jsonl api.http
 jq -r 'select(.match.route == null) | .request.method + " " + .request.url' requests.jsonl
 ```
 
@@ -168,8 +171,8 @@ subdirectories, so you can keep one file per resource or team and add files
 without changing the command:
 
 ```sh
-mock -d fixtures
-mock -d fixtures -d shared overrides.http
+mock serve -d fixtures
+mock serve -d fixtures -d shared overrides.http
 ```
 
 - Files load in lexical path order within each directory (`a.http`,
@@ -217,8 +220,8 @@ body.
 |------|-------------|
 | `-strict` | Treat warnings as errors |
 | `-json` | Print a JSON report (`ok`, `routes`, `diagnostics`) instead of text |
-| `-var name=value` | Set a variable as `mock -v` does, so the same warnings apply. Repeatable |
-| `-env NAME`, `-env-file FILE` | Use a [REST Client environment](request-files.md#rest-client-environments) as `mock -e` and `-E` do |
+| `-var name=value` | Set a variable as `mock serve -v` does, so the same warnings apply. Repeatable |
+| `-env NAME`, `-env-file FILE` | Use a [REST Client environment](request-files.md#rest-client-environments) as `mock serve -e` and `-E` do |
 
 It exits `0` when the files are valid, `1` when there are errors (or warnings
 with `-strict`), and `2` for usage mistakes, so it fits in CI:
@@ -267,7 +270,7 @@ closest routes:
 | `-port N` | The mock port the request arrives on, for routes with a port. A full URL's port works too. Without either, routes on every port can match |
 | `-response` | Also render the response: status, headers and body, without delays, faults, streaming, throttling, rate limits or callbacks |
 | `-json` | Print the result, the route as `/routes` describes it, and the candidates as JSON |
-| `-var`, `-env`, `-env-file` | Set variables as `mock -v` and `-e` do |
+| `-var`, `-env`, `-env-file` | Set variables as `mock serve -v` and `-e` do |
 
 Flags may come before or after the files, method and URL. Nothing is
 counted: a `@times` route is shown as answering, with a note, and so is a
@@ -301,8 +304,79 @@ the same errors.
 |------|-------------|
 | `-json` | Print the routes as JSON, as the admin `GET /routes` describes them |
 | `-port N` | The default port shown for routes that set none |
-| `-only TAGS`, `-skip TAGS` | List only routes with one of these `@tag` names, or leave them out, as `mock --only` and `--skip` serve them |
-| `-var`, `-env`, `-env-file` | Set variables as `mock -v` and `-e` do |
+| `-only TAGS`, `-skip TAGS` | List only routes with one of these `@tag` names, or leave them out, as `mock serve --only` and `--skip` serve them |
+| `-var`, `-env`, `-env-file` | Set variables as `mock serve -v` and `-e` do |
+
+## Sending sample requests
+
+`mock send` builds a sample request for each route in the given `.http` files
+(or directories) and sends them in order to a running mock server, printing
+each method, target, status, timing and route name. Only safe methods (`GET`,
+`HEAD`, `OPTIONS`, `TRACE`) are sent unless you pass `-all`: a mock started
+with `--upstream` forwards any sample its route does not match, so a `POST` or
+`DELETE` could otherwise reach the real API. Skipped routes are listed as
+`SKIP`:
+
+```sh
+mock send examples/user.http
+mock send -all examples/user.http
+mock send -port 9000 -delay 100ms examples/user.http
+mock send -url http://127.0.0.1:8080 -only users -H 'X-Demo: 1' api.http
+```
+
+```text
+GET     /users?role=admin  200  0.6ms  List admins
+GET     /users             200  0.4ms  List users
+GET     /users/0           404  0.3ms  Get user 0
+...
+sent 12 requests (0 errors, 5 skipped)
+```
+
+Each request is built from the route's path, query, `@header.*`, `@cookie.*`,
+`@match.host`, `@json.*`, `@form.*` and `@body` matchers (the same sample
+request the admin UI's **Copy cURL** produces). Redirects are not followed, so
+`3xx` routes report their status directly. It exits `0` when every request gets
+a whole HTTP response (including `4xx` and `5xx`) and `1` if any request fails
+with a transport error or its body is cut short (a `truncate` fault, a reset,
+or `-timeout` running out while the body streams).
+
+| Flag | Description |
+|------|-------------|
+| `-url URL` | Base URL of the running mock server. Defaults to `MOCK_URL`, else `http://127.0.0.1:PORT` (using each route's `@port` when set, otherwise `-port`) |
+| `-port N` | Default port for routes that set none (`MOCK_PORT`, else `8080`). Cannot be combined with `-url` |
+| `-all` | Also send routes with unsafe methods (`POST`, `PUT`, `PATCH`, `DELETE` and others) |
+| `-H 'Name: value'` | Add this request header to every request. Repeatable |
+| `-only TAGS`, `-skip TAGS` | Send only routes with one of these `@tag` names, or leave them out |
+| `-delay DURATION` | Wait this long between requests, such as `100ms` (default `0s`) |
+| `-timeout DURATION` | Time limit per request (default `10s`) |
+| `-json` | Print the report (`ok`, `sent`, `errors`, `skipped`, `results`) as JSON |
+| `-var`, `-env`, `-env-file` | Set variables as `mock serve -v` and `-e` do |
+
+## Generating a REST Client file
+
+`mock client` turns one or more mock `.http` files (or directories) into a
+standard REST Client `.http` file on stdout, with `@baseUrl` variables at the
+top and one `###` request section per route:
+
+```sh
+mock client examples/user.http > requests.http
+mock client -port 9000 -only users api.http
+mock client -url http://localhost:8080 -H 'X-Client: dev' api.http
+```
+
+Each request is built from the route's path, query, `@header.*`, `@cookie.*`,
+`@match.host`, `@json.*`, `@form.*` and `@body` matchers (JSON bodies are
+pretty-printed). The first route's base URL is `@baseUrl`; unless `-url` is
+set, each other base URL (a route's own `@port`) gets a `@baseUrl_<port>`
+variable, with a `_2` suffix when two base URLs share a port.
+
+| Flag | Description |
+|------|-------------|
+| `-url URL` | Base URL for every generated request. Defaults to `MOCK_URL`, else `http://127.0.0.1:PORT` (using each route's `@port` when set, otherwise `-port`) |
+| `-port N` | Default port for routes that set none (`MOCK_PORT`, else `8080`). Cannot be combined with `-url` |
+| `-H 'Name: value'` | Add this request header to every request. Repeatable |
+| `-only TAGS`, `-skip TAGS` | Include only routes with one of these `@tag` names, or leave them out |
+| `-var`, `-env`, `-env-file` | Set variables as `mock serve -v` and `-e` do |
 
 ## Waiting for mock
 
@@ -310,7 +384,7 @@ the same errors.
 in the background:
 
 ```sh
-mock api.http &
+mock serve api.http &
 mock wait                        # the admin port: MOCK_UI_PORT, else 8081
 mock wait http://127.0.0.1:9091  # another admin address
 ```
@@ -338,7 +412,7 @@ for the file with `-x`), and prints `url`. With random ports it is the way
 to learn them:
 
 ```sh
-mock -p 0 -a 0 --ready-file mock.json api.http &
+mock serve -p 0 -a 0 --ready-file mock.json api.http &
 export API_URL=$(mock wait -file mock.json)
 ```
 

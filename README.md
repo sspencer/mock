@@ -42,7 +42,7 @@ Content-Type: application/json
 Serve it:
 
 ```sh
-mock hello.http
+mock serve hello.http
 ```
 
 ```text

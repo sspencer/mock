@@ -169,7 +169,7 @@ func (s *Server) WaitFor(t testing.TB, call string, timeout time.Duration) mockh
 }
 
 // AssertAllRoutesCalled fails the test if any route from the request files
-// answered no request, like mock --strict=unused. Routes added with Stub are
+// answered no request, like mock serve --strict=unused. Routes added with Stub are
 // not checked.
 func (s *Server) AssertAllRoutesCalled(t testing.TB) {
 	t.Helper()

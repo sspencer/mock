@@ -14,21 +14,22 @@ import (
 
 const runUsage = "usage: mock run [flags] <file.http|-d dir> [file.http...] -- command [args...]"
 
+const runHelpText = runUsage + "\n\nThe flags are mock serve's flags (see mock help serve); -s is always on.\n"
+
 // runRun serves the request files on free ports, runs a command with
 // MOCK_URL (and MOCK_ADMIN_URL) set, then stops and prints the strict report.
 // It exits with the command's status, or 1 when the command succeeded but
 // requests went unmatched.
 func runRun(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	if wantsHelp(args) {
+		_, err := io.WriteString(stdout, runHelpText)
+		return err
+	}
 	split := slices.Index(args, "--")
 	if split < 0 || split == len(args)-1 {
 		return usageError("missing the command to run after --\n%s", runUsage)
 	}
 	flags, command := args[:split], args[split+1:]
-	if wantsHelp(flags) {
-		fmt.Fprintln(stdout, runUsage)
-		fmt.Fprint(stdout, "\nThe flags are mock's own (see mock -h); -s is always on.\n")
-		return nil
-	}
 	pc, flags, err := loadProjectConfig(flags)
 	if err != nil {
 		return err
@@ -41,9 +42,8 @@ func runRun(ctx context.Context, args []string, stdin io.Reader, stdout, stderr 
 		return err
 	}
 	if cfg.Help != "" {
-		fmt.Fprintln(stdout, runUsage)
-		fmt.Fprint(stdout, "\nThe flags are mock's own (see mock -h); -s is always on.\n")
-		return nil
+		_, err := io.WriteString(stdout, runHelpText)
+		return err
 	}
 	if len(cfg.Args) == 0 && len(cfg.Dirs) == 0 {
 		return usageError("mock run needs request files or -d directories\n%s", runUsage)

@@ -581,8 +581,8 @@ in the file, and a section's own `@tag` replaces the file's. Tags choose which
 routes to serve:
 
 ```sh
-mock --only billing -d mocks/          # only routes tagged billing
-mock --skip slow,flaky api.http        # every route except those tagged slow or flaky
+mock serve --only billing -d mocks/          # only routes tagged billing
+mock serve --skip slow,flaky api.http        # every route except those tagged slow or flaky
 ```
 
 - `--only` keeps routes with at least one of its tags; untagged routes are
@@ -622,7 +622,7 @@ requests_total 0
 ```
 
 ```text
-$ mock examples/services.http
+$ mock serve examples/services.http
 starting mock HTTP server on 127.0.0.1:8080
 starting mock HTTP server on 127.0.0.1:9090
 starting mock HTTP server on 127.0.0.1:9100

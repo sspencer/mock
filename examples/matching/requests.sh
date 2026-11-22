@@ -11,7 +11,7 @@ http://127.0.0.1:PORT and print the status and response body.
 Port precedence: -p PORT, MOCK_PORT, then 8080.
 
 Start the server first:
-  mock examples/matching/*.http
+  mock serve examples/matching/*.http
   examples/matching/requests.sh
 
 Requires Bash and curl. Every request also appears in the admin UI

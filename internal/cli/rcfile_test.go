@@ -105,7 +105,7 @@ func TestProjectConfigNamesFileInFlagErrors(t *testing.T) {
 	if err := os.WriteFile(".mockrc", []byte("--no-such-flag\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	err := Run(context.Background(), []string{"api.http"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	err := Run(context.Background(), []string{"serve", "api.http"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, nil)
 	if err == nil || !strings.HasPrefix(err.Error(), ".mockrc: ") || ExitCode(err) != 2 {
 		t.Fatalf("err = %v, want a usage error naming .mockrc", err)
 	}

@@ -24,7 +24,7 @@ func TestReadyFileWaitAndH2C(t *testing.T) {
 	done := make(chan error, 1)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	go func() {
-		done <- Run(ctx, []string{"-p", "0", "-a", "0", "--h2c", "--ready-file", readyPath, api}, nil, io.Discard, io.Discard, logger)
+		done <- Run(ctx, []string{"serve", "-p", "0", "-a", "0", "--h2c", "--ready-file", readyPath, api}, nil, io.Discard, io.Discard, logger)
 	}()
 
 	var out bytes.Buffer

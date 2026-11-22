@@ -3,7 +3,7 @@
 # bodies up to 1 MiB for matching; the size check uses Content-Length, so
 # it works for any size.
 #
-#   mock examples/gallery/uploads.http
+#   mock serve examples/gallery/uploads.http
 #   curl -s localhost:8080/uploads -F file=@photo.png -F description=Holiday
 #
 # See docs/examples.md#file-uploads.

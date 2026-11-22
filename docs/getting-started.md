@@ -6,7 +6,7 @@ Start a new mock API from a commented starter file:
 
 ```sh
 mock init          # writes api.http and users.json here
-mock api.http
+mock serve api.http
 curl localhost:8080/users/7
 ```
 
@@ -18,7 +18,7 @@ explain each part. `mock init dir` writes into `dir` (creating it), and
 Or run the example API from a checkout:
 
 ```sh
-go run . examples/user.http
+go run . serve examples/user.http
 ```
 
 The server prints a short banner with the listen address, the admin UI URL, and
@@ -80,7 +80,7 @@ matchers). Then run their request script, which prints the status and body
 each scenario gets:
 
 ```sh
-mock examples/matching/*.http
+mock serve examples/matching/*.http
 ./examples/matching/requests.sh      # -p PORT or MOCK_PORT, like send-requests.sh
 ```
 
@@ -94,5 +94,5 @@ mock examples/matching/*.http
 You can also pipe a request file through stdin:
 
 ```sh
-cat examples/user.http | go run .
+cat examples/user.http | go run . serve
 ```

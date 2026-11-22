@@ -9,7 +9,7 @@ get the mock response; everything else is forwarded to the real service, and
 its response is returned unchanged:
 
 ```sh
-mock --upstream https://api.example.com fixtures.http
+mock serve --upstream https://api.example.com fixtures.http
 ```
 
 - The request path and query are appended to the upstream URL, so with
@@ -41,7 +41,7 @@ Two flags change the forwarded request, for a client that is pointed at `mock`
 but does not have what the real API needs:
 
 ```sh
-mock --upstream https://api.example.com \
+mock serve --upstream https://api.example.com \
   --upstream-header "Authorization: Bearer $API_TOKEN" \
   --upstream-strip /api fixtures.http
 ```
@@ -65,7 +65,7 @@ the upstream answers a method and path that isn't recorded yet, `mock` appends
 a draft section for it, the same draft as the admin UI's **Copy as route**:
 
 ```sh
-mock --upstream https://api.example.com --record recorded.http fixtures.http
+mock serve --upstream https://api.example.com --record recorded.http fixtures.http
 ```
 
 ```http
@@ -95,7 +95,7 @@ Content-Type: application/json
   request arrived on a port other than `-p`.
 - Review the file before using it: recorded bodies may contain real data, and
   matchers are deliberately loose. To replay while recording, also load the
-  recorded file once it exists (`mock -u URL -r recorded.http recorded.http`):
+  recorded file once it exists (`mock serve -u URL -r recorded.http recorded.http`):
   hot reload picks up each new section, so the next matching request is
   answered by the recording instead of the upstream.
 
@@ -191,8 +191,8 @@ path. The mock answers in-process without `@delay`, `@fault`, `@stream`,
 | `-upstream URL` | The real API's base URL (required) |
 | `-all` | Also send routes with unsafe methods (`POST`, `PUT`, `PATCH`, `DELETE`). Without it only `GET`, `HEAD` and `OPTIONS` routes are sent |
 | `-header 'Name: value'` | Add a header to every upstream request, such as credentials. Repeatable |
-| `-var name=value` | Set a variable in every request file, as with `mock -v` |
-| `-env NAME`, `-env-file FILE` | Use a [REST Client environment](request-files.md#rest-client-environments), as with `mock -e` and `-E` |
+| `-var name=value` | Set a variable in every request file, as with `mock serve -v` |
+| `-env NAME`, `-env-file FILE` | Use a [REST Client environment](request-files.md#rest-client-environments), as with `mock serve -e` and `-E` |
 | `-timeout 10s` | Time limit for each upstream request |
 | `-depth 3` | How many levels of nested objects to compare keys in. Lower it to cut noise from deep payloads |
 | `-check-header Name` | Also compare this response header's value, such as `Cache-Control` or `Location`. Repeatable |

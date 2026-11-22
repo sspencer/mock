@@ -11,8 +11,8 @@ examples keep working as `mock` changes.
 Serve one file, or the whole gallery at once (the paths don't overlap):
 
 ```sh
-mock examples/gallery/payments.http
-mock -d examples/gallery
+mock serve examples/gallery/payments.http
+mock serve -d examples/gallery
 ```
 
 | File | What it mocks | Shows |
@@ -145,4 +145,4 @@ curl -s localhost:8080/v1/payments/pay_1001 -H 'Authorization: Bearer sk_test_1'
   a refund without an `amount` refunds the whole payment
   (`| default $fixture.payments[id=$path.id].amount`).
 - For latency on top, start it with a [network profile](responses.md#latency-and-faults-for-every-route):
-  `mock -P flaky examples/gallery/payments.http`.
+  `mock serve -P flaky examples/gallery/payments.http`.
