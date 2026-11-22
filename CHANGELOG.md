@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## v0.8.0 - 2026-11-22
+
+The server moves to `mock serve`, and new `mock send`, `mock client` and `mock help` subcommands are added. See the **Breaking** entry: `mock <file>` and `cat file | mock` must now be written `mock serve <file>` and `cat file | mock serve`.
 
 - `mock send api.http` fires each route's sample request (built from its path, query, header, cookie, host, JSON, form and body matchers, as the admin UI's **Copy cURL** builds it) at a running mock and prints the method, target, status, time and route name. It sends to `-url`, else `MOCK_URL`, else `127.0.0.1` on each route's `@port` or `-port`, and doesn't follow redirects. Only safe methods are sent unless you pass `-all`, because a mock started with `--upstream` forwards a sample its route doesn't match to the real API. `-H`, `-only`/`-skip`, `-delay`, `-timeout`, `-json`, `-var` and `-env` are supported. It exits `1` when a request fails or its body is cut short, so `mock run api.http -- mock send -all api.http` works as a CI smoke test.
 
