@@ -106,7 +106,7 @@ release's `checksums.txt`), adds it to `PATH`, and can wrap a test command in
 `mock run`:
 
 ```yaml
-- uses: sspencer/mock@v0.6.0
+- uses: sspencer/mock@v0.8.0
   with:
     args: -d mocks --strict=unused
     run: npm test
@@ -115,7 +115,7 @@ release's `checksums.txt`), adds it to `PATH`, and can wrap a test command in
 
 | Input | Default | Meaning |
 |-------|---------|---------|
-| `version` | the action's tag, such as `v0.6.0`, else `latest` | The release to install |
+| `version` | the action's tag, such as `v0.8.0`, else `latest` | The release to install |
 | `run` | | A command to run with `mock run`, through `bash`; empty installs `mock` only |
 | `args` | | `mock` flags and request files for `mock run`, split on spaces |
 | `strict-report` | | With `run`, also write the [strict report](#strict-reports-for-ci) to this file |

@@ -32,7 +32,7 @@ and `mock man` write them (see
 [Shell completion and the man page](cli.md#shell-completion-and-the-man-page));
 the release archives include them under `completions/` and `man/`.
 
-In GitHub Actions, `uses: sspencer/mock@v0.6.0` installs the release binary
+In GitHub Actions, `uses: sspencer/mock@v0.8.0` installs the release binary
 (see [GitHub Actions](testing.md#github-actions)).
 
 This binary is named `mock`. If you already have another `mock` on your `PATH`,

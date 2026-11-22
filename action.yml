@@ -1,7 +1,7 @@
 # A GitHub Action that installs a released mock binary and, optionally, runs
 # a command against it with mock run:
 #
-#   - uses: sspencer/mock@v0.6.0
+#   - uses: sspencer/mock@v0.8.0
 #     with:
 #       args: -d mocks
 #       run: npm test
@@ -16,7 +16,7 @@ branding:
 
 inputs:
   version:
-    description: The release to install, such as v0.6.0, or "latest". Defaults to the action's own tag when it is a release tag, else the latest release.
+    description: The release to install, such as v0.8.0, or "latest". Defaults to the action's own tag when it is a release tag, else the latest release.
     required: false
     default: ""
   run:
