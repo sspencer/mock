@@ -172,7 +172,7 @@ the REST Client extensions use, looked up in the working directory:
 ```
 
 ```sh
-mock -e local api.http
+mock serve -e local api.http
 ```
 
 The values in `$shared` apply to every environment, and an environment's own
@@ -448,7 +448,7 @@ file and method definitions of that name, and supplies a value for
 `{{NAME}}` references that no `@NAME` defines. Repeat it for more variables:
 
 ```sh
-mock -v host=http://localhost:9000 -v token=dev-token api.http
+mock serve -v host=http://localhost:9000 -v token=dev-token api.http
 ```
 
 The value is used as written (no backslash escapes) and may reference other

@@ -82,7 +82,7 @@ before(async () => {
     const [port, adminPort] = [await freePort(), await freePort()];
     mockURL = `http://127.0.0.1:${port}`;
     adminURL = `http://127.0.0.1:${adminPort}/`;
-    mock = spawn(binary, ['-p', String(port), '-a', String(adminPort), join(workdir, 'api.http')], { stdio: ['ignore', 'pipe', 'pipe'] });
+    mock = spawn(binary, ['serve', '-p', String(port), '-a', String(adminPort), join(workdir, 'api.http')], { stdio: ['ignore', 'pipe', 'pipe'] });
     for (const stream of [mock.stdout, mock.stderr]) stream.on('data', chunk => { mockLog = (mockLog + chunk).slice(-8000); });
     await waitForServer(adminURL + 'state');
     browser = await Browser.launch(chrome);

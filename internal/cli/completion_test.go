@@ -106,7 +106,28 @@ func TestCompletionScripts(t *testing.T) {
 			t.Errorf("%s -n: %v\n%s", shell, err, output)
 		}
 	}
+	// Without a subcommand only subcommands and top-level flags are offered;
+	// server flags need serve or run.
+	bash := completionScript(t, "bash")
+	if !strings.Contains(bash, `"")`) || !strings.Contains(bash, `"-h -help -version"`) {
+		t.Errorf("bash script lacks the no-subcommand case:\n%s", bash)
+	}
+	if fish := completionScript(t, "fish"); !strings.Contains(fish, "'__fish_seen_subcommand_from serve run' -s p") {
+		t.Errorf("fish offers server flags outside serve/run:\n%s", fish)
+	}
+	if ps := completionScript(t, "powershell"); !strings.Contains(ps, "'mock' = @('-h', '-help', '-version')") {
+		t.Errorf("powershell top-level flags:\n%s", ps)
+	}
 	if err := runCompletion([]string{"tcsh"}, &bytes.Buffer{}); ExitCode(err) != 2 {
 		t.Errorf("unknown shell: %v", err)
 	}
+}
+
+func completionScript(t *testing.T, shell string) string {
+	t.Helper()
+	var out bytes.Buffer
+	if err := runCompletion([]string{shell}, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out.String()
 }

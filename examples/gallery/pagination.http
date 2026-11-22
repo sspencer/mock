@@ -2,7 +2,7 @@
 # paging with a total and a next link, lookup by id with a real 404,
 # and a filtered list. Edit data/products.json and the next request sees it.
 #
-#   mock examples/gallery/pagination.http
+#   mock serve examples/gallery/pagination.http
 #   curl -s 'localhost:8080/products?offset=10&limit=5'
 #   curl -s localhost:8080/products/7
 #

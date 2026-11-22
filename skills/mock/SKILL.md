@@ -26,10 +26,10 @@ The full documentation is at https://sspencer.github.io/mock/.
      ports, sets `MOCK_URL` and `MOCK_ADMIN_URL` for the command, exits with
      its status, or `1` if any request matched no route (the report is on stderr).
    - Long-running in the background:
-     `mock -p 0 -a 0 --ready-file mock.json api.http &` then
+     `mock serve -p 0 -a 0 --ready-file mock.json api.http &` then
      `URL=$(mock wait -file mock.json)`; `jq -r .adminUrl mock.json` is the admin URL.
      Stop it with `kill` when done. Don't use `sleep` to wait for startup.
-   - Interactive, for a human: `mock api.http` (port `8080`, UI at
+   - Interactive, for a human: `mock serve api.http` (port `8080`, UI at
      `http://127.0.0.1:8081/`).
 
 Don't start a server just to see whether a route matches or what it renders:
@@ -195,8 +195,10 @@ from `github.com/sspencer/mock/mocktest`, then `api.URL`,
 - `mock init [dir]`: write a commented starter `api.http` and `users.json`.
 - `mock fmt api.http`: canonical layout; never changes routes.
 - `mock import -host api.example.com traffic.har` or `mock import -curl cmds.sh`: draft routes from real traffic.
-- `mock -u https://api.example.com -r recorded.http api.http`: forward unmatched requests to a real API and record the answers as routes.
+- `mock serve -u https://api.example.com -r recorded.http api.http`: forward unmatched requests to a real API and record the answers as routes.
 - `mock check -upstream https://staging.example.com api.http`: report where the mock's responses differ from the real API's.
+- `mock send api.http`: fire a sample request for each route against a running mock server (defaults to `MOCK_URL`, else `http://127.0.0.1:8080`). Only safe methods unless `-all`.
+- `mock client api.http`: generate a REST Client `.http` file of sample requests to stdout.
 - `mock skill -force DIR`: rewrite this skill from the installed `mock`, after an upgrade.
 
 Plain HTTP only: mock has no TLS and sends no CORS headers.

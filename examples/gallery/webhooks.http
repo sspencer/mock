@@ -3,7 +3,7 @@
 # request (order.created, then order.shipped two seconds later). A
 # receiver that fails gets each call retried up to three times.
 #
-#   mock examples/gallery/webhooks.http
+#   mock serve examples/gallery/webhooks.http
 #   curl -s localhost:8080/orders -H 'Content-Type: application/json' \
 #     -d '{"id": "ord_1", "webhook_url": "http://localhost:9000/hooks"}'
 #

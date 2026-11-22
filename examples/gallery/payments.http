@@ -11,7 +11,7 @@
 # charges a second (429 after that, with X-RateLimit-* headers), and
 # sending X-Mock-Chaos: on makes one charge in ten fail with 503.
 #
-#   mock examples/gallery/payments.http
+#   mock serve examples/gallery/payments.http
 #   curl -s localhost:8080/v1/payments -H 'Authorization: Bearer sk_test_1' \
 #     -H 'Idempotency-Key: k1' -H 'Content-Type: application/json' \
 #     -d '{"amount": 2500, "currency": "usd", "card": {"number": "4242424242424242"}}'

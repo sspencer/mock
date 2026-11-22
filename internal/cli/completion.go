@@ -136,8 +136,11 @@ func commandLineModel() commandLine {
 		if match == nil {
 			continue
 		}
+		if slices.Contains(model.subcommandNames(), match[1]) {
+			continue
+		}
 		sub := subcommand{name: match[1], usage: line}
-		if sub.name != "run" {
+		if sub.name != "run" && sub.name != "serve" {
 			for _, flagMatch := range usageFlagPattern.FindAllStringSubmatch(line[len(match[0]):], -1) {
 				if name := "-" + flagMatch[1]; !slices.Contains(sub.flags, name) {
 					sub.flags = append(sub.flags, name)
@@ -176,10 +179,14 @@ func commandLineModel() commandLine {
 	return model
 }
 
+// topFlagNames are the flags mock accepts without a subcommand; server flags
+// need mock serve or mock run.
+var topFlagNames = []string{"-h", "-help", "-version"}
+
 func bashCompletion(model commandLine) string {
 	var subs strings.Builder
 	for _, sub := range model.subcommands {
-		if sub.name == "run" || sub.name == "completion" {
+		if sub.name == "run" || sub.name == "serve" || sub.name == "completion" || sub.name == "help" {
 			continue
 		}
 		fmt.Fprintf(&subs, "        %s) flags=%q ;;\n", sub.name, strings.Join(sub.flags, " "))
@@ -198,6 +205,16 @@ _mock() {
         completion)
             COMPREPLY=($(compgen -W %[2]q -- "$cur"))
             return ;;
+        help)
+            COMPREPLY=($(compgen -W %[6]q -- "$cur"))
+            return ;;
+        "")
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W %[7]q -- "$cur"))
+            elif [[ $COMP_CWORD -eq 1 ]]; then
+                COMPREPLY=($(compgen -W %[6]q -- "$cur"))
+            fi
+            return ;;
 %[3]s        *)
             case "$prev" in
                 %[4]s)
@@ -213,20 +230,17 @@ _mock() {
     fi
     compopt -o filenames 2>/dev/null
     COMPREPLY=($(compgen -d -- "$cur") $(compgen -f -X '!*.http' -- "$cur"))
-    if [[ -z "$cmd" && $COMP_CWORD -eq 1 ]]; then
-        COMPREPLY+=($(compgen -W %[6]q -- "$cur"))
-    fi
 }
 complete -F _mock mock
 `, strings.Join(model.subcommandNames(), "|"), strings.Join(completionShells, " "), subs.String(),
 		strings.Join(model.valueFlagNames(), "|"), strings.Join(model.mainFlagNames(), " "),
-		strings.Join(model.subcommandNames(), " "))
+		strings.Join(model.subcommandNames(), " "), strings.Join(topFlagNames, " "))
 }
 
 func zshCompletion(model commandLine) string {
 	var subs strings.Builder
 	for _, sub := range model.subcommands {
-		if sub.name == "run" || sub.name == "completion" {
+		if sub.name == "run" || sub.name == "serve" || sub.name == "completion" || sub.name == "help" {
 			continue
 		}
 		fmt.Fprintf(&subs, "    %s) flags=(%s) ;;\n", sub.name, strings.Join(sub.flags, " "))
@@ -245,6 +259,16 @@ _mock() {
     completion)
       compadd -- %[2]s
       return ;;
+    help)
+      compadd -- $subcommands
+      return ;;
+    '')
+      if [[ $PREFIX == -* ]]; then
+        compadd -- %[6]s
+      elif (( CURRENT == 2 )); then
+        compadd -- $subcommands
+      fi
+      return ;;
 %[3]s    *)
       case ${words[CURRENT-1]} in
         %[4]s)
@@ -257,9 +281,6 @@ _mock() {
     compadd -- $flags
     return
   fi
-  if [[ -z $cmd ]] && (( CURRENT == 2 )); then
-    compadd -- $subcommands
-  fi
   _files -g '*.http(-.)'
 }
 if [[ $funcstack[1] == _mock ]]; then
@@ -268,21 +289,20 @@ else
   compdef _mock mock
 fi
 `, strings.Join(model.subcommandNames(), " "), strings.Join(completionShells, " "), subs.String(),
-		strings.Join(model.valueFlagNames(), "|"), strings.Join(model.mainFlagNames(), " "))
+		strings.Join(model.valueFlagNames(), "|"), strings.Join(model.mainFlagNames(), " "),
+		strings.Join(topFlagNames, " "))
 }
 
 func fishCompletion(model commandLine) string {
 	var out strings.Builder
-	var others []string
-	for _, name := range model.subcommandNames() {
-		if name != "run" {
-			others = append(others, name)
-		}
-	}
 	out.WriteString("# fish completion for mock. Save it as ~/.config/fish/completions/mock.fish,\n# or load it with: mock completion fish | source\n")
 	fmt.Fprintf(&out, "complete -c mock -n __fish_use_subcommand -f -a %q\n", strings.Join(model.subcommandNames(), " "))
 	fmt.Fprintf(&out, "complete -c mock -n '__fish_seen_subcommand_from completion' -f -a %q\n", strings.Join(completionShells, " "))
-	own := fmt.Sprintf("'not __fish_seen_subcommand_from %s'", strings.Join(others, " "))
+	fmt.Fprintf(&out, "complete -c mock -n '__fish_seen_subcommand_from help' -f -a %q\n", strings.Join(model.subcommandNames(), " "))
+	for _, name := range topFlagNames {
+		fmt.Fprintf(&out, "complete -c mock -n __fish_use_subcommand -o %s\n", strings.TrimPrefix(name, "-"))
+	}
+	own := "'__fish_seen_subcommand_from serve run'"
 	for _, f := range model.flags {
 		line := "complete -c mock -n " + own
 		if f.short != "" {
@@ -318,9 +338,10 @@ func powershellCompletion(model commandLine) string {
 		return "@(" + strings.Join(quoted, ", ") + ")"
 	}
 	var flags strings.Builder
-	fmt.Fprintf(&flags, "        'mock' = %s\n", quote(model.mainFlagNames()))
+	fmt.Fprintf(&flags, "        'mock' = %s\n", quote(topFlagNames))
+	fmt.Fprintf(&flags, "        'serve' = %s\n", quote(model.mainFlagNames()))
 	for _, sub := range model.subcommands {
-		if sub.name != "run" {
+		if sub.name != "run" && sub.name != "serve" {
 			fmt.Fprintf(&flags, "        '%s' = %s\n", sub.name, quote(sub.flags))
 		}
 	}
@@ -336,9 +357,11 @@ Register-ArgumentCompleter -Native -CommandName mock -ScriptBlock {
     if ($words.Count -gt 1 -and $subcommands -contains $words[1] -and ($words.Count -gt 2 -or $wordToComplete -eq '')) {
         $cmd = $words[1]
     }
-    if ($cmd -eq 'run') { $cmd = 'mock' }
+    if ($cmd -eq 'run') { $cmd = 'serve' }
     if ($cmd -eq 'completion') {
         $candidates = %[3]s
+    } elseif ($cmd -eq 'help') {
+        $candidates = $subcommands
     } elseif ($wordToComplete -like '-*') {
         $candidates = $flags[$cmd]
     } elseif ($cmd -eq 'mock' -and $words.Count -le 2) {

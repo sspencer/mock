@@ -30,7 +30,7 @@ requires a token for every admin page and endpoint (spaces around it, such
 as a trailing newline read from a file, are ignored):
 
 ```sh
-MOCK_UI_TOKEN=$(openssl rand -hex 16) mock -b 0.0.0.0 api.http
+MOCK_UI_TOKEN=$(openssl rand -hex 16) mock serve -b 0.0.0.0 api.http
 ```
 
 - In a browser, open the UI once as `http://HOST:8081/?token=TOKEN`. `mock`
@@ -95,17 +95,16 @@ scenario to `started` (`PUT /scenarios`), leaving every other count alone.
 UI features: theme toggle, filter, pause stream, clear log,
 HAR export, a Help dialog, and a routes panel that refreshes after hot-reload.
 
-The traffic log reads like a line map, newest request at the top. Each request
-is a stop on the line, lit by its status: green for `2xx`, blue for `3xx`,
-amber for `4xx` and red for `5xx` or a connection fault. A hollow stop is a
-request no route answered. Each HTTP method has its own color plate (`GET`
-blue, `POST` green, `PUT` orange, `PATCH` pink, `DELETE` red, others grey),
-in the traffic log and the route list alike. The selected request or route is
-highlighted in yellow. Request and response text is colored: header names and
-JSON keys violet, strings green, numbers orange, and the start line in its
-method or status color (bodies over 200,000 characters stay plain). Selecting
-a route shows it as a sheet: its method and path, a table of its settings,
-then its requirements, sample request and response.
+The traffic log lists requests newest first. Each status carries a small
+indicator dot — green for `2xx`, blue for `3xx`, amber for `4xx`, and red for
+`5xx` or a connection fault — filled when a route answered and hollow when no
+route matched. HTTP methods use muted monospace badges (`GET` blue, `POST`
+green, `PUT` amber, `PATCH` violet, `DELETE` red, others slate) in both the
+traffic log and the routes list. Request and response text is syntax-colored:
+header names and JSON keys blue, strings green, numbers orange, literals purple,
+and the start line in its method or status color (bodies over 200,000 characters
+stay plain). Selecting a route shows it as a sheet: its method and path, a table
+of its settings, then its requirements, sample request and response.
 
 The UI's typeface, Overpass (SIL Open Font License), is built into the binary,
 so the page loads nothing from the network.

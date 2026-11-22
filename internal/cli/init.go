@@ -73,9 +73,9 @@ func runInit(args []string, stdout io.Writer) error {
 		}
 		fmt.Fprintf(stdout, "wrote %s\n", path)
 	}
-	run := "mock api.http"
+	run := "mock serve api.http"
 	if dir != "." {
-		run = "mock " + filepath.Join(dir, "api.http")
+		run = "mock serve " + filepath.Join(dir, "api.http")
 	}
 	fmt.Fprintf(stdout, "\nNext:\n  %s\n  curl localhost:8080/users/7\n", run)
 	return nil

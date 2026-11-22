@@ -27,7 +27,7 @@ func TestRunPrintsParseErrorsDirectly(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	err := Run(context.Background(), []string{path}, strings.NewReader(""), io.Discard, io.Discard, logger)
+	err := Run(context.Background(), []string{"serve", path}, strings.NewReader(""), io.Discard, io.Discard, logger)
 	if err == nil {
 		t.Fatal("Run() error = nil, want parse error")
 	}
@@ -52,7 +52,7 @@ func TestRunPrintsStartupBannersBeforeMethods(t *testing.T) {
 	var out bytes.Buffer
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	if err := Run(cancelledContext(), []string{"-p", "0", "-a", "0", "-b", "127.0.0.1", path}, strings.NewReader(""), &out, io.Discard, logger); err != nil {
+	if err := Run(cancelledContext(), []string{"serve", "-p", "0", "-a", "0", "-b", "127.0.0.1", path}, strings.NewReader(""), &out, io.Discard, logger); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 
@@ -147,7 +147,7 @@ func TestRunNoAdminOmitsAdminUI(t *testing.T) {
 	}
 	var out, errOut bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if err := Run(cancelledContext(), []string{"-x", "-p", "0", "-b", "0.0.0.0", path}, strings.NewReader(""), &out, &errOut, logger); err != nil {
+	if err := Run(cancelledContext(), []string{"serve", "-x", "-p", "0", "-b", "0.0.0.0", path}, strings.NewReader(""), &out, &errOut, logger); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 	if !strings.Contains(out.String(), "starting mock HTTP server on") {
@@ -167,7 +167,7 @@ func TestRunWarnsWhenBoundToAllInterfaces(t *testing.T) {
 
 	var out, errOut bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if err := Run(cancelledContext(), []string{"-p", "0", "-a", "0", "-b", "0.0.0.0", path}, strings.NewReader(""), &out, &errOut, logger); err != nil {
+	if err := Run(cancelledContext(), []string{"serve", "-p", "0", "-a", "0", "-b", "0.0.0.0", path}, strings.NewReader(""), &out, &errOut, logger); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 	warning := errOut.String()
@@ -189,7 +189,7 @@ func TestRunTokenSilencesAllInterfacesWarning(t *testing.T) {
 	}
 	var out, errOut bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if err := Run(cancelledContext(), []string{"-p", "0", "-a", "0", "-b", "0.0.0.0", "-t", "s3cret", path}, strings.NewReader(""), &out, &errOut, logger); err != nil {
+	if err := Run(cancelledContext(), []string{"serve", "-p", "0", "-a", "0", "-b", "0.0.0.0", "-t", "s3cret", path}, strings.NewReader(""), &out, &errOut, logger); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 	if strings.Contains(errOut.String(), "unauthenticated") {
@@ -208,7 +208,7 @@ func TestRunUpstreamPrintsForwardingBanner(t *testing.T) {
 	}
 	var out bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	args := []string{"-x", "-p", "0", "-b", "127.0.0.1", "-u", "https://api.example.com/v2", path}
+	args := []string{"serve", "-x", "-p", "0", "-b", "127.0.0.1", "-u", "https://api.example.com/v2", path}
 	if err := Run(cancelledContext(), args, strings.NewReader(""), &out, io.Discard, logger); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -219,7 +219,7 @@ func TestRunUpstreamPrintsForwardingBanner(t *testing.T) {
 
 func TestRunUpstreamRejectsStaticDirectory(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	err := Run(cancelledContext(), []string{"-u", "https://api.example.com", t.TempDir()}, strings.NewReader(""), io.Discard, io.Discard, logger)
+	err := Run(cancelledContext(), []string{"serve", "-u", "https://api.example.com", t.TempDir()}, strings.NewReader(""), io.Discard, io.Discard, logger)
 	if err == nil || ExitCode(err) != 2 || !strings.Contains(err.Error(), "upstream") {
 		t.Fatalf("Run(dir, -u) error = %v (exit %d), want usage error", err, ExitCode(err))
 	}
@@ -233,7 +233,7 @@ func TestRunJSONLogsWriteOnlyJSONToStdout(t *testing.T) {
 	}
 	var out bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if err := Run(cancelledContext(), []string{"-l", "json", "-p", "0", "-a", "0", path}, strings.NewReader(""), &out, io.Discard, logger); err != nil {
+	if err := Run(cancelledContext(), []string{"serve", "-l", "json", "-p", "0", "-a", "0", path}, strings.NewReader(""), &out, io.Discard, logger); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 	var msgs []string

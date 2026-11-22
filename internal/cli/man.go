@@ -13,6 +13,7 @@ const manUsage = "usage: mock man"
 // subcommandSummaries describe each subcommand in the man page. Every
 // subcommand in usageText needs one; TestManCoversSubcommands checks.
 var subcommandSummaries = map[string]string{
+	"serve":      "Serve request files or a static directory on local HTTP ports, with hot reload and an admin UI.",
 	"validate":   "Load request files and report errors and warnings without serving. Exits 1 on errors, or on warnings with -strict.",
 	"init":       "Write a starter api.http and users.json to the directory (default the current one).",
 	"skill":      "Write the agent skill for this version of mock: SKILL.md to stdout, or to DIR/mock/SKILL.md (such as .claude/skills), refusing to replace a different file without -force.",
@@ -20,11 +21,14 @@ var subcommandSummaries = map[string]string{
 	"run":        "Serve the request files on free ports, run the command after -- with MOCK_URL and MOCK_ADMIN_URL set, then print the strict report.",
 	"match":      "Show which route answers a request, or why none does.",
 	"routes":     "Print the route table without serving.",
+	"send":       "Send a sample request for each route in the request files to a running mock server.",
+	"client":     "Generate a REST Client .http file of sample requests for each route to stdout.",
 	"wait":       "Block until a mock answers: its admin URL, or the --ready-file it writes.",
 	"fmt":        "Rewrite request files in the canonical layout. -check lists files that need it and exits 1 without changing them; - formats stdin to stdout.",
 	"completion": "Write a shell completion script for bash, zsh, fish or PowerShell.",
 	"man":        "Write this manual page in roff format.",
 	"check":      "Send each route's sample request to a real API and report where its responses differ from the mock's.",
+	"help":       "Show usage, or help for a subcommand.",
 }
 
 // runMan writes mock's manual page (mock.1) in roff, built from usageText.
@@ -112,15 +116,15 @@ Default for \-t, and the token mock wait sends.
 .B .mockrc
 Flags for every run in this directory, one flag and its value per line, or
 request files and directories; lines starting with # are comments. Flags on
-the command line win. Read by mock and mock run unless \-\-no\-config is
+the command line win. Read by mock serve and mock run unless \-\-no\-config is
 given; \-\-config FILE reads another file.
 .SH EXIT STATUS
-0 on success, 1 on errors (and for mock \-s when a request went unmatched),
+0 on success, 1 on errors (and for mock serve \-s when a request went unmatched),
 2 for usage errors. mock run exits with the command's status.
 .SH EXAMPLES
 .nf
-mock api.http
-mock \-d mocks \-u https://api.example.com \-R
+mock serve api.http
+mock serve \-d mocks \-u https://api.example.com \-R
 mock run api.http \-\- go test ./...
 mock fmt \-check mocks
 .fi

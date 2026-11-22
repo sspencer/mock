@@ -10,11 +10,11 @@ Send sample traffic to http://127.0.0.1:PORT using examples/user.http routes.
 Port precedence: -p PORT, MOCK_PORT, then 8080.
 
 Start the server first:
-  mock examples/user.http
+  mock serve examples/user.http
   examples/send-requests.sh
 
 Custom port:
-  mock -p 9000 examples/user.http
+  mock serve -p 9000 examples/user.http
   examples/send-requests.sh -p 9000
 
 Requires Bash and curl. Response bodies are hidden; inspect them in the UI.

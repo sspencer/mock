@@ -20,7 +20,7 @@ import (
 )
 
 // galleryServer serves one file from examples/gallery, as
-// `mock examples/gallery/NAME` would.
+// `mock serve examples/gallery/NAME` would.
 func galleryServer(t *testing.T, name string) *Server {
 	t.Helper()
 	methods, err := restclient.Load([]string{filepath.Join("..", "examples", "gallery", name)})

@@ -161,7 +161,7 @@ func TestStrictReportFiles(t *testing.T) {
 
 func TestRunStrictRejectsStaticDirectory(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	err := Run(cancelledContext(), []string{"-s", t.TempDir()}, strings.NewReader(""), io.Discard, io.Discard, logger)
+	err := Run(cancelledContext(), []string{"serve", "-s", t.TempDir()}, strings.NewReader(""), io.Discard, io.Discard, logger)
 	if err == nil || ExitCode(err) != 2 || !strings.Contains(err.Error(), "strict") {
 		t.Fatalf("Run(dir, -s) error = %v (exit %d), want usage error", err, ExitCode(err))
 	}
@@ -197,7 +197,7 @@ func TestRunStrictReportsAtShutdown(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		done <- Run(ctx, []string{"-x", "-s", "-p", "0", path}, strings.NewReader(""), &out, &errOut, logger)
+		done <- Run(ctx, []string{"serve", "-x", "-s", "-p", "0", path}, strings.NewReader(""), &out, &errOut, logger)
 	}()
 	addr := regexp.MustCompile(`starting mock HTTP server on (\S+)`)
 	var base string

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- `mock send api.http` fires each route's sample request (built from its path, query, header, cookie, host, JSON, form and body matchers, as the admin UI's **Copy cURL** builds it) at a running mock and prints the method, target, status, time and route name. It sends to `-url`, else `MOCK_URL`, else `127.0.0.1` on each route's `@port` or `-port`, and doesn't follow redirects. Only safe methods are sent unless you pass `-all`, because a mock started with `--upstream` forwards a sample its route doesn't match to the real API. `-H`, `-only`/`-skip`, `-delay`, `-timeout`, `-json`, `-var` and `-env` are supported. It exits `1` when a request fails or its body is cut short, so `mock run api.http -- mock send -all api.http` works as a CI smoke test.
+
+- `mock client api.http > requests.http` writes a REST Client `.http` file with a sample request for each route: `@baseUrl` variables at the top (`@baseUrl_<port>` for routes on other ports) and one `###` section per route, with JSON bodies pretty-printed. It takes the same `-url`, `-port`, `-H`, `-only`/`-skip`, `-var` and `-env` flags as `mock send`.
+
+- `mock help` prints the usage with a description of every subcommand, and `mock help <subcommand>` (or `mock <subcommand> -h`) prints that subcommand's usage and flags.
+
+- **Breaking:** the server is now the `mock serve` subcommand. `mock api.http`, `mock -p 9000 api.http`, `mock -d fixtures`, `cat api.http | mock` and a bare `mock` that relied on `.mockrc` for its files now exit `2` with a usage error that names the `mock serve` form. Add `serve` after `mock` in scripts, Makefiles, CI jobs and Docker `command:` overrides (the image's default command already runs `serve`; `docker run IMAGE serve -b 0.0.0.0 /x.http` replaces `docker run IMAGE -b 0.0.0.0 /x.http`). The flags, `.mockrc` and stdin input work as before under `mock serve`, and `mock run` is unchanged. `mock -h` and `mock help [subcommand]` print usage.
+
 ## v0.7.0 - 2026-11-17
 
 - `mock skill` writes an agent skill for the installed version of `mock`: `mock skill .claude/skills` writes `.claude/skills/mock/SKILL.md`, and `mock skill` alone prints it. It covers the request file format, matchers, placeholders, directives, the validate, match and run workflow, the admin API and debugging. A different existing file is kept unless you pass `-force`. The source is `skills/mock/SKILL.md`.

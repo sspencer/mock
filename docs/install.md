@@ -43,20 +43,23 @@ the new one will shadow it or be shadowed, depending on install order.
 Common development commands:
 
 ```sh
-make test
-make all
-make build
+make                 # vet, build build/mock, and install to GOBIN
+make install-all     # also install the mock(1) man page and shell completions
+make verify          # format check, vet, Go tests, and UI tests
+make help            # list all targets
 ```
 
-`make build` always writes the `mock` binary into `GOBIN`, or `GOPATH/bin` when
-`GOBIN` is not set. `make` / `make all` does the same after tests pass, even if
-Make thinks the sources are unchanged. The binary reports `git describe` via
-`-version` when built this way.
+`make` (`make all`) vets, builds `build/mock`, and installs the `mock` binary
+into `GOBIN` (or `GOPATH/bin` when `GOBIN` is not set). `make install-man` and
+`make install-completions` install the `mock(1)` man page and bash, zsh, and
+fish completions under `PREFIX` (Homebrew's prefix when present, else
+`/usr/local`). The binary reports `git describe` via `-version` when built this
+way.
 
 After building:
 
 ```sh
-mock -p 9090 -a 9091 -b 127.0.0.1 examples/user.http
+mock serve -p 9090 -a 9091 -b 127.0.0.1 examples/user.http
 ```
 
 That serves the mock API on `127.0.0.1:9090` and the request log at
@@ -98,7 +101,7 @@ localhost):
 docker run --rm \
   -p 8080:8080 -p 8081:8081 \
   -v "$PWD/examples/user.http:/mock/user.http:ro" \
-  mock -b 0.0.0.0 /mock/user.http
+  mock serve -b 0.0.0.0 /mock/user.http
 ```
 
 `examples/user.http` references external body files, so with only that one file
@@ -117,5 +120,5 @@ directory so relative file references are available inside the container:
 docker run --rm \
   -p 8080:8080 -p 8081:8081 \
   -v "$PWD/examples:/mock/examples:ro" \
-  mock -b 0.0.0.0 /mock/examples/user.http
+  mock serve -b 0.0.0.0 /mock/examples/user.http
 ```

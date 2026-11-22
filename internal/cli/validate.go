@@ -155,7 +155,7 @@ func errorDiagnostics(err error) []diagnostic {
 }
 
 // loadValidationMethods loads the request files; a directory argument stands
-// for every .http file under it, as with mock --dir.
+// for every .http file under it, as with mock serve --dir.
 func loadValidationMethods(paths []string, opts restclient.Options) ([]restclient.Method, error) {
 	var input inputSource
 	for _, path := range paths {

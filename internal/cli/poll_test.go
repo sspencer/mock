@@ -105,7 +105,7 @@ func TestParseConfigPoll(t *testing.T) {
 }
 
 func TestRunRejectsPollWithoutFiles(t *testing.T) {
-	err := Run(context.Background(), []string{"-i", "1s", "-x"}, strings.NewReader("### A\nGET /a\n\nok\n"), io.Discard, io.Discard, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	err := Run(context.Background(), []string{"serve", "-i", "1s", "-x"}, strings.NewReader("### A\nGET /a\n\nok\n"), io.Discard, io.Discard, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if ExitCode(err) != 2 || !strings.Contains(err.Error(), "--poll") {
 		t.Fatalf("Run(-i with stdin) = %v, want usage error", err)
 	}
